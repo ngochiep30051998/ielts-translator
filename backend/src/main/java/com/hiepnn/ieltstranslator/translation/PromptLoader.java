@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -38,17 +39,29 @@ public class PromptLoader {
             throw new UncheckedIOException("Không đọc được prompt: " + path, e);
         }
 
-        int separator = raw.indexOf("\n---");
-        if (separator < 0) {
+        String[] lines = raw.split("\n", -1);
+        int delimiterIndex = -1;
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].strip().equals("---")) {
+                delimiterIndex = i;
+                break;
+            }
+        }
+        if (delimiterIndex < 0) {
             throw new IllegalStateException("Prompt thiếu dòng phân cách '---': " + path);
         }
-        String header = raw.substring(0, separator).trim();
-        String body = raw.substring(raw.indexOf('\n', separator + 1) + 1).trim();
+        String header = String.join("\n", Arrays.copyOfRange(lines, 0, delimiterIndex)).trim();
+        String body = String.join("\n", Arrays.copyOfRange(lines, delimiterIndex + 1, lines.length)).trim();
 
         if (!header.startsWith("version:")) {
             throw new IllegalStateException("Prompt thiếu header 'version:': " + path);
         }
-        int version = Integer.parseInt(header.substring("version:".length()).trim());
+        int version;
+        try {
+            version = Integer.parseInt(header.substring("version:".length()).trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("Prompt có version không phải số: " + path, e);
+        }
         return new PromptTemplate(body, version);
     }
 }
