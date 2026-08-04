@@ -1190,7 +1190,18 @@ class PromptLoaderTest {
 
         assertThat(template.version()).isGreaterThanOrEqualTo(1);
         assertThat(template.body()).isNotBlank();
-        assertThat(template.body()).doesNotContain("version:");
+        // doesNotStartWith chứ không phải doesNotContain: body của vi-en-sentence
+        // chứa tên trường "band65_version" hợp lệ, không phải header sót lại.
+        assertThat(template.body()).doesNotStartWith("version:");
+    }
+
+    @Test
+    void headerIsStrippedButBodyKeepsFieldNamesContainingVersion() {
+        PromptTemplate template = loader.load(Direction.VI_EN, Mode.SENTENCE);
+
+        assertThat(template.version()).isEqualTo(1);
+        assertThat(template.body()).doesNotStartWith("version:");
+        assertThat(template.body()).contains("band65_version");
     }
 
     @Test
@@ -1444,17 +1455,32 @@ public class PromptLoader {
             throw new UncheckedIOException("Không đọc được prompt: " + path, e);
         }
 
-        int separator = raw.indexOf("\n---");
+        // Quét theo dòng, chỉ chấp nhận dòng đúng bằng "---". Dùng indexOf("\n---")
+        // sẽ khớp nhầm cả đường kẻ ngang markdown nằm trong thân prompt.
+        String[] lines = raw.split("\n", -1);
+        int separator = -1;
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].strip().equals("---")) {
+                separator = i;
+                break;
+            }
+        }
         if (separator < 0) {
             throw new IllegalStateException("Prompt thiếu dòng phân cách '---': " + path);
         }
-        String header = raw.substring(0, separator).trim();
-        String body = raw.substring(raw.indexOf('\n', separator + 1) + 1).trim();
+        String header = String.join("\n", Arrays.copyOfRange(lines, 0, separator)).trim();
+        String body = String.join("\n",
+                Arrays.copyOfRange(lines, separator + 1, lines.length)).trim();
 
         if (!header.startsWith("version:")) {
             throw new IllegalStateException("Prompt thiếu header 'version:': " + path);
         }
-        int version = Integer.parseInt(header.substring("version:".length()).trim());
+        int version;
+        try {
+            version = Integer.parseInt(header.substring("version:".length()).trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("Prompt có version không phải số: " + path, e);
+        }
         return new PromptTemplate(body, version);
     }
 }
