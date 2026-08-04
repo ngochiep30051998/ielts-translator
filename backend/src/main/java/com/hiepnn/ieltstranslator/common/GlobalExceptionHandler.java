@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -17,6 +18,21 @@ public class GlobalExceptionHandler {
         log.warn("AppException {}: {}", ex.code(), ex.getMessage());
         return ResponseEntity.status(statusFor(ex.code()))
                 .body(new ApiError(ex.code().name(), ex.getMessage(), ex.retryable()));
+    }
+
+    /**
+     * Bắt lỗi validate của @Valid @RequestBody (vd: text rỗng). Nếu không có handler này,
+     * catch-all handleOther() bên dưới sẽ nuốt MethodArgumentNotValidException và trả nhầm
+     * 500 INTERNAL thay vì 400 — xem task-1-report.md mục review.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
+        String detail = ex.getBindingResult().getFieldErrors().stream()
+                .map(e -> e.getField() + " " + e.getDefaultMessage())
+                .collect(java.util.stream.Collectors.joining("; "));
+        return ResponseEntity.badRequest()
+                .body(new ApiError(ErrorCode.INTERNAL.name(),
+                        "Request không hợp lệ: " + detail, false));
     }
 
     @ExceptionHandler(Exception.class)
