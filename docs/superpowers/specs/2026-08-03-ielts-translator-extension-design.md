@@ -247,6 +247,7 @@ Chỉ `FREE_WRITE` tốn token khi chấm.
 |---|---|
 | Backend chưa chạy | Bubble hiện "Backend chưa chạy" + nút Thử lại + link mở Options. Service worker cache kết quả health 30s để không spam |
 | Gemini 429 / hết quota | `GEMINI_QUOTA`, hiện rõ cho người dùng, **không** auto-retry |
+| Gemini 4xx khác (401/403/404) | `INTERNAL`, `retryable: false`. Key hoặc model sai là lỗi vĩnh viễn — retry vô ích. Message chỉ thẳng vào `GEMINI_API_KEY` / `GEMINI_MODEL` |
 | Gemini 5xx hoặc timeout | Retry 1 lần, backoff 1s, sau đó fail |
 | Output không khớp schema | Structured output đã ép; nếu vẫn lỗi thì retry 1 lần → `PARSE_ERROR` |
 | Selection > 1500 ký tự | Chặn tại content script, gợi ý bôi ít hơn |

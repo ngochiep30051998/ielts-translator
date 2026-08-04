@@ -1053,7 +1053,11 @@ public class GeminiClient {
             try {
                 return callOnce(prompt, responseSchema);
             } catch (AppException ex) {
-                if (ex.code() == ErrorCode.GEMINI_QUOTA) {
+                // Chỉ retry lỗi tạm thời. Liệt kê cái ĐƯỢC retry (thay vì cái không)
+                // để thêm mã lỗi mới về sau không vô tình bật retry cho nó.
+                boolean transient_ = ex.code() == ErrorCode.GEMINI_UNAVAILABLE
+                                  || ex.code() == ErrorCode.PARSE_ERROR;
+                if (!transient_) {
                     throw ex;
                 }
                 last = ex;
@@ -1094,8 +1098,14 @@ public class GeminiClient {
         if (status == 429) {
             throw AppException.of(ErrorCode.GEMINI_QUOTA, "Đã hết quota Gemini");
         }
-        if (status >= 400) {
+        if (status >= 500) {
             throw AppException.of(ErrorCode.GEMINI_UNAVAILABLE, "Gemini trả lỗi HTTP " + status);
+        }
+        if (status >= 400) {
+            // Lỗi cấu hình phía ta (key sai, model sai) — retry không bao giờ cứu được
+            throw AppException.of(ErrorCode.INTERNAL,
+                    "Gemini từ chối request (HTTP " + status
+                    + "). Kiểm tra GEMINI_API_KEY và GEMINI_MODEL trong file .env.");
         }
         return extractPayload(response.getBody());
     }
