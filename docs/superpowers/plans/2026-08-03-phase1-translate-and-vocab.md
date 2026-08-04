@@ -19,7 +19,11 @@
 - Cache key gồm: `text + direction + mode + model + prompt_version`.
 - Mọi lỗi API trả đúng hình dạng `{ code, message, retryable }`.
 - Mã lỗi hợp lệ: `GEMINI_QUOTA`, `GEMINI_UNAVAILABLE`, `PARSE_ERROR`, `TEXT_TOO_LONG`, `NOT_FOUND`, `INTERNAL`.
-- Backend bind `127.0.0.1:8080`, không bao giờ `0.0.0.0`.
+- Backend chỉ được tiếp cận từ localhost của máy host. Cụ thể: `application.yml`
+  mặc định `server.address=127.0.0.1` cho lần chạy ngoài container; trong container
+  thì `SERVER_ADDRESS=0.0.0.0` (bắt buộc, nếu không container không nhận request nào),
+  và tính localhost-only do `ports: "127.0.0.1:8080:8080"` của compose đảm nhiệm.
+  Không bao giờ publish cổng dạng `"8080:8080"` — dạng đó phơi backend ra mạng LAN.
 - CORS chỉ cho origin `chrome-extension://<extension-id>`.
 - Selection > 1500 ký tự bị chặn tại content script, không gửi lên backend.
 - Timeout Phase 1: dịch 15s.
@@ -4719,26 +4723,14 @@ export function TranslateTab() {
 - [ ] **Step 5: Viết `src/sidepanel/App.tsx`, `main.tsx`, `index.html`, `styles.css`**
 
 ```tsx
-// App.tsx
-import { useState } from 'react';
+// App.tsx — Task 11 sẽ thêm thanh tab và tab Sổ từ
 import { TranslateTab } from './TranslateTab';
-import { VocabTab } from './VocabTab';
-
-type Tab = 'translate' | 'vocab';
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('translate');
-
   return (
     <div className="app">
-      <nav className="tabs">
-        <button type="button" className={tab === 'translate' ? 'active' : ''}
-                onClick={() => setTab('translate')}>Dịch</button>
-        <button type="button" className={tab === 'vocab' ? 'active' : ''}
-                onClick={() => setTab('vocab')}>Sổ từ</button>
-      </nav>
       <main className="content">
-        {tab === 'translate' ? <TranslateTab /> : <VocabTab />}
+        <TranslateTab />
       </main>
     </div>
   );
@@ -4803,21 +4795,12 @@ body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", 
 .vocab-item { padding: 8px 0; border-bottom: 1px solid rgba(128,128,128,.2); display: flex; justify-content: space-between; gap: 8px; }
 ```
 
-- [ ] **Step 6: Tạo tạm `VocabTab.tsx` rỗng để App.tsx compile**
-
-```tsx
-// src/sidepanel/VocabTab.tsx — nội dung đầy đủ ở Task 11
-export function VocabTab() {
-  return <p className="empty">Sổ từ — làm ở Task 11.</p>;
-}
-```
-
-- [ ] **Step 7: Chạy test để xác nhận pass**
+- [ ] **Step 6: Chạy test để xác nhận pass**
 
 Run: `cd extension && npm test -- TranslateTab`
 Expected: PASS, 9 test.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add extension/src/sidepanel
@@ -4829,12 +4812,13 @@ git commit -m "feat: side panel tab Dịch với 4 dạng hiển thị payload"
 ### Task 11: Side panel — tab Sổ từ
 
 **Files:**
-- Modify: `extension/src/sidepanel/VocabTab.tsx` (thay bản tạm bằng bản đầy đủ)
+- Create: `extension/src/sidepanel/VocabTab.tsx`
+- Modify: `extension/src/sidepanel/App.tsx` (thêm thanh tab Dịch / Sổ từ)
 - Test: `extension/src/sidepanel/VocabTab.test.tsx`
 
 **Interfaces:**
-- Consumes: `sendToBackground`, `VocabEntryDto`, `PageResponse` (Task 7)
-- Produces: `<VocabTab />`
+- Consumes: `sendToBackground`, `VocabEntryDto`, `PageResponse` (Task 7), `<TranslateTab />` (Task 10)
+- Produces: `<VocabTab />`; `<App />` với 2 tab
 
 - [ ] **Step 1: Viết test thất bại `src/sidepanel/VocabTab.test.tsx`**
 
@@ -5054,12 +5038,42 @@ export function VocabTab() {
 Run: `cd extension && npm test -- VocabTab`
 Expected: PASS, 7 test.
 
-- [ ] **Step 5: Chạy toàn bộ test extension**
+- [ ] **Step 5: Thêm thanh tab vào `src/sidepanel/App.tsx`**
+
+Thay toàn bộ nội dung `App.tsx` (bản Task 10 chỉ có một view) bằng:
+
+```tsx
+import { useState } from 'react';
+import { TranslateTab } from './TranslateTab';
+import { VocabTab } from './VocabTab';
+
+type Tab = 'translate' | 'vocab';
+
+export function App() {
+  const [tab, setTab] = useState<Tab>('translate');
+
+  return (
+    <div className="app">
+      <nav className="tabs">
+        <button type="button" className={tab === 'translate' ? 'active' : ''}
+                onClick={() => setTab('translate')}>Dịch</button>
+        <button type="button" className={tab === 'vocab' ? 'active' : ''}
+                onClick={() => setTab('vocab')}>Sổ từ</button>
+      </nav>
+      <main className="content">
+        {tab === 'translate' ? <TranslateTab /> : <VocabTab />}
+      </main>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 6: Chạy toàn bộ test extension**
 
 Run: `cd extension && npm test && npm run build`
 Expected: PASS toàn bộ, build thành công.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add extension/src/sidepanel
