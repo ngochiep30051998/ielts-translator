@@ -10,6 +10,18 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-03-ielts-translator-extension-design.md`
 
+> **Cảnh báo khi đọc lại plan này.** Các khối code dưới đây là bản viết TRƯỚC khi
+> thực thi. Quá trình review đã phát hiện một số lỗi thật trong chính chúng và
+> code đã commit mới là nguồn sự thật. Đừng copy code từ plan này sang chỗ khác
+> mà không đối chiếu git.
+>
+> Danh sách đầy đủ các lỗi đã phát hiện và cách xử lý nằm ở
+> `.superpowers/sdd/2026-08-03-phase1-translate-and-vocab/progress.md`.
+> Đáng chú ý nhất: `Pattern.CASE_INSENSITIVE` thiếu `UNICODE_CASE` (Task 2),
+> `status >= 400` gộp lỗi cấu hình vào lỗi tạm thời (Task 3), assertion
+> `doesNotContain("version:")` đụng tên trường `band65_version` (Task 4),
+> và `cacheKey` nối chuỗi không có ranh giới rõ ràng (Task 5).
+
 ## Global Constraints
 
 - Content script **không bao giờ** gọi HTTP. Mọi request đi qua service worker.
