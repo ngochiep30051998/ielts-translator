@@ -25,12 +25,6 @@ public class TranslationService {
     /** Giới hạn cứng phía server; content script cũng chặn ở cùng con số. */
     private static final int MAX_TEXT_LENGTH = 1500;
 
-    /** Ký tự điều khiển U+0001 dùng làm dấu phân cách khi ghép các thành phần
-     *  cache key. Không thể gõ được từ bàn phím nên tránh đụng độ kiểu
-     *  ("ab","c") và ("a","bc") bị băm ra cùng một chuỗi nếu nối trực tiếp
-     *  không có dấu phân cách. */
-    private static final String KEY_SEPARATOR = "\u0001";
-
     private final LanguageDetector languageDetector;
     private final PromptLoader promptLoader;
     private final GeminiClient geminiClient;
@@ -82,19 +76,32 @@ public class TranslationService {
      *  đụng độ giữa các lượt tra cùng text nhưng khác ngữ cảnh). */
     private String cacheKey(String text, String context, Direction direction,
                             Mode mode, int promptVersion) {
-        String material = String.join(KEY_SEPARATOR,
-                text,
-                context == null ? "" : context,
-                direction.name(),
-                mode.name(),
-                geminiProperties.model(),
-                String.valueOf(promptVersion));
+        StringBuilder material = new StringBuilder();
+        appendField(material, text);
+        appendField(material, context);
+        appendField(material, direction.name());
+        appendField(material, mode.name());
+        appendField(material, geminiProperties.model());
+        appendField(material, String.valueOf(promptVersion));
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(material.getBytes(StandardCharsets.UTF_8));
+                    .digest(material.toString().getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("JVM không có SHA-256", e);
         }
+    }
+
+    /**
+     * Nối một field vào material dạng "độDài:nộiDung|" thay vì nối chuỗi trực tiếp có/không
+     * dấu phân cách. Text và context là văn bản người dùng bôi đen tuỳ ý trên web, có thể
+     * chứa bất kỳ ký tự nào (kể cả ký tự điều khiển do lỗi encoding khi paste) nên không thể
+     * dựa vào giả định "ký tự phân cách này không bao giờ xuất hiện trong dữ liệu người dùng".
+     * Tiền tố độ dài đảm bảo hai bộ input khác nhau — ví dụ ("ab","c") và ("a","bc") — không
+     * bao giờ sinh ra cùng một chuỗi material, bất kể nội dung field chứa gì.
+     */
+    private static void appendField(StringBuilder sb, String value) {
+        String safe = value == null ? "" : value;
+        sb.append(safe.length()).append(':').append(safe).append('|');
     }
 }

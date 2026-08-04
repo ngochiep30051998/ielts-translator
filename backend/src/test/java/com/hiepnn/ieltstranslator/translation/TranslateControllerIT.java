@@ -96,6 +96,9 @@ class TranslateControllerIT extends AbstractPostgresIT {
                         .content("{\"text\":\"   \"}"))
                .andExpect(status().isBadRequest())
                .andExpect(jsonPath("$.code").value("INTERNAL"))
-               .andExpect(jsonPath("$.retryable").value(false));
+               .andExpect(jsonPath("$.retryable").value(false))
+               .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("không được để trống")))
+               .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                       org.hamcrest.Matchers.containsString("must not be blank"))));
     }
 }

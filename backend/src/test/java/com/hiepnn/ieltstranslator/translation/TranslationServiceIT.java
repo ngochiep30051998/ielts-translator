@@ -121,4 +121,12 @@ class TranslationServiceIT extends AbstractPostgresIT {
                 argThat(prompt -> prompt.contains("renewable") && prompt.contains("some context")),
                 any());
     }
+
+    @Test
+    void cacheKeyDoesNotCollideWhenTextAndContextBoundaryShifts() {
+        service.translate(new TranslateRequest("ab", "c", null, null));
+        service.translate(new TranslateRequest("a", "bc", null, null));
+
+        assertThat(cacheRepository.count()).isEqualTo(2);
+    }
 }
