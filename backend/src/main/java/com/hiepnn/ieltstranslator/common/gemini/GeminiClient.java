@@ -41,7 +41,12 @@ public class GeminiClient {
             try {
                 return callOnce(prompt, responseSchema);
             } catch (AppException ex) {
-                if (ex.code() == ErrorCode.GEMINI_QUOTA) {
+                // Chỉ retry lỗi tạm thời (server tạm ngưng, JSON hỏng do model trả sai định
+                // dạng). Liệt kê "được retry" thay vì "không được retry" để an toàn hơn khi
+                // sau này thêm ErrorCode mới — mặc định không retry trừ khi biết chắc là tạm thời.
+                boolean transientFailure = ex.code() == ErrorCode.GEMINI_UNAVAILABLE
+                        || ex.code() == ErrorCode.PARSE_ERROR;
+                if (!transientFailure) {
                     throw ex;
                 }
                 last = ex;
@@ -81,6 +86,14 @@ public class GeminiClient {
             // SocketTimeoutException thô), Spring bọc nó thành RestClientException chung chung
             // thay vì ResourceAccessException. Bắt RestClientException (cha của
             // ResourceAccessException) để phủ cả hai trường hợp mất kết nối/timeout.
+            //
+            // Bắt rộng như vậy chỉ an toàn với 2 tiền đề ở trên: (1) onStatus(status -> true, ...)
+            // luôn đăng ký và luôn khớp mọi status TRƯỚC default handler, nên không có
+            // HttpClientErrorException/HttpServerErrorException nào thoát ra ngoài khối try này;
+            // (2) kiểu đích luôn là String.class, không có converter phức tạp nào khác có thể
+            // ném lỗi nghiệp vụ. Nếu sau này một trong hai thay đổi (bỏ onStatus, hoặc đổi kiểu
+            // đích), catch rộng này có thể nuốt nhầm RestClientResponseException và che mất lỗi
+            // HTTP thật — cần thu hẹp lại catch khi đó.
             throw AppException.of(ErrorCode.GEMINI_UNAVAILABLE, "Gemini không phản hồi kịp");
         }
 
@@ -88,8 +101,14 @@ public class GeminiClient {
         if (status == 429) {
             throw AppException.of(ErrorCode.GEMINI_QUOTA, "Đã hết quota Gemini");
         }
-        if (status >= 400) {
+        if (status >= 500) {
             throw AppException.of(ErrorCode.GEMINI_UNAVAILABLE, "Gemini trả lỗi HTTP " + status);
+        }
+        if (status >= 400) {
+            // Lỗi cấu hình phía ta (key sai, model sai) — retry không bao giờ cứu được, nên
+            // KHÔNG map vào GEMINI_UNAVAILABLE (sẽ bị coi là retryable và bị retry vô ích).
+            throw AppException.of(ErrorCode.INTERNAL,
+                    "Gemini từ chối request (HTTP " + status + "). Kiểm tra GEMINI_API_KEY và GEMINI_MODEL trong file .env.");
         }
         return extractPayload(response.getBody());
     }

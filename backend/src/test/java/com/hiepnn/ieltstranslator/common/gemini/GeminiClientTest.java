@@ -101,6 +101,34 @@ class GeminiClientTest {
     }
 
     @Test
+    void unauthorizedIsNotRetriedAndMapsToInternal() {
+        stubGemini(401, "{\"error\":{\"message\":\"invalid api key\"}}");
+
+        assertThatThrownBy(() -> client.generateJson("p", SCHEMA))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> {
+                    assertThat(((AppException) ex).code()).isEqualTo(ErrorCode.INTERNAL);
+                    assertThat(((AppException) ex).retryable()).isFalse();
+                });
+
+        wireMock.verify(1, postRequestedFor(urlPathMatching("/v1beta/models/.*:generateContent")));
+    }
+
+    @Test
+    void notFoundIsNotRetriedAndMapsToInternal() {
+        stubGemini(404, "{\"error\":{\"message\":\"model not found\"}}");
+
+        assertThatThrownBy(() -> client.generateJson("p", SCHEMA))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> {
+                    assertThat(((AppException) ex).code()).isEqualTo(ErrorCode.INTERNAL);
+                    assertThat(((AppException) ex).retryable()).isFalse();
+                });
+
+        wireMock.verify(1, postRequestedFor(urlPathMatching("/v1beta/models/.*:generateContent")));
+    }
+
+    @Test
     void serverErrorIsRetriedOnceThenFails() {
         stubGemini(503, "{\"error\":\"unavailable\"}");
 
@@ -149,6 +177,8 @@ class GeminiClientTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).code())
                         .isEqualTo(ErrorCode.PARSE_ERROR));
+
+        wireMock.verify(2, postRequestedFor(urlPathMatching("/v1beta/models/.*:generateContent")));
     }
 
     @Test
@@ -162,5 +192,7 @@ class GeminiClientTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).code())
                         .isEqualTo(ErrorCode.GEMINI_UNAVAILABLE));
+
+        wireMock.verify(2, postRequestedFor(urlPathMatching("/v1beta/models/.*:generateContent")));
     }
 }
