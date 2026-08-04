@@ -21,6 +21,7 @@ gemini:
   model: ${GEMINI_MODEL:gemini-2.5-flash}
   base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
   timeout-seconds: 15
+  retry-backoff-millis: ${GEMINI_RETRY_BACKOFF_MS:1000}
 
 extension:
   id: ${EXTENSION_ID:}
