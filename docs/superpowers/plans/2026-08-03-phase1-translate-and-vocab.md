@@ -598,6 +598,10 @@ class LanguageDetectorTest {
         "renewable                                             | EN_VI",
         "The government should allocate more funding           | EN_VI",
         "this is a test of the system                          | EN_VI",
+        // viết hoa toàn bộ -> cần UNICODE_CASE mới nhận ra
+        "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM                    | VI_EN",
+        "ĐIỀU NÀY RẤT QUAN TRỌNG                               | VI_EN",
+        "Á                                                     | VI_EN",
         // không quyết được -> mặc định EN_VI
         "12345                                                 | EN_VI",
         "'  '                                                  | EN_VI"
@@ -693,10 +697,14 @@ import java.util.regex.Pattern;
 @Component
 public class LanguageDetector {
 
-    /** Ký tự chỉ xuất hiện trong tiếng Việt — thấy một cái là chắc chắn tiếng Việt. */
+    /**
+     * Ký tự chỉ xuất hiện trong tiếng Việt — thấy một cái là chắc chắn tiếng Việt.
+     * UNICODE_CASE là bắt buộc: CASE_INSENSITIVE một mình chỉ fold case US-ASCII,
+     * không fold được Đ/đ hay Á/á, khiến text viết hoa toàn bộ bị nhận nhầm là EN.
+     */
     private static final Pattern VIETNAMESE_CHARS = Pattern.compile(
             "[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]",
-            Pattern.CASE_INSENSITIVE);
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     /** Stopword tiếng Việt dạng KHÔNG dấu — dùng khi người dùng gõ không dấu. */
     private static final Set<String> VI_STOPWORDS = Set.of(
