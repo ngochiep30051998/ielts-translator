@@ -25,7 +25,11 @@ class LanguageDetectorTest {
         "this is a test of the system                          | EN_VI",
         // không quyết được -> mặc định EN_VI
         "12345                                                 | EN_VI",
-        "'  '                                                  | EN_VI"
+        "'  '                                                  | EN_VI",
+        // tiếng Việt toàn bộ chữ hoa — phải nhận ra bằng UNICODE_CASE
+        "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM                    | VI_EN",
+        "ĐIỀU NÀY RẤT QUAN TRỌNG                               | VI_EN",
+        "Á                                                     | VI_EN"
     })
     void detectsDirection(String text, Direction expected) {
         assertThat(detector.detect(text)).isEqualTo(expected);

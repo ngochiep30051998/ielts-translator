@@ -12,7 +12,7 @@ public class LanguageDetector {
     /** Ký tự chỉ xuất hiện trong tiếng Việt — thấy một cái là chắc chắn tiếng Việt. */
     private static final Pattern VIETNAMESE_CHARS = Pattern.compile(
             "[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]",
-            Pattern.CASE_INSENSITIVE);
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     /** Stopword tiếng Việt dạng KHÔNG dấu — dùng khi người dùng gõ không dấu. */
     private static final Set<String> VI_STOPWORDS = Set.of(
