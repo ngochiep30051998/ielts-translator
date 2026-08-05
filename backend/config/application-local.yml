@@ -1,17 +1,40 @@
 # Profile "local" — chạy backend từ IDE, ngoài container.
 #
-# File này KHÔNG chứa giá trị nào: nó chỉ nạp .env ở thư mục gốc vào Environment,
-# rồi để application.yml tự resolve như thường lệ. Nhờ vậy .env là nguồn sự thật
-# duy nhất, không còn cảnh sửa key một chỗ quên chỗ kia.
+# CƠ CHẾ: application.yml không đọc .env, nó chỉ đọc BIẾN MÔI TRƯỜNG. Trong
+# container, docker compose là thứ parse .env rồi bơm thành biến môi trường.
+# Chạy từ IDE không có ai làm bước đó, nên dòng spring.config.import dưới đây
+# nạp .env vào Environment; từ lúc đó mọi ${VAR} resolve y hệt như trong
+# container. Placeholder được resolve lúc ĐỌC property chứ không phải lúc parse
+# file, nên khai import cùng document vẫn kịp cho các mục bên dưới.
 #
 # .env là KEY=value nên đọc được như .properties — hậu tố [.properties] báo cho
 # Spring biết định dạng vì tên file không có đuôi quen thuộc.
 # Đường dẫn tính theo working directory của run config = thư mục backend/.
-# optional: để lần chạy trong container (đã có sẵn biến môi trường) không lỗi.
+# optional: để chỗ nào không có .env (trong container) thì bỏ qua, không lỗi.
 #
 # Vì sao ở backend/config/ chứ không phải src/main/resources/: Dockerfile có
 # COPY src ./src, mọi thứ trong src/ đều bị đóng vào image và jar.
+#
+# File này không chứa giá trị thật nào — tất cả đều là ${VAR} trỏ về .env, nên
+# commit được và .env vẫn là nguồn sự thật duy nhất.
 
 spring:
   config:
     import: "optional:file:../.env[.properties]"
+
+  datasource:
+    # Chạy ngoài container thì nối qua cổng publish trên host, nên DB_PORT ở đây
+    # đúng là DB_PORT trong .env (khác với DB_PORT=5432 mà compose set cho app).
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ielts}
+    username: ${DB_USER:ielts}
+    password: ${DB_PASSWORD:ielts}
+
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  model: ${GEMINI_MODEL:gemini-2.5-flash}
+  base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+  timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:15}
+  retry-backoff-millis: ${GEMINI_RETRY_BACKOFF_MS:1000}
+
+extension:
+  id: ${EXTENSION_ID:}

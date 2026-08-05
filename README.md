@@ -50,22 +50,33 @@ Chỉ bật Postgres bằng Docker, app chạy thẳng từ IDE:
 docker compose up -d db      # KHÔNG bật service app, nó chiếm cổng 8080
 ```
 
-Không cần khai báo gì thêm: `backend/config/application-local.yml` (đã có trong
-repo) nạp thẳng `.env` ở thư mục gốc vào Environment, rồi `application.yml` tự
-resolve như thường lệ.
+Không cần khai báo gì thêm: `backend/config/application-local.yml` đã có trong repo.
+
+Cần hiểu đúng cơ chế: **`application.yml` không đọc `.env`** — nó chỉ đọc *biến môi
+trường*. Trong container, `docker compose` mới là thứ parse `.env` rồi bơm thành
+biến môi trường. Chạy từ IDE không có ai làm bước đó, nên profile `local` phải tự
+nạp `.env` vào Environment:
 
 ```yaml
 spring:
   config:
     import: "optional:file:../.env[.properties]"
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ielts}
+    ...
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  ...
 ```
 
 `.env` là `KEY=value` nên đọc được như `.properties`; hậu tố `[.properties]` báo
 cho Spring biết định dạng vì tên file không có đuôi quen thuộc. Đường dẫn tính
 theo working directory của run config (`backend/`), nên `../.env` là file ở gốc.
+Placeholder được resolve lúc *đọc* property chứ không phải lúc parse file, nên
+khai `import` cùng document vẫn kịp cho các mục bên dưới.
 
-File này không chứa giá trị nào nên commit được — `.env` vẫn là nguồn sự thật duy
-nhất, không có chuyện sửa key một chỗ quên chỗ kia.
+File này không chứa giá trị thật nào — toàn `${VAR}` trỏ về `.env` — nên commit
+được và `.env` vẫn là nguồn sự thật duy nhất.
 
 Đặt ở `backend/config/` chứ **không** phải `src/main/resources/`: `Dockerfile` có
 `COPY src ./src`, mọi file trong `src/` đều bị đóng vào image và jar. Spring Boot
