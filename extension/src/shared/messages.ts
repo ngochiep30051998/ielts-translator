@@ -60,9 +60,34 @@ export interface ResponseMap {
   CHECK_HEALTH: { status: string; dbConnected: boolean; geminiConfigured: boolean };
 }
 
-/** Gửi message tới service worker và nhận về kết quả đã phân biệt ok/lỗi. */
+function localError(code: string, message: string, retryable: boolean): { ok: false; error: ApiError } {
+  return { ok: false, error: { code, message, retryable } };
+}
+
+/**
+ * Gửi message tới service worker và nhận về kết quả đã phân biệt ok/lỗi.
+ *
+ * `chrome.runtime.sendMessage` REJECT khi không có bên nhận — xảy ra thật khi
+ * service worker vừa reload/crash, hoặc content script bị mồ côi sau khi reload
+ * extension. Nuốt lỗi đó ở đây để mọi caller chỉ phải xử lý một hình dạng kết
+ * quả, thay vì mỗi chỗ tự bọc try/catch (và quên).
+ */
 export async function sendToBackground<R extends ExtensionRequest>(
   request: R,
 ): Promise<ExtensionResponse<ResponseMap[R['type']]>> {
-  return chrome.runtime.sendMessage(request);
+  let response: unknown;
+  try {
+    response = await chrome.runtime.sendMessage(request);
+  } catch {
+    return localError(
+      'BACKEND_DOWN',
+      'Không liên lạc được với extension. Tải lại trang, hoặc bật lại extension trong chrome://extensions.',
+      true,
+    );
+  }
+
+  if (typeof response !== 'object' || response === null || !('ok' in response)) {
+    return localError('INTERNAL', 'Service worker không phản hồi đúng định dạng.', false);
+  }
+  return response as ExtensionResponse<ResponseMap[R['type']]>;
 }
