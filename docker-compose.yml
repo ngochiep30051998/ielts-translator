@@ -25,9 +25,11 @@ services:
         condition: service_healthy
     environment:
       SERVER_ADDRESS: 0.0.0.0
-      # Cổng 5432 cứng ở đây là ĐÚNG: app nối tới db qua mạng nội bộ của compose,
-      # không đi qua cổng publish trên host.
-      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-ielts}
+      # DB_HOST=db và DB_PORT=5432 là toạ độ trong mạng nội bộ của compose —
+      # KHÔNG dùng ${DB_PORT} của .env ở đây, biến đó là cổng publish trên host.
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ielts}
       DB_USER: ${DB_USER:-ielts}
       DB_PASSWORD: ${DB_PASSWORD:-ielts}
       GEMINI_API_KEY: ${GEMINI_API_KEY}

@@ -50,25 +50,26 @@ Chỉ bật Postgres bằng Docker, app chạy thẳng từ IDE:
 docker compose up -d db      # KHÔNG bật service app, nó chiếm cổng 8080
 ```
 
-Tạo `backend/config/application-local.yml` (đã gitignore), lấy giá trị từ `.env`:
+Không cần khai báo gì thêm: `backend/config/application-local.yml` (đã có trong
+repo) nạp thẳng `.env` ở thư mục gốc vào Environment, rồi `application.yml` tự
+resolve như thường lệ.
 
 ```yaml
 spring:
-  datasource:
-    url: "jdbc:postgresql://localhost:5432/ielts"   # localhost:${DB_PORT}/${DB_NAME}
-    username: "ielts"                                # ${DB_USER}
-    password: "ielts"                                # ${DB_PASSWORD}
-gemini:
-  api-key: "..."
-  model: "gemini-2.5-flash"
-extension:
-  id: "..."          # cùng giá trị EXTENSION_ID trong .env
+  config:
+    import: "optional:file:../.env[.properties]"
 ```
 
+`.env` là `KEY=value` nên đọc được như `.properties`; hậu tố `[.properties]` báo
+cho Spring biết định dạng vì tên file không có đuôi quen thuộc. Đường dẫn tính
+theo working directory của run config (`backend/`), nên `../.env` là file ở gốc.
+
+File này không chứa giá trị nào nên commit được — `.env` vẫn là nguồn sự thật duy
+nhất, không có chuyện sửa key một chỗ quên chỗ kia.
+
 Đặt ở `backend/config/` chứ **không** phải `src/main/resources/`: `Dockerfile` có
-`COPY src ./src` và repo không có `.dockerignore`, nên mọi file trong `src/` đều bị
-đóng vào image và jar. Spring Boot đọc `file:./config/` theo mặc định nên đặt ở đây
-vẫn chạy mà không rò key ra image.
+`COPY src ./src`, mọi file trong `src/` đều bị đóng vào image và jar. Spring Boot
+đọc `file:./config/` theo mặc định nên đặt ở đây vẫn chạy mà không rò gì ra image.
 
 Rồi Run configuration **Backend local** (đã có sẵn trong `.run/`): main class
 `com.hiepnn.ieltstranslator.IeltsTranslatorApplication`, working directory `backend`,
@@ -78,9 +79,8 @@ chuột phải `backend/pom.xml` → Add as Maven Project).
 
 Kiểm tra: `curl http://127.0.0.1:8080/api/health` phải trả `geminiConfigured: true`.
 
-Lưu ý: cấu hình nằm ở hai chỗ — `.env` (cho docker compose) và
-`backend/config/application-local.yml` (cho IDE). Đổi key Gemini hoặc thông số
-PostgreSQL thì nhớ đổi cả hai.
+Nếu `geminiConfigured` trả `false`, gần như chắc chắn đường dẫn `../.env` không
+khớp — kiểm tra working directory của run config đúng là `backend/` chưa.
 
 ## Biến môi trường
 
@@ -95,8 +95,7 @@ không hardcode thông số nào nữa:
 | `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `ielts` | Xem cảnh báo bên dưới |
 | `DB_PORT` | `5432` | Cổng publish ra host |
 | `APP_PORT` | `8080` | Cổng publish ra host |
-| `DB_HOST` | `localhost` | Chỉ dùng khi **không** set `DB_URL` |
-| `DB_URL` | ghép từ `DB_HOST`/`DB_PORT`/`DB_NAME` | docker compose set thẳng `db:5432` |
+| `DB_HOST` | `localhost` | docker compose set `db` |
 | `SERVER_ADDRESS` | `127.0.0.1` | Trong container phải là `0.0.0.0` |
 | `SERVER_PORT` | `8080` | Cổng backend lắng nghe |
 | `GEMINI_BASE_URL` | endpoint Google | Đổi khi test bằng WireMock |
@@ -105,6 +104,7 @@ không hardcode thông số nào nữa:
 
 `backend/src/main/resources/application.yml` không hardcode giá trị nào nữa — mọi
 mục đều là `${BIEN:mặc-định}`, và default trong file chính là cấu hình chạy local.
+JDBC URL được ghép phẳng từ `DB_HOST`/`DB_PORT`/`DB_NAME`, không còn biến `DB_URL`.
 
 Hai chỗ dễ vấp:
 

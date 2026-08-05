@@ -10,10 +10,10 @@ spring:
   application:
     name: ielts-translator
   datasource:
-    # DB_URL thắng nếu được set — docker compose set nó thành db:5432 (mạng nội
-    # bộ). Không có DB_URL thì ghép từ mảnh, dùng cho lần chạy ngoài container:
-    # khi đó DB_PORT chính là cổng publish trên host.
-    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ielts}}
+    # Ghép phẳng từ mảnh, không lồng placeholder. docker compose set DB_HOST=db
+    # và DB_PORT=5432 (cổng trong mạng nội bộ). Chạy ngoài container thì mặc định
+    # localhost + DB_PORT của .env, tức cổng publish trên host.
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ielts}
     username: ${DB_USER:ielts}
     password: ${DB_PASSWORD:ielts}
   jpa:

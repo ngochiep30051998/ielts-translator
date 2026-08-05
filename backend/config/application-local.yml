@@ -1,0 +1,17 @@
+# Profile "local" — chạy backend từ IDE, ngoài container.
+#
+# File này KHÔNG chứa giá trị nào: nó chỉ nạp .env ở thư mục gốc vào Environment,
+# rồi để application.yml tự resolve như thường lệ. Nhờ vậy .env là nguồn sự thật
+# duy nhất, không còn cảnh sửa key một chỗ quên chỗ kia.
+#
+# .env là KEY=value nên đọc được như .properties — hậu tố [.properties] báo cho
+# Spring biết định dạng vì tên file không có đuôi quen thuộc.
+# Đường dẫn tính theo working directory của run config = thư mục backend/.
+# optional: để lần chạy trong container (đã có sẵn biến môi trường) không lỗi.
+#
+# Vì sao ở backend/config/ chứ không phải src/main/resources/: Dockerfile có
+# COPY src ./src, mọi thứ trong src/ đều bị đóng vào image và jar.
+
+spring:
+  config:
+    import: "optional:file:../.env[.properties]"

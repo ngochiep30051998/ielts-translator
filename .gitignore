@@ -5,4 +5,3 @@ target/
 .DS_Store
 .idea/
 extension/key.pem
-backend/config/application-local.yml
