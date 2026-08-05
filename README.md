@@ -95,6 +95,16 @@ không hardcode thông số nào nữa:
 | `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `ielts` | Xem cảnh báo bên dưới |
 | `DB_PORT` | `5432` | Cổng publish ra host |
 | `APP_PORT` | `8080` | Cổng publish ra host |
+| `DB_HOST` | `localhost` | Chỉ dùng khi **không** set `DB_URL` |
+| `DB_URL` | ghép từ `DB_HOST`/`DB_PORT`/`DB_NAME` | docker compose set thẳng `db:5432` |
+| `SERVER_ADDRESS` | `127.0.0.1` | Trong container phải là `0.0.0.0` |
+| `SERVER_PORT` | `8080` | Cổng backend lắng nghe |
+| `GEMINI_BASE_URL` | endpoint Google | Đổi khi test bằng WireMock |
+| `GEMINI_TIMEOUT_SECONDS` | `15` | |
+| `GEMINI_RETRY_BACKOFF_MS` | `1000` | |
+
+`backend/src/main/resources/application.yml` không hardcode giá trị nào nữa — mọi
+mục đều là `${BIEN:mặc-định}`, và default trong file chính là cấu hình chạy local.
 
 Hai chỗ dễ vấp:
 
