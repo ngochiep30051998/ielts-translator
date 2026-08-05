@@ -50,9 +50,14 @@ Chỉ bật Postgres bằng Docker, app chạy thẳng từ IDE:
 docker compose up -d db      # KHÔNG bật service app, nó chiếm cổng 8080
 ```
 
-Tạo `backend/config/application-local.yml` (đã gitignore) chứa key của bạn:
+Tạo `backend/config/application-local.yml` (đã gitignore), lấy giá trị từ `.env`:
 
 ```yaml
+spring:
+  datasource:
+    url: "jdbc:postgresql://localhost:5432/ielts"   # localhost:${DB_PORT}/${DB_NAME}
+    username: "ielts"                                # ${DB_USER}
+    password: "ielts"                                # ${DB_PASSWORD}
 gemini:
   api-key: "..."
   model: "gemini-2.5-flash"
@@ -73,8 +78,35 @@ chuột phải `backend/pom.xml` → Add as Maven Project).
 
 Kiểm tra: `curl http://127.0.0.1:8080/api/health` phải trả `geminiConfigured: true`.
 
-Lưu ý: key nằm ở hai chỗ — `.env` (cho docker compose) và
-`backend/config/application-local.yml` (cho IDE). Đổi key nhớ đổi cả hai.
+Lưu ý: cấu hình nằm ở hai chỗ — `.env` (cho docker compose) và
+`backend/config/application-local.yml` (cho IDE). Đổi key Gemini hoặc thông số
+PostgreSQL thì nhớ đổi cả hai.
+
+## Biến môi trường
+
+Tất cả nằm ở `.env` thư mục gốc, mẫu xem `.env.example`. `docker-compose.yml`
+không hardcode thông số nào nữa:
+
+| Biến | Mặc định | Ghi chú |
+|---|---|---|
+| `GEMINI_API_KEY` | (bắt buộc) | |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | |
+| `EXTENSION_ID` | (bắt buộc) | Thiếu thì CORS chặn extension |
+| `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `ielts` | Xem cảnh báo bên dưới |
+| `DB_PORT` | `5432` | Cổng publish ra host |
+| `APP_PORT` | `8080` | Cổng publish ra host |
+
+Hai chỗ dễ vấp:
+
+- **`POSTGRES_*` chỉ có tác dụng ở lần khởi tạo data directory đầu tiên.** Đổi
+  `DB_NAME`/`DB_USER`/`DB_PASSWORD` khi volume `ielts_pgdata` đã tồn tại thì
+  container vẫn chạy với giá trị cũ, còn app thì nối bằng giá trị mới và fail
+  xác thực. Muốn đổi thật: `docker compose down -v` — lệnh này **xoá sạch sổ từ
+  vựng**, export CSV trước khi chạy.
+- **`DB_PORT`/`APP_PORT` chỉ đổi cổng trên host.** Trong mạng nội bộ của compose
+  db luôn là 5432 và app luôn là 8080, nên `DB_URL` của service `app` giữ nguyên
+  `db:5432`. Nếu đổi `APP_PORT`, nhớ sửa cả `backendUrl` trong trang Options của
+  extension và `host_permissions` trong `manifest.config.ts`.
 
 ## Chạy test
 
