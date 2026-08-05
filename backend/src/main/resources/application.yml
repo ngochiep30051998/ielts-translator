@@ -7,6 +7,19 @@ server:
   port: ${SERVER_PORT:8080}
 
 spring:
+  # Nạp .env ở thư mục gốc repo vào Environment. Đặt ở ĐÂY chứ không phải trong
+  # application-local.yml, vì profile "local" chỉ bật khi dùng đúng một run config
+  # cụ thể — bấm mũi tên xanh cạnh hàm main thì IntelliJ sinh config tạm không có
+  # profile nào, và .env sẽ không bao giờ được đọc.
+  #
+  # Hai ứng viên vì working directory khác nhau tuỳ cách chạy:
+  #   backend/     -> run config "Backend local", mvn spring-boot:run trong backend/
+  #   thư mục gốc  -> config tạm IntelliJ tự sinh (mặc định $PROJECT_DIR$)
+  # optional: nên trong container (không có .env, biến đến từ compose) vẫn chạy.
+  config:
+    import:
+      - "optional:file:../.env[.properties]"
+      - "optional:file:./.env[.properties]"
   application:
     name: ielts-translator
   datasource:

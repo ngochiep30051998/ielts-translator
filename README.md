@@ -50,39 +50,30 @@ Chỉ bật Postgres bằng Docker, app chạy thẳng từ IDE:
 docker compose up -d db      # KHÔNG bật service app, nó chiếm cổng 8080
 ```
 
-Không cần khai báo gì thêm: `backend/config/application-local.yml` đã có trong repo.
-
-Cần hiểu đúng cơ chế: **`application.yml` không đọc `.env`** — nó chỉ đọc *biến môi
-trường*. Trong container, `docker compose` mới là thứ parse `.env` rồi bơm thành
-biến môi trường. Chạy từ IDE không có ai làm bước đó, nên profile `local` phải tự
-nạp `.env` vào Environment:
+`.env` ở thư mục gốc được nạp thẳng bởi `application.yml`:
 
 ```yaml
 spring:
   config:
-    import: "optional:file:../.env[.properties]"
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ielts}
-    ...
-gemini:
-  api-key: ${GEMINI_API_KEY:}
-  ...
+    import:
+      - "optional:file:../.env[.properties]"   # cwd = backend/
+      - "optional:file:./.env[.properties]"    # cwd = thư mục gốc
 ```
 
+Đặt ở `application.yml` chứ **không** phải file profile-specific: profile chỉ bật
+khi dùng đúng một run config cụ thể, mà cách chạy tự nhiên nhất trong IntelliJ là
+bấm mũi tên xanh cạnh hàm `main` — lúc đó IDE sinh một run config tạm không có
+profile nào. Để việc nạp `.env` phụ thuộc profile là tự đặt bẫy.
+
+Hai ứng viên đường dẫn vì working directory khác nhau tuỳ cách chạy: run config
+`Backend local` và `mvn spring-boot:run` chạy trong `backend/`, còn config tạm của
+IntelliJ mặc định `$PROJECT_DIR$` là thư mục gốc. `optional:` để trong container
+(không có `.env`, biến đến từ compose) vẫn chạy bình thường.
+
 `.env` là `KEY=value` nên đọc được như `.properties`; hậu tố `[.properties]` báo
-cho Spring biết định dạng vì tên file không có đuôi quen thuộc. Đường dẫn tính
-theo working directory của run config (`backend/`), nên `../.env` là file ở gốc.
-Placeholder được resolve lúc *đọc* property chứ không phải lúc parse file, nên
-khai `import` cùng document vẫn kịp cho các mục bên dưới.
+cho Spring biết định dạng vì tên file không có đuôi quen thuộc.
 
-File này không chứa giá trị thật nào — toàn `${VAR}` trỏ về `.env` — nên commit
-được và `.env` vẫn là nguồn sự thật duy nhất.
-
-Đặt ở `backend/config/` chứ **không** phải `src/main/resources/`: `Dockerfile` có
-`COPY src ./src`, mọi file trong `src/` đều bị đóng vào image và jar. Spring Boot
-đọc `file:./config/` theo mặc định nên đặt ở đây vẫn chạy mà không rò gì ra image.
-
-Rồi Run configuration **Backend local** (đã có sẵn trong `.run/`): main class
+Run configuration **Backend local** (đã có sẵn trong `.run/`): main class
 `com.hiepnn.ieltstranslator.IeltsTranslatorApplication`, working directory `backend`,
 env `SPRING_PROFILES_ACTIVE=local`. Nếu IntelliJ báo thiếu module, chọn module Maven
 của `backend/pom.xml` trong dropdown (project `.idea` ban đầu chưa import pom này —
