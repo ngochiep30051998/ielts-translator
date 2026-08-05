@@ -90,8 +90,33 @@ chuột phải `backend/pom.xml` → Add as Maven Project).
 
 Kiểm tra: `curl http://127.0.0.1:8080/api/health` phải trả `geminiConfigured: true`.
 
-Nếu `geminiConfigured` trả `false`, gần như chắc chắn đường dẫn `../.env` không
-khớp — kiểm tra working directory của run config đúng là `backend/` chưa.
+### Khi chạy từ IntelliJ, Spring tìm `.env` ở gốc bằng cách nào
+
+Hai thứ phụ thuộc **working directory** của run config, và cả hai đều hỏng im lặng
+nếu đặt sai:
+
+1. Tìm chính `application-local.yml` — Spring chỉ dò `file:./config/` theo mặc
+   định. cwd sai thì file không được nạp, app vẫn khởi động, key rỗng.
+2. Tìm `.env` — `../.env` tính từ cwd.
+
+Run config `Backend local` xử lý cả hai:
+
+- `WORKING_DIRECTORY = $PROJECT_DIR$/backend` → `./config/` và `../.env` đều trúng.
+- `--spring.config.additional-location=file:$PROJECT_DIR$/backend/config/` → đường
+  dẫn **tuyệt đối**, nên dù ai đó đổi working directory thì vẫn tìm thấy file config.
+- Trong `application-local.yml`, `spring.config.import` khai hai ứng viên
+  (`../.env` và `./.env`) nên `.env` ở gốc vẫn được nạp khi cwd là thư mục gốc —
+  đúng cái IntelliJ mặc định (`$PROJECT_DIR$`) khi bạn tự bấm mũi tên xanh cạnh
+  hàm `main` thay vì dùng run config có sẵn.
+
+Nếu `geminiConfigured` vẫn trả `false`, bật log để xem Spring nạp những file nào:
+
+```
+-Dlogging.level.org.springframework.boot.context.config=TRACE
+```
+
+(dán vào ô VM options của run config). Log sẽ liệt kê từng config data location
+đã thử và cái nào tồn tại.
 
 ## Biến môi trường
 

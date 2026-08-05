@@ -20,7 +20,14 @@
 
 spring:
   config:
-    import: "optional:file:../.env[.properties]"
+    # Hai ứng viên, thử theo thứ tự — để chạy được dù working directory là
+    # backend/ (đúng chuẩn) hay thư mục gốc (IntelliJ mặc định $PROJECT_DIR$ khi
+    # bạn tự bấm mũi tên xanh cạnh hàm main). Không dùng placeholder trong đường
+    # dẫn: nếu Spring không resolve, "optional:" sẽ nuốt lỗi và bạn không biết vì
+    # sao key rỗng.
+    import:
+      - "optional:file:../.env[.properties]"    # cwd = backend/
+      - "optional:file:./.env[.properties]"     # cwd = thư mục gốc
 
   datasource:
     # Chạy ngoài container thì nối qua cổng publish trên host, nên DB_PORT ở đây

@@ -3,6 +3,10 @@
     <option name="MAIN_CLASS_NAME" value="com.hiepnn.ieltstranslator.IeltsTranslatorApplication" />
     <module name="ielts-translator" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/backend" />
+    <!-- Đường dẫn tuyệt đối tới thư mục config: Spring vẫn tìm thấy
+         application-local.yml kể cả khi working directory bị đổi. IntelliJ khai
+         triển $PROJECT_DIR$ trước khi truyền vào tiến trình. -->
+    <option name="PROGRAM_PARAMETERS" value="--spring.config.additional-location=file:$PROJECT_DIR$/backend/config/" />
     <envs>
       <env name="SPRING_PROFILES_ACTIVE" value="local" />
     </envs>
