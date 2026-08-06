@@ -202,6 +202,11 @@ Backend chết → nuốt lỗi, **xoá badge**, không hiện số cũ đã l�
 
 ### 2.9 Màn ôn tập
 
+> **Đã bị ghi đè.** Màn ôn tập nay là trắc nghiệm bốn lựa chọn trộn hai chiều, rating suy
+> ra tự động từ đúng/sai cộng thời gian trả lời — xem
+> [design màn ôn tập chọn đáp án](2026-08-06-srs-mcq-review-design.md).
+> Phần mô tả thẻ lật bên dưới giữ lại để tra cứu lịch sử, **không** còn là hành vi hiện tại.
+
 Một thẻ mỗi lượt, chiều **EN → VI**.
 
 - **Mặt trước:** `term`, `ipa`, nút phát âm (Web Speech API, giọng theo `settings.voiceName`).
@@ -225,7 +230,7 @@ Trạng thái rỗng: "Hôm nay không còn thẻ nào đến hạn." Backend ch
 | `SrsServiceIT` | Testcontainers | lưu từ đơn tạo card; lưu câu (`pos='phrase'`) **không** tạo card; lưu trùng không tạo card thứ hai; giới hạn từ mới trừ đúng số đã học hôm nay; card đến hạn không bị giới hạn; xoá vocab cascade sạch `srs_card` + `review_log` |
 | `SrsControllerIT` | Testcontainers | hình dạng `CardDto` / `SrsStatsDto` / `ReviewResponse`; `cardId` lạ → `NOT_FOUND` |
 | Migration `V3` | Testcontainers | backfill tạo card cho từ đơn có sẵn và bỏ qua `pos='phrase'` |
-| `ReviewTab.test.tsx` | Vitest + RTL | mặt trước không lộ nghĩa; lật thẻ; bấm rating gửi message đúng; hết bài hiện empty state; lỗi giữ nguyên thẻ và có nút thử lại |
+| `ReviewTab.test.tsx` | Vitest + RTL | ~~mặt trước không lộ nghĩa; lật thẻ; bấm rating gửi message đúng~~ — **đã ghi đè**, xem mục 5 của [design màn ôn tập chọn đáp án](2026-08-06-srs-mcq-review-design.md). Còn đúng: hết bài hiện empty state; lỗi giữ nguyên thẻ và có nút thử lại |
 | `settings.test.ts` | Vitest | `newWordsPerDay` mặc định và chuẩn hoá |
 
 ---

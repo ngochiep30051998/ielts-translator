@@ -42,6 +42,39 @@ docker compose down       # tắt backend, dữ liệu từ vựng vẫn còn
 
 Bôi đen text bất kỳ trên web để dịch. Bấm `+` để lưu vào sổ, `⤢` để mở side panel.
 
+## Ôn tập
+
+Mỗi từ đơn lưu vào sổ tự động vào lịch ôn (câu dài thì không — flashcard cả câu
+không có giá trị ôn tập). Số trên icon extension là số thẻ đến hạn, tự cập nhật
+mỗi 30 phút và ngay sau khi bạn ôn hoặc lưu từ mới.
+
+Mở side panel → tab **Ôn tập**. Mỗi thẻ là một câu trắc nghiệm bốn lựa chọn, trộn
+ngẫu nhiên hai chiều:
+
+- **Anh → Việt:** hiện từ, IPA và nút phát âm, bạn chọn nghĩa đúng.
+- **Việt → Anh:** hiện nghĩa tiếng Việt, bạn chọn từ đúng.
+
+Bấm phím `1`–`4` hoặc bấm chuột để chọn. Chọn xong hiện ngay đáp án đúng cùng phần
+chi tiết (từ loại, CEFR, band, định nghĩa tiếng Anh); bấm **Tiếp** hoặc `Enter` sang
+thẻ sau.
+
+Khoảng cách ôn lần sau suy ra từ kết quả và thời gian bạn trả lời, không phải tự chấm:
+
+| Kết quả | Ảnh hưởng |
+|---|---|
+| Sai | về 1 ngày, EF −0.32, đếm một lần quên |
+| Đúng, dưới 5 giây | 1 ngày → 6 ngày → × EF, rồi × 1.3; EF +0.10 |
+| Đúng, 5–15 giây | 1 ngày → 6 ngày → × EF |
+| Đúng, 15–60 giây | khoảng cách × 1.2, EF −0.14 |
+| Đúng, trên 60 giây | tính như 5–15 giây — quá lâu thì coi như bạn rời máy, không phạt |
+
+Ba đáp án sai do AI sinh sẵn cho từng từ rồi lưu lại, nên mỗi từ chỉ tốn một lượt gọi
+Gemini trong suốt vòng đời. Từ vừa lưu có thể chưa kịp có bộ đáp án sai riêng; lúc đó
+bài ôn tạm mượn nghĩa của các từ khác trong hàng đợi, bộ thật sẽ có ở lần ôn sau.
+
+Số từ **mới** mỗi ngày mặc định giới hạn 30, đổi trong Options. Thẻ đã đến hạn
+không bị giới hạn — đến hạn bao nhiêu hiện bấy nhiêu.
+
 ## Chạy backend từ IntelliJ (không qua Docker)
 
 Chỉ bật Postgres bằng Docker, app chạy thẳng từ IDE:
@@ -128,6 +161,7 @@ không hardcode thông số nào nữa:
 | `GEMINI_BASE_URL` | endpoint Google | Đổi khi test bằng WireMock |
 | `GEMINI_TIMEOUT_SECONDS` | `15` | |
 | `GEMINI_RETRY_BACKOFF_MS` | `1000` | |
+| `TZ` | `Asia/Ho_Chi_Minh` | Quyết định "hôm nay" của lịch ôn. Container mặc định UTC → thiếu biến này thì ngày ôn đổi lúc 07:00 thay vì nửa đêm |
 
 `backend/src/main/resources/application.yml` không hardcode giá trị nào nữa — mọi
 mục đều là `${BIEN:mặc-định}`, và default trong file chính là cấu hình chạy local.
