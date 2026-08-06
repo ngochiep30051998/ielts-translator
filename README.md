@@ -75,6 +75,35 @@ bài ôn tạm mượn nghĩa của các từ khác trong hàng đợi, bộ th�
 Số từ **mới** mỗi ngày mặc định giới hạn 30, đổi trong Options. Thẻ đã đến hạn
 không bị giới hạn — đến hạn bao nhiêu hiện bấy nhiêu.
 
+## Quiz
+
+Mở side panel → tab **Quiz**. Chọn **số câu** (mặc định 10) và tick loại muốn làm,
+rồi bấm **Tạo đề**:
+
+| Loại | Đề bài | Cách chấm |
+|---|---|---|
+| **Điền từ** | Một câu có chỗ trống `___` kèm gợi ý nghĩa | So chuỗi, bỏ phân biệt hoa thường — **không** tự chia lại dạng từ (`mitigated` không tính là `mitigate`) |
+| **Chọn cụm từ** | Bốn lựa chọn, một đúng | So lựa chọn |
+| **Tự viết câu** | Viết một câu tiếng Anh dùng từ đó | AI chấm nghĩa + ngữ pháp, kèm nhận xét và bản viết lại |
+
+Chỉ **Tự viết câu** tốn token khi chấm; hai loại kia backend tự so, không gọi AI.
+
+Chỉ những từ **đã ôn ít nhất một lượt** mới vào quiz. Sổ chưa có từ nào như vậy thì
+tab hiện *"Chưa có từ nào đủ điều kiện"* — đó là đúng, không phải lỗi. Từ ít làm
+nhất được ưu tiên, rồi tới từ hay quên nhất.
+
+Đề sinh xong được lưu lại, nên mở quiz lần sau không gọi lại AI cho những câu bạn
+chưa làm. Sửa prompt quiz và tăng `version:` sẽ làm đề cũ hết hiệu lực.
+
+**Bỏ qua được:** bấm **Nộp** khi để trống thì câu đó tính 0 điểm và vẫn ghi vào lịch
+sử — không bị hỏi lại ở đề sau. Bài tự viết giới hạn 1000 ký tự.
+
+Mỗi loại là một lượt gọi AI riêng, chạy tuần tự, nên tick cả ba thì chờ lâu hơn.
+Một loại hỏng vẫn giữ được các loại còn lại.
+
+**Quiz không đụng tới lịch ôn.** Làm quiz không làm thẻ đến hạn sớm hay muộn đi —
+hai thứ cố ý tách rời để khoảng cách ôn không nhảy vì lý do khó lần ra.
+
 ## Chạy backend từ IntelliJ (không qua Docker)
 
 Chỉ bật Postgres bằng Docker, app chạy thẳng từ IDE:
@@ -159,7 +188,9 @@ không hardcode thông số nào nữa:
 | `SERVER_ADDRESS` | `127.0.0.1` | Trong container phải là `0.0.0.0` |
 | `SERVER_PORT` | `8080` | Cổng backend lắng nghe |
 | `GEMINI_BASE_URL` | endpoint Google | Đổi khi test bằng WireMock |
-| `GEMINI_TIMEOUT_SECONDS` | `15` | |
+| `GEMINI_TIMEOUT_SECONDS` | `15` | Dịch một từ/câu |
+| `GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS` | `30` | Sinh một lô câu hỏi — output dài hơn nên lâu hơn |
+| `GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS` | `20` | Chấm một bài tự viết |
 | `GEMINI_RETRY_BACKOFF_MS` | `1000` | |
 | `TZ` | `Asia/Ho_Chi_Minh` | Quyết định "hôm nay" của lịch ôn. Container mặc định UTC → thiếu biến này thì ngày ôn đổi lúc 07:00 thay vì nửa đêm |
 
@@ -174,6 +205,12 @@ Hai chỗ dễ vấp:
   container vẫn chạy với giá trị cũ, còn app thì nối bằng giá trị mới và fail
   xác thực. Muốn đổi thật: `docker compose down -v` — lệnh này **xoá sạch sổ từ
   vựng**, export CSV trước khi chạy.
+- **Đổi `GEMINI_*_TIMEOUT_SECONDS` phải đổi kèm ba hằng timeout trong
+  `extension/src/background/api-client.ts`.** Extension chờ theo công thức
+  `2 × timeout + 1s backoff` (backend thử lại đúng một lần), hiện là 40s / 70s / 50s.
+  Đặt thấp hơn thì extension bỏ cuộc trong khi backend vẫn đang xử lý đúng — người
+  dùng thấy "backend không trả lời" rồi lần sau thấy đề tự xuất hiện. **Không có
+  test nào bắt được khi hai bên lệch.**
 - **`DB_PORT`/`APP_PORT` chỉ đổi cổng trên host.** Trong mạng nội bộ của compose
   db luôn là 5432 và app luôn là 8080, nên `DB_URL` của service `app` giữ nguyên
   `db:5432`. Nếu đổi `APP_PORT`, nhớ sửa cả `backendUrl` trong trang Options của
