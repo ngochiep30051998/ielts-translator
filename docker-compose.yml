@@ -34,6 +34,12 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-ielts}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      # Thiếu ba dòng này thì đặt GEMINI_*_TIMEOUT_SECONDS trong .env KHÔNG có tác dụng
+      # gì khi chạy bằng Docker, mà cũng không có cảnh báo nào — trong khi README và
+      # .env.example đều nói là có. Mặc định ở đây phải khớp default trong application.yml.
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-15}
+      GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS: ${GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS:-30}
+      GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS: ${GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS:-20}
       EXTENSION_ID: ${EXTENSION_ID}
       # Không có biến này thì JVM trong container chạy UTC, trong khi lịch ôn tính
       # "hôm nay" bằng LocalDate.now() theo giờ hệ thống. Hệ quả: ngày ôn đổi lúc

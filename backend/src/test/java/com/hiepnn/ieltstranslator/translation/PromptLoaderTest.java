@@ -139,6 +139,21 @@ class PromptLoaderTest {
     }
 
     @Test
+    @DisplayName("Ba prompt quiz đọc được, có version hợp lệ và đủ placeholder")
+    void loadsQuizPrompts() {
+        for (String file : java.util.List.of("quiz-fill-blank.md", "quiz-collocation.md",
+                                             "quiz-grade-free-write.md")) {
+            PromptTemplate template = loader.load(file);
+            assertThat(template.version()).as("%s phải có version dương", file).isPositive();
+            assertThat(template.body()).as("%s không được rỗng", file).isNotBlank();
+        }
+        assertThat(loader.load("quiz-fill-blank.md").body()).contains("{{TERMS}}");
+        assertThat(loader.load("quiz-collocation.md").body()).contains("{{TERMS}}");
+        assertThat(loader.load("quiz-grade-free-write.md").body())
+                .contains("{{TERM}}", "{{ANSWER}}", "{{MEANING_VI}}");
+    }
+
+    @Test
     @DisplayName("render(Map) thay đúng mọi khoá")
     void rendersEveryPlaceholder() {
         String rendered = loader.load("srs-distractors.md")

@@ -52,7 +52,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
     }
 
     private void geminiReturnsValidSet() throws Exception {
-        when(geminiClient.generateJson(anyString(), any())).thenReturn(objectMapper.readTree("""
+        when(geminiClient.generateJson(anyString(), any(), any())).thenReturn(objectMapper.readTree("""
                 {"vi_options": ["làm trầm trọng thêm", "phóng đại", "trì hoãn"],
                  "en_options": ["aggravate", "exaggerate", "postpone"]}
                 """));
@@ -81,14 +81,14 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
         vocabService.save(request("Governments must act on climate change.", "phrase"));
 
         Thread.sleep(300);
-        verify(geminiClient, never()).generateJson(anyString(), any());
+        verify(geminiClient, never()).generateJson(anyString(), any(), any());
         assertThat(distractors.count()).isZero();
     }
 
     @Test
     @DisplayName("Gemini lỗi thì từ vẫn nằm trong sổ, chỉ là chưa có mồi nhử")
     void geminiFailureDoesNotBreakSave() throws Exception {
-        when(geminiClient.generateJson(anyString(), any()))
+        when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenThrow(AppException.of(ErrorCode.GEMINI_UNAVAILABLE, "Gemini chết"));
 
         SaveVocabResponse saved = vocabService.save(request("resilient", "adjective"));
@@ -101,7 +101,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Gemini trả bộ hỏng (trùng đáp án đúng) thì không lưu gì, để lần sau sinh lại")
     void rejectsInvalidSet() throws Exception {
-        when(geminiClient.generateJson(anyString(), any())).thenReturn(objectMapper.readTree("""
+        when(geminiClient.generateJson(anyString(), any(), any())).thenReturn(objectMapper.readTree("""
                 {"vi_options": ["nghĩa của mitigate", "phóng đại", "trì hoãn"],
                  "en_options": ["aggravate", "exaggerate", "postpone"]}
                 """));
@@ -120,7 +120,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
         await().atMost(Duration.ofSeconds(5))
                .until(() -> distractors.findByVocabEntry_Id(saved.id()).isPresent());
 
-        when(geminiClient.generateJson(anyString(), any())).thenReturn(objectMapper.readTree("""
+        when(geminiClient.generateJson(anyString(), any(), any())).thenReturn(objectMapper.readTree("""
                 {"vi_options": ["một", "hai", "ba"],
                  "en_options": ["one", "two", "three"]}
                 """));

@@ -2,6 +2,7 @@ package com.hiepnn.ieltstranslator.srs;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.hiepnn.ieltstranslator.common.gemini.GeminiClient;
+import com.hiepnn.ieltstranslator.common.gemini.GeminiTimeout;
 import com.hiepnn.ieltstranslator.translation.PromptLoader;
 import com.hiepnn.ieltstranslator.translation.PromptTemplate;
 import com.hiepnn.ieltstranslator.vocabulary.VocabEntry;
@@ -105,7 +106,10 @@ public class DistractorGenerator {
                 "MEANING_VI", nullToEmpty(entry.getMeaningVi()),
                 "DEFINITION_EN", nullToEmpty(entry.getDefinitionEn())));
 
-        JsonNode payload = gemini.generateJson(prompt, SCHEMA);
+        // TRANSLATE (15s) chứ không phải QUIZ_GENERATE: đây là call nhỏ chạy @Async, không
+        // ai đứng chờ. Khác mức với quiz cũng là thứ cho phép test quiz đếm call bằng
+        // eq(GeminiTimeout.QUIZ_GENERATE) mà không lẫn với luồng sinh mồi nhử chạy nền.
+        JsonNode payload = gemini.generateJson(prompt, SCHEMA, GeminiTimeout.TRANSLATE);
         DistractorSet set = new DistractorSet(
                 readStrings(payload.path("vi_options")),
                 readStrings(payload.path("en_options")));

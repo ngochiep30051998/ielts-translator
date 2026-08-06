@@ -8,5 +8,7 @@ public record GeminiProperties(
         String model,
         String baseUrl,
         int timeoutSeconds,
+        int quizGenerateTimeoutSeconds,
+        int quizGradeTimeoutSeconds,
         long retryBackoffMillis
 ) {}
