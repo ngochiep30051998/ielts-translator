@@ -35,6 +35,11 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       EXTENSION_ID: ${EXTENSION_ID}
+      # Không có biến này thì JVM trong container chạy UTC, trong khi lịch ôn tính
+      # "hôm nay" bằng LocalDate.now() theo giờ hệ thống. Hệ quả: ngày ôn đổi lúc
+      # 07:00 sáng giờ VN thay vì nửa đêm — hạn mức từ mới/ngày và due_date lệch
+      # theo. Chạy backend từ IDE không dính vì JVM lấy luôn giờ của máy.
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
 
