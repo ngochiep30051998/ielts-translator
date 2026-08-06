@@ -4,6 +4,7 @@ import { loadSettings } from '../shared/settings';
 import type { ApiError, VocabEntryDto } from '../shared/types';
 
 const SEARCH_DEBOUNCE_MS = 300;
+const BAND_HINT = 'Band do AI ước lượng, chỉ mang tính tham khảo';
 
 export function VocabTab() {
   const [query, setQuery] = useState('');
@@ -83,14 +84,12 @@ export function VocabTab() {
               <li key={e.id} className="vocab-item">
                 <div>
                   <strong>{e.term}</strong>
-                  {e.pos && <span className="meta"> · {e.pos}</span>}
-                  {e.bandLevel && (
-                    <span className="band" title="Band do AI ước lượng, chỉ mang tính tham khảo">
-                      {e.bandLevel}
-                    </span>
-                  )}
+                  {e.pos && <span className="meta">{e.pos}</span>}
                   <span className="vi">{e.meaningVi}</span>
                 </div>
+                {e.bandLevel && (
+                  <span className="band" title={BAND_HINT}>{e.bandLevel}</span>
+                )}
                 <button type="button" aria-label={`Xoá ${e.term}`} onClick={() => void remove(e.id)}>
                   ✕
                 </button>

@@ -4,18 +4,34 @@ import { VocabTab } from './VocabTab';
 
 type Tab = 'translate' | 'vocab';
 
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'translate', label: 'Dịch' },
+  { id: 'vocab', label: 'Sổ từ' },
+];
+
 export function App() {
   const [tab, setTab] = useState<Tab>('translate');
 
   return (
     <div className="app">
-      <nav className="tabs">
-        <button type="button" className={tab === 'translate' ? 'active' : ''}
-                onClick={() => setTab('translate')}>Dịch</button>
-        <button type="button" className={tab === 'vocab' ? 'active' : ''}
-                onClick={() => setTab('vocab')}>Sổ từ</button>
+      <nav className="tabs" role="tablist" aria-label="Khu vực">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`tab-${t.id}`}
+            className={tab === t.id ? 'active' : ''}
+            aria-selected={tab === t.id}
+            aria-controls="tab-panel"
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </nav>
-      <main className="content">
+
+      <main className="content" id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {tab === 'translate' ? <TranslateTab /> : <VocabTab />}
       </main>
     </div>

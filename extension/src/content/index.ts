@@ -1,6 +1,6 @@
 import { validateSelection, extractContextSentence } from './selection';
 import {
-  showLoadingBubble, showResultBubble, showErrorBubble, hideBubble, BUBBLE_HOST_ID,
+  showLoadingBubble, showResultBubble, showNoticeBubble, showErrorBubble, hideBubble, BUBBLE_HOST_ID,
 } from './bubble';
 import { sendToBackground } from '../shared/messages';
 import { shortMeaning } from '../shared/summary';
@@ -48,11 +48,7 @@ async function saveCurrent(rect: DOMRect): Promise<void> {
     showErrorBubble(rect, response.error.message, response.error.retryable, noopHandlers());
     return;
   }
-  showResultBubble(
-    rect,
-    response.data.alreadyExists ? 'Đã có trong sổ' : 'Đã lưu vào sổ',
-    noopHandlers(),
-  );
+  showNoticeBubble(rect, response.data.alreadyExists ? 'Đã có trong sổ' : 'Đã lưu vào sổ');
 }
 
 async function translateCurrentSelection(): Promise<void> {

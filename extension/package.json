@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "icons": "node scripts/make-icons.mjs",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:watch": "vitest"

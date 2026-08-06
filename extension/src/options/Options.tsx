@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '../shared/settings';
 import { sendToBackground } from '../shared/messages';
 
+type Status = { text: string; kind: 'ok' | 'bad' } | null;
+
 export function Options() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
-  const [healthStatus, setHealthStatus] = useState<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<Status>(null);
 
   useEffect(() => {
     void (async () => {
@@ -21,18 +23,18 @@ export function Options() {
   }
 
   async function checkHealth() {
-    setHealthStatus('Đang kiểm tra…');
+    setHealthStatus({ text: 'Đang kiểm tra…', kind: 'ok' });
     const response = await sendToBackground({ type: 'CHECK_HEALTH' });
     if (!response.ok) {
-      setHealthStatus(response.error.message);
+      setHealthStatus({ text: response.error.message, kind: 'bad' });
       return;
     }
     setHealthStatus(response.data.geminiConfigured
-      ? 'Backend đang chạy, Gemini đã cấu hình.'
-      : 'Backend đang chạy nhưng chưa cấu hình GEMINI_API_KEY trong file .env.');
+      ? { text: 'Backend đang chạy, Gemini đã cấu hình.', kind: 'ok' }
+      : { text: 'Backend đang chạy nhưng chưa cấu hình GEMINI_API_KEY trong file .env.', kind: 'bad' });
   }
 
-  if (!loaded) return <p>Đang tải…</p>;
+  if (!loaded) return <p className="empty">Đang tải…</p>;
 
   return (
     <main className="options">
@@ -48,24 +50,26 @@ export function Options() {
 
       <fieldset>
         <legend>Chế độ kích hoạt</legend>
-        <label>
-          <input
-            type="radio"
-            name="triggerMode"
-            checked={settings.triggerMode === 'auto'}
-            onChange={() => setSettings({ ...settings, triggerMode: 'auto' })}
-          />
-          Tự hiện bubble khi bôi đen
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="triggerMode"
-            checked={settings.triggerMode === 'hotkey'}
-            onChange={() => setSettings({ ...settings, triggerMode: 'hotkey' })}
-          />
-          Chỉ khi bấm Alt+T
-        </label>
+        <div className="segmented">
+          <label>
+            <input
+              type="radio"
+              name="triggerMode"
+              checked={settings.triggerMode === 'auto'}
+              onChange={() => setSettings({ ...settings, triggerMode: 'auto' })}
+            />
+            Tự hiện bubble khi bôi đen
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="triggerMode"
+              checked={settings.triggerMode === 'hotkey'}
+              onChange={() => setSettings({ ...settings, triggerMode: 'hotkey' })}
+            />
+            Chỉ khi bấm Alt+T
+          </label>
+        </div>
       </fieldset>
 
       <label htmlFor="voiceName">Giọng đọc (để trống dùng giọng en mặc định)</label>
@@ -81,8 +85,8 @@ export function Options() {
         <button type="button" onClick={() => void checkHealth()}>Kiểm tra kết nối</button>
       </div>
 
-      {saveStatus && <p className="status">{saveStatus}</p>}
-      {healthStatus && <p className="status">{healthStatus}</p>}
+      {saveStatus && <p className="status ok">{saveStatus}</p>}
+      {healthStatus && <p className={`status ${healthStatus.kind}`}>{healthStatus.text}</p>}
     </main>
   );
 }

@@ -8,7 +8,21 @@ export default defineManifest({
   key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycO1Wb9FLs24mQE8eIJzmEOlldeUHj9Eh5YbZ5Zk/N3D5TJNMvqL6P+gYVmM4jct8YF1NkY5DDrtKRXzp7JRa4Feh2l/7Hyt/RQkMJjvBjk+KpPBl1tfEY+KZ+U6yjApc/fSZLPQ5F/DUtIwO6At/HNmfe8hI6mSC3X+vsIx9ijXpeADBMqLDswDCTrz2CkgYKitMUWRjBbK3Utz1+9fgtDwuV8MNMZlbkqsOP2wIQx5OnWxx7pqn/MK7cUFrAaAnORoqPEuAmXsnHIUkklVxVsod9iaKua1aBn/2HgY+aND+KaVqT3WB/Ednl4KkiO7lUtOvpUzJsg78+/F285pZwIDAQAB',
   permissions: ['storage', 'sidePanel', 'tabs'],
   host_permissions: ['http://127.0.0.1:8080/*'],
-  action: { default_title: 'IELTS Translator' },
+  icons: {
+    16: 'icons/16.png',
+    32: 'icons/32.png',
+    48: 'icons/48.png',
+    128: 'icons/128.png',
+  },
+  action: {
+    default_title: 'IELTS Translator',
+    default_icon: {
+      16: 'icons/16.png',
+      32: 'icons/32.png',
+      48: 'icons/48.png',
+      128: 'icons/128.png',
+    },
+  },
   background: { service_worker: 'src/background/service-worker.ts', type: 'module' },
   side_panel: { default_path: 'src/sidepanel/index.html' },
   options_page: 'src/options/index.html',
