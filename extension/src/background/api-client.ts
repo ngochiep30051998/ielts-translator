@@ -1,9 +1,28 @@
 import type {
-  ApiError, CardDto, PageResponse, Rating, ReviewResponse, SaveVocabResponse, SrsStats,
-  TranslateResult, VocabEntryDto,
+  AnswerResult, ApiError, CardDto, PageResponse, QuizItemDto, QuizType, Rating,
+  ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult, VocabEntryDto,
 } from '../shared/types';
 
 const HEALTH_CACHE_MS = 30_000;
+
+/**
+ * timeoutMs KHÔNG phải ngân sách UX — nó là lưới chặn cuối. Việc duy nhất của nó là
+ * LỚN HƠN trường hợp xấu nhất của backend, để người dùng nhận lỗi CÓ CẤU TRÚC
+ * ({code, message, retryable}) thay vì một lỗi chung chung.
+ *
+ * Xấu nhất phía backend = MAX_ATTEMPTS × T + retryBackoffMillis
+ *                       = 2 × T + 1s   (GeminiClient.MAX_ATTEMPTS = 2)
+ *
+ *   TRANSLATE      T=15s -> xấu nhất 31s -> 40s
+ *   QUIZ_GENERATE  T=30s -> xấu nhất 61s -> 70s
+ *   QUIZ_GRADE     T=20s -> xấu nhất 41s -> 50s
+ *
+ * Đổi GEMINI_*_TIMEOUT_SECONDS hoặc MAX_ATTEMPTS phía backend PHẢI đổi kèm ở đây.
+ * Đặt thấp hơn xấu-nhất = client giết một request mà backend đang xử lý ĐÚNG.
+ */
+const DEFAULT_TIMEOUT_MS = 40_000;
+const QUIZ_GENERATE_TIMEOUT_MS = 70_000;
+const QUIZ_ANSWER_TIMEOUT_MS = 50_000;
 
 export interface TranslateArgs {
   text: string;
@@ -74,6 +93,25 @@ export class ApiClient {
     return this.request(`/api/srs/stats?newLimit=${newLimit}`, { method: 'GET' });
   }
 
+  /**
+   * Sinh đề cho ĐÚNG MỘT loại. Panel muốn nhiều loại thì gọi nhiều lần TUẦN TỰ —
+   * mỗi loại là một lượt gọi Gemini, gộp lại đẩy xấu nhất lên ~122s và biến một
+   * loại hỏng thành mất trắng cả đề.
+   *
+   * Không có ứng viên nào → backend trả `[]` với HTTP 200. Đó KHÔNG phải lỗi.
+   */
+  async generateQuiz(args: {
+    vocabIds: number[] | null; count: number | null; type: QuizType;
+  }): Promise<QuizItemDto[]> {
+    return this.request('/api/quiz/generate',
+      { method: 'POST', body: JSON.stringify(args) }, QUIZ_GENERATE_TIMEOUT_MS);
+  }
+
+  async answerQuiz(args: { quizItemId: number; answer: string }): Promise<AnswerResult> {
+    return this.request('/api/quiz/answer',
+      { method: 'POST', body: JSON.stringify(args) }, QUIZ_ANSWER_TIMEOUT_MS);
+  }
+
   async health(): Promise<HealthStatus> {
     const now = Date.now();
     if (this.healthCache && now - this.healthCache.at < HEALTH_CACHE_MS) {
@@ -84,16 +122,32 @@ export class ApiClient {
     return value;
   }
 
-  private async request<T>(path: string, init: RequestInit): Promise<T> {
+  private async request<T>(path: string, init: RequestInit,
+                           timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<T> {
     const baseUrl = await this.baseUrlProvider();
 
     let response: Response;
     try {
       response = await fetch(`${baseUrl}${path}`, {
         ...init,
+        signal: AbortSignal.timeout(timeoutMs),
         headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
       });
-    } catch {
+    } catch (error) {
+      // Nhận diện quá hạn bằng TÊN lỗi, không bằng `instanceof DOMException`: dưới jsdom
+      // (môi trường test) DOMException global là của jsdom trong khi lỗi abort có thể
+      // đến từ fetch của Node — instanceof sẽ false và mọi timeout bị báo nhầm thành
+      // "không kết nối được".
+      //
+      // Thông điệp nhắc "đề có thể đã sinh xong": client bỏ cuộc KHÔNG dừng được xử lý
+      // phía server, item vẫn commit, và lần bấm sau tái dùng chúng với 0 call Gemini.
+      // Đó là tính năng, không phải bug — nhưng phải nói ra, nếu không người dùng thấy
+      // đề "xuất hiện bí ẩn".
+      if ((error as { name?: string } | null)?.name === 'TimeoutError') {
+        throw apiError('BACKEND_DOWN',
+          'Backend xử lý quá lâu và đã quá hạn chờ. Đề có thể đã sinh xong ở backend — bấm "Tạo đề" lại, thường sẽ có ngay.',
+          true);
+      }
       throw apiError('BACKEND_DOWN',
         'Không kết nối được backend. Kiểm tra docker compose đã chạy chưa.', true);
     }

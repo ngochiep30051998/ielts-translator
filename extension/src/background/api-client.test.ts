@@ -23,6 +23,9 @@ describe('ApiClient', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    // Gỡ spy đặt trên AbortSignal.timeout ở nhóm test timeout; để rò rỉ thì mọi
+    // test sau vẫn đếm chung một mock và số lần gọi thành vô nghĩa.
+    vi.restoreAllMocks();
   });
 
   it('POST /api/translate và gắn sourceText vào kết quả', async () => {
@@ -167,5 +170,145 @@ describe('ApiClient', () => {
 
     await expect(client.submitReview({ cardId: 999, rating: 'GOOD' }))
       .rejects.toMatchObject({ code: 'NOT_FOUND', retryable: false });
+  });
+
+  /* ---------- Timeout: lưới chặn cuối, phải LỚN HƠN xấu nhất của backend ---------- */
+
+  describe('timeout', () => {
+    /**
+     * Cọc canh môi trường, KHÔNG phải test hành vi của ApiClient.
+     *
+     * Mọi request đều đi qua AbortSignal.timeout(). Nếu môi trường test thiếu API đó
+     * (đổi jsdom, đổi `environment` trong vite.config, chạy dưới runner khác) thì
+     * TOÀN BỘ test đụng tới request() đỏ cùng lúc và không cái nào nói ra nguyên nhân.
+     * Test này đỏ một mình và gọi thẳng tên thủ phạm.
+     */
+    it('môi trường test có AbortSignal.timeout', () => {
+      expect(typeof AbortSignal.timeout).toBe('function');
+    });
+
+    /**
+     * Đọc thẳng con số đã truyền vào AbortSignal.timeout. Không có cách nào đọc
+     * ngược thời hạn ra từ một AbortSignal đã dựng, mà khẳng định "có truyền gì đó"
+     * thì không bắt được ca đặt nhầm 20s — chính là rủi ro R5 của hợp đồng.
+     */
+    function spyTimeout() {
+      return vi.spyOn(AbortSignal, 'timeout');
+    }
+
+    it('mọi request thường bọc timeout mặc định 40 giây', async () => {
+      const timeout = spyTimeout();
+      fetchMock.mockResolvedValue(jsonResponse({ dueCount: 0, newCount: 0, learnedCount: 0 }));
+
+      await client.srsStats(30);
+
+      expect(timeout).toHaveBeenCalledWith(40_000);
+    });
+
+    it('generateQuiz nới lên 70 giây — sinh cả lô đề lâu hơn dịch một từ', async () => {
+      const timeout = spyTimeout();
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      await client.generateQuiz({ vocabIds: null, count: 4, type: 'FILL_BLANK' });
+
+      expect(timeout).toHaveBeenCalledWith(70_000);
+    });
+
+    it('answerQuiz nới lên 50 giây — chấm FREE_WRITE tốn một lượt gọi Gemini', async () => {
+      const timeout = spyTimeout();
+      fetchMock.mockResolvedValue(jsonResponse({
+        correct: true, score: 100, feedback: 'Chính xác.', improvedVersion: null,
+      }));
+
+      await client.answerQuiz({ quizItemId: 7, answer: '2' });
+
+      expect(timeout).toHaveBeenCalledWith(50_000);
+    });
+
+    it('mọi request mang theo một AbortSignal', async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      await client.getDueCards({ limit: 50, newLimit: 30 });
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('quá hạn chờ trả BACKEND_DOWN kèm thông điệp phân biệt với mất kết nối', async () => {
+      // vi.useFakeTimers() KHÔNG điều khiển được AbortSignal.timeout (nó không chạy
+      // trên setTimeout của JS) — test bằng fake timer sẽ treo. Giả lập thẳng lỗi mà
+      // fetch ném ra khi signal quá hạn.
+      fetchMock.mockRejectedValue(new DOMException('signal timed out', 'TimeoutError'));
+
+      await expect(client.generateQuiz({ vocabIds: null, count: 4, type: 'FILL_BLANK' }))
+        .rejects.toMatchObject({
+          code: 'BACKEND_DOWN',
+          retryable: true,
+          message: expect.stringContaining('quá hạn'),
+        });
+    });
+
+    it('mất kết nối và quá hạn chờ là hai thông điệp khác nhau', async () => {
+      fetchMock.mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+      const timedOut = await client.getDueCards({ limit: 1, newLimit: 1 }).catch((e) => e);
+
+      fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const offline = await client.getDueCards({ limit: 1, newLimit: 1 }).catch((e) => e);
+
+      expect(timedOut.message).not.toBe(offline.message);
+      expect(offline.message).toContain('Không kết nối được');
+    });
+  });
+
+  /* ---------- Quiz ---------- */
+
+  describe('quiz', () => {
+    it('generateQuiz POST /api/quiz/generate với field type trên đường HTTP', async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      await client.generateQuiz({ vocabIds: null, count: 4, type: 'COLLOCATION_CHOICE' });
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${BASE_URL}/api/quiz/generate`);
+      expect(init.method).toBe('POST');
+      // Message dùng tên `quizType`, HTTP dùng `type`. Đây là chỗ ánh xạ duy nhất.
+      expect(JSON.parse(init.body as string)).toEqual({
+        vocabIds: null, count: 4, type: 'COLLOCATION_CHOICE',
+      });
+    });
+
+    it('không có ứng viên thì trả mảng rỗng chứ không phải lỗi', async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      await expect(client.generateQuiz({ vocabIds: null, count: 10, type: 'FREE_WRITE' }))
+        .resolves.toEqual([]);
+    });
+
+    it('answerQuiz POST /api/quiz/answer đúng body', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({
+        correct: false, score: 0, feedback: 'Chưa đúng. Đáp án: mitigate', improvedVersion: null,
+      }));
+
+      const result = await client.answerQuiz({ quizItemId: 7, answer: 'mitigated' });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${BASE_URL}/api/quiz/answer`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ quizItemId: 7, answer: 'mitigated' }),
+        }),
+      );
+      expect(result.feedback).toContain('mitigate');
+      expect(result.improvedVersion).toBeNull();
+    });
+
+    it('bài viết quá dài ném TEXT_TOO_LONG, không retry được', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(
+        { code: 'TEXT_TOO_LONG', message: 'Bài viết quá dài (tối đa 1000 ký tự)', retryable: false },
+        400));
+
+      await expect(client.answerQuiz({ quizItemId: 7, answer: 'x'.repeat(1001) }))
+        .rejects.toMatchObject({ code: 'TEXT_TOO_LONG', retryable: false });
+    });
   });
 });

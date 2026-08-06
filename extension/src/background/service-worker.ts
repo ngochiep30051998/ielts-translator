@@ -91,6 +91,16 @@ async function handle(request: ExtensionRequest, senderTabId?: number): Promise<
     }
     case 'GET_SRS_STATS':
       return client.srsStats(request.newLimit);
+    case 'GENERATE_QUIZ':
+      return client.generateQuiz({
+        vocabIds: request.vocabIds,
+        count: request.count,
+        type: request.quizType,   // quizType (message) -> type (HTTP body)
+      });
+    case 'ANSWER_QUIZ':
+      // KHÔNG gọi refreshBadge ở đây: quiz không chạm lịch SRS, nên số thẻ đến hạn
+      // không thể đổi vì một lượt nộp bài.
+      return client.answerQuiz({ quizItemId: request.quizItemId, answer: request.answer });
     case 'CHECK_HEALTH':
       return client.health();
   }

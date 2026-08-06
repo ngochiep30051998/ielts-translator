@@ -402,6 +402,185 @@ body {
 }
 
 /* ============================================================
+   Tab Quiz
+   ============================================================ */
+.quiz-setup {
+  padding: 4px 0 16px;
+  border-bottom: 1px solid var(--border-2);
+}
+.quiz-setup > label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 13.5px;
+  font-weight: 560;
+}
+.quiz-setup input[type="number"] {
+  width: 88px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+}
+.quiz-setup fieldset { margin: 16px 0 0; padding: 0; border: 0; }
+.quiz-setup legend { padding: 0; margin-bottom: 6px; font-size: 13.5px; font-weight: 560; }
+.quiz-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.quiz-type:has(input:checked) { color: var(--text); font-weight: 520; }
+.quiz-setup > button {
+  width: 100%;
+  margin-top: 18px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.quiz-setup > button:hover:not(:disabled) { filter: brightness(1.08); }
+.quiz-setup > button:disabled { opacity: 0.5; cursor: default; }
+
+.quiz-card { padding: 4px 0 8px; }
+.quiz-term { margin: 0 0 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.quiz-question { margin: 0 0 12px; color: var(--text-2); font-size: 13.5px; }
+.quiz-sentence {
+  margin: 0 0 12px;
+  padding: 12px 13px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.quiz-card input[type="text"],
+.quiz-card textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.quiz-card input:focus,
+.quiz-card textarea:focus {
+  border-color: transparent;
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.quiz-counter { margin: 5px 0 0; color: var(--text-3); font-size: 12px; text-align: right; }
+/* Vượt hạn mức thì đổi màu chứ không cắt chữ: cắt cụt im lặng làm người dùng mất bài
+   mà không hiểu vì sao. Nút Nộp bị khoá là chỗ chặn thật. */
+.quiz-counter.over { color: var(--danger); font-weight: 560; }
+
+/* KHÔNG có quy tắc nào sắp xếp lại thứ tự các ô này (order, flex-direction: reverse…):
+   câu trả lời gửi lên là index trong mảng options, đảo bằng CSS cũng là chấm sai. */
+.quiz-options { display: grid; gap: 6px; }
+.quiz-option {
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.quiz-option:hover:not(:disabled) { background: var(--surface-2); }
+.quiz-option:disabled { cursor: default; }
+
+.quiz-submit {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.quiz-submit:hover:not(:disabled) { background: var(--surface-2); }
+.quiz-submit:disabled { opacity: 0.5; cursor: default; }
+
+/* Bỏ qua là lối thoát, không phải hành động chính — nhẹ hơn nút Nộp để không mời gọi. */
+.quiz-skip {
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.quiz-skip:hover:not(:disabled) { border-color: var(--border); color: var(--text); }
+.quiz-skip:disabled { opacity: 0.5; cursor: default; }
+
+.quiz-result {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.quiz-result.ok { border-color: var(--ok); background: var(--ok-soft); }
+.quiz-result.bad { border-color: var(--danger); background: var(--danger-soft); }
+.quiz-verdict { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; }
+.quiz-result.ok .quiz-verdict { color: var(--ok); }
+.quiz-result.bad .quiz-verdict { color: var(--danger); }
+.quiz-feedback { margin: 0; font-size: 13.5px; line-height: 1.55; }
+
+.quiz-improved {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border-2);
+}
+.quiz-improved h3 {
+  margin: 0 0 4px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.quiz-improved p { margin: 0; font-size: 14px; line-height: 1.55; }
+
+.quiz-next {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.quiz-next:hover { background: var(--surface); }
+
+/* ============================================================
    Trang Options
    ============================================================ */
 .options { max-width: 520px; margin: 36px auto; padding: 0 22px; }

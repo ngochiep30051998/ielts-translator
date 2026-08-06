@@ -1,6 +1,6 @@
 import type {
-  ApiError, CardDto, PageResponse, Rating, ReviewResponse, SaveVocabResponse, SrsStats,
-  TranslateResult, VocabEntryDto,
+  AnswerResult, ApiError, CardDto, PageResponse, QuizItemDto, QuizType, Rating,
+  ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult, VocabEntryDto,
 } from './types';
 
 export interface TranslateSelectionRequest {
@@ -59,6 +59,27 @@ export interface GetSrsStatsRequest {
   newLimit: number;
 }
 
+export interface GenerateQuizRequest {
+  type: 'GENERATE_QUIZ';
+  /** Đúng một trong hai field dưới được set; field còn lại là null. Backend trả 400 nếu sai. */
+  vocabIds: number[] | null;
+  /** Số CÂU cho loại này. Mỗi từ 1 câu/loại nên cũng đúng bằng số từ. */
+  count: number | null;
+  /**
+   * Đặt tên `quizType` chứ không phải `type`: `type` đã là trường phân biệt của
+   * union ExtensionRequest. Trên đường HTTP field này tên là `type` —
+   * ApiClient.generateQuiz() là chỗ ánh xạ. Đừng đổi một trong hai mà quên chỗ kia.
+   */
+  quizType: QuizType;
+}
+
+export interface AnswerQuizRequest {
+  type: 'ANSWER_QUIZ';
+  quizItemId: number;
+  /** Luôn là string. Với COLLOCATION_CHOICE là index 0-based dạng chuỗi: "0".."3". */
+  answer: string;
+}
+
 export type ExtensionRequest =
   | TranslateSelectionRequest
   | OpenPanelRequest
@@ -69,7 +90,9 @@ export type ExtensionRequest =
   | HealthRequest
   | GetDueCardsRequest
   | SubmitReviewRequest
-  | GetSrsStatsRequest;
+  | GetSrsStatsRequest
+  | GenerateQuizRequest
+  | AnswerQuizRequest;
 
 export type ExtensionResponse<T> = { ok: true; data: T } | { ok: false; error: ApiError };
 
@@ -84,6 +107,8 @@ export interface ResponseMap {
   GET_DUE_CARDS: CardDto[];
   SUBMIT_REVIEW: ReviewResponse;
   GET_SRS_STATS: SrsStats;
+  GENERATE_QUIZ: QuizItemDto[];
+  ANSWER_QUIZ: AnswerResult;
 }
 
 function localError(code: string, message: string, retryable: boolean): { ok: false; error: ApiError } {

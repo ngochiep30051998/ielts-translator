@@ -17,6 +17,8 @@ const api = {
   getDueCards: vi.fn(),
   submitReview: vi.fn(),
   srsStats: vi.fn(),
+  generateQuiz: vi.fn(),
+  answerQuiz: vi.fn(),
   health: vi.fn(),
 };
 
@@ -71,6 +73,10 @@ describe('service worker', () => {
     api.getDueCards.mockResolvedValue([]);
     api.submitReview.mockResolvedValue({ nextDueDate: '2026-08-07', intervalDays: 1, easeFactor: 2.5 });
     api.srsStats.mockResolvedValue({ dueCount: 3, newCount: 1, learnedCount: 9 });
+    api.generateQuiz.mockResolvedValue([]);
+    api.answerQuiz.mockResolvedValue({
+      correct: true, score: 100, feedback: 'Chính xác.', improvedVersion: null,
+    });
   });
 
   describe('đăng ký alarm cập nhật badge', () => {
@@ -150,6 +156,44 @@ describe('service worker', () => {
     });
   });
 
+  describe('định tuyến message Quiz', () => {
+    it('GENERATE_QUIZ đổi tên quizType của message thành type của HTTP body', async () => {
+      await loadServiceWorker();
+
+      const response = await send({
+        type: 'GENERATE_QUIZ', vocabIds: null, count: 4, quizType: 'FILL_BLANK',
+      });
+
+      // `type` trong message là trường phân biệt của union, không phải loại quiz —
+      // đây là chỗ ánh xạ duy nhất giữa hai tên.
+      expect(api.generateQuiz).toHaveBeenCalledWith({
+        vocabIds: null, count: 4, type: 'FILL_BLANK',
+      });
+      expect(response.ok).toBe(true);
+    });
+
+    it('GENERATE_QUIZ theo vocabIds giữ nguyên count null', async () => {
+      await loadServiceWorker();
+
+      await send({
+        type: 'GENERATE_QUIZ', vocabIds: [3, 9], count: null, quizType: 'FREE_WRITE',
+      });
+
+      expect(api.generateQuiz).toHaveBeenCalledWith({
+        vocabIds: [3, 9], count: null, type: 'FREE_WRITE',
+      });
+    });
+
+    it('ANSWER_QUIZ xuống answerQuiz kèm quizItemId và answer', async () => {
+      await loadServiceWorker();
+
+      const response = await send({ type: 'ANSWER_QUIZ', quizItemId: 12, answer: '2' });
+
+      expect(api.answerQuiz).toHaveBeenCalledWith({ quizItemId: 12, answer: '2' });
+      expect(response).toMatchObject({ ok: true, data: { correct: true, score: 100 } });
+    });
+  });
+
   describe('các điểm làm badge đổi số', () => {
     it('lưu từ mới thì cập nhật badge — từ mới là thêm một thẻ vào hàng đợi', async () => {
       await loadServiceWorker();
@@ -174,6 +218,14 @@ describe('service worker', () => {
 
       expect(api.deleteVocab).toHaveBeenCalledWith(42);
       expect(refreshBadge).toHaveBeenCalledTimes(1);
+    });
+
+    it('nộp bài quiz KHÔNG đụng tới badge — quiz không chạm lịch SRS', async () => {
+      await loadServiceWorker();
+
+      await send({ type: 'ANSWER_QUIZ', quizItemId: 12, answer: '2' });
+
+      expect(refreshBadge).not.toHaveBeenCalled();
     });
 
     it('tra từ thường không đụng tới badge', async () => {
