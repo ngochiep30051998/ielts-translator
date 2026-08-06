@@ -302,6 +302,106 @@ body {
 .vocab-item button:hover { background: var(--danger-soft); color: var(--danger); }
 
 /* ============================================================
+   Tab Ôn tập
+   ============================================================ */
+.review-card {
+  margin: 10px 0;
+  padding: 20px 14px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+}
+
+.review-front strong { display: block; font-size: 23px; font-weight: 640; letter-spacing: -0.015em; }
+.review-front .meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+}
+.review-front button {
+  margin-top: 9px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.review-front button:hover { border-color: var(--border); background: var(--surface-2); }
+
+.review-back {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border-2);
+}
+.review-back .vi { margin: 0 0 8px; font-size: 16px; font-weight: 500; }
+.review-back .meta { margin-right: 6px; color: var(--text-3); font-size: 12px; }
+.review-definition { margin: 9px 0 0; color: var(--text-2); font-size: 13.5px; }
+
+/* Div bọc tab ôn nhận focus bằng code để ăn phím tắt 1–4 và Enter; nó không phải control
+   người dùng tab tới nên vòng focus quanh cả panel chỉ là nhiễu. Các nút bên trong vẫn
+   giữ vòng focus riêng. */
+.review-tab:focus { outline: none; }
+
+.review-options { display: grid; gap: 6px; margin-top: 10px; }
+.review-option {
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.review-option:hover:not(:disabled) { background: var(--surface-2); }
+/* Sau khi chọn thì mọi ô đều bị khoá — đó là lúc cần đọc kỹ nhất, nên KHÔNG làm mờ. */
+.review-option:disabled { cursor: default; }
+.review-option.correct {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.review-option.wrong {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.review-next {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.review-next:hover { background: var(--surface-2); }
+
+/* nút Thử lại nằm trong dòng báo lỗi khi chấm hụt */
+.review-tab .status.bad button {
+  margin-left: 4px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+/* ============================================================
    Trang Options
    ============================================================ */
 .options { max-width: 520px; margin: 36px auto; padding: 0 22px; }
@@ -314,7 +414,8 @@ body {
   font-weight: 560;
 }
 .options input[type="url"],
-.options input[type="text"] {
+.options input[type="text"],
+.options input[type="number"] {
   width: 100%;
   padding: 8px 11px;
   border: 1px solid var(--border);

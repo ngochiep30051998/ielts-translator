@@ -4,15 +4,27 @@ export interface Settings {
   backendUrl: string;
   triggerMode: TriggerMode;
   voiceName: string | null;
+  /** Số thẻ MỚI tối đa được đưa vào hàng đợi ôn mỗi ngày. */
+  newWordsPerDay: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   backendUrl: 'http://127.0.0.1:8080',
   triggerMode: 'auto',
   voiceName: null,
+  newWordsPerDay: 30,
 };
 
 const STORAGE_KEY = 'settings';
+const MAX_NEW_WORDS_PER_DAY = 200;
+
+/** Giá trị lạ (NaN, chuỗi, undefined) quay về mặc định thay vì lọt xuống backend. */
+function normaliseNewWordsPerDay(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_SETTINGS.newWordsPerDay;
+  }
+  return Math.min(MAX_NEW_WORDS_PER_DAY, Math.max(0, Math.round(value)));
+}
 
 function normalise(raw: Partial<Settings>): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...raw };
@@ -20,6 +32,7 @@ function normalise(raw: Partial<Settings>): Settings {
     backendUrl: merged.backendUrl.replace(/\/+$/, ''),
     triggerMode: merged.triggerMode === 'hotkey' ? 'hotkey' : 'auto',
     voiceName: merged.voiceName ?? null,
+    newWordsPerDay: normaliseNewWordsPerDay(merged.newWordsPerDay),
   };
 }
 

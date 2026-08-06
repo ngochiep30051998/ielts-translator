@@ -1,4 +1,7 @@
-import type { ApiError, PageResponse, SaveVocabResponse, TranslateResult, VocabEntryDto } from './types';
+import type {
+  ApiError, CardDto, PageResponse, Rating, ReviewResponse, SaveVocabResponse, SrsStats,
+  TranslateResult, VocabEntryDto,
+} from './types';
 
 export interface TranslateSelectionRequest {
   type: 'TRANSLATE_SELECTION';
@@ -39,6 +42,23 @@ export interface HealthRequest {
   type: 'CHECK_HEALTH';
 }
 
+export interface GetDueCardsRequest {
+  type: 'GET_DUE_CARDS';
+  limit: number;
+  newLimit: number;
+}
+
+export interface SubmitReviewRequest {
+  type: 'SUBMIT_REVIEW';
+  cardId: number;
+  rating: Rating;
+}
+
+export interface GetSrsStatsRequest {
+  type: 'GET_SRS_STATS';
+  newLimit: number;
+}
+
 export type ExtensionRequest =
   | TranslateSelectionRequest
   | OpenPanelRequest
@@ -46,7 +66,10 @@ export type ExtensionRequest =
   | SearchVocabRequest
   | DeleteVocabRequest
   | GetLastResultRequest
-  | HealthRequest;
+  | HealthRequest
+  | GetDueCardsRequest
+  | SubmitReviewRequest
+  | GetSrsStatsRequest;
 
 export type ExtensionResponse<T> = { ok: true; data: T } | { ok: false; error: ApiError };
 
@@ -58,6 +81,9 @@ export interface ResponseMap {
   DELETE_VOCAB: null;
   GET_LAST_RESULT: TranslateResult | null;
   CHECK_HEALTH: { status: string; dbConnected: boolean; geminiConfigured: boolean };
+  GET_DUE_CARDS: CardDto[];
+  SUBMIT_REVIEW: ReviewResponse;
+  GET_SRS_STATS: SrsStats;
 }
 
 function localError(code: string, message: string, retryable: boolean): { ok: false; error: ApiError } {

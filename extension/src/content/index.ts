@@ -5,6 +5,7 @@ import {
 import { sendToBackground } from '../shared/messages';
 import { shortMeaning } from '../shared/summary';
 import { loadSettings } from '../shared/settings';
+import { speak } from '../shared/speech';
 import type { TranslateResult } from '../shared/types';
 
 const DEBOUNCE_MS = 250;
@@ -26,14 +27,6 @@ function containerTextOf(selection: Selection): string {
 
 function noopHandlers() {
   return { onSpeak: () => {}, onSave: () => {}, onExpand: () => {}, onRetry: () => {} };
-}
-
-function speak(text: string, voiceName: string | null): void {
-  const utterance = new SpeechSynthesisUtterance(text);
-  const voice = speechSynthesis.getVoices()
-    .find((v) => (voiceName ? v.name === voiceName : v.lang.startsWith('en')));
-  if (voice) utterance.voice = voice;
-  speechSynthesis.speak(utterance);
 }
 
 /** Đọc phần tiếng Anh: text gốc nếu EN→VI, bản dịch nếu VI→EN. */

@@ -35,4 +35,19 @@ describe('settings', () => {
 
     expect((await loadSettings()).backendUrl).toBe('http://127.0.0.1:8080');
   });
+
+  it('newWordsPerDay mặc định là 30', async () => {
+    const settings = await loadSettings();
+    expect(settings.newWordsPerDay).toBe(30);
+  });
+
+  it('newWordsPerDay âm bị kéo về 0, quá lớn bị cắt ở 200', async () => {
+    expect((await saveSettings({ newWordsPerDay: -5 })).newWordsPerDay).toBe(0);
+    expect((await saveSettings({ newWordsPerDay: 9999 })).newWordsPerDay).toBe(200);
+  });
+
+  it('newWordsPerDay không phải số thì quay về mặc định', async () => {
+    const settings = await saveSettings({ newWordsPerDay: Number.NaN });
+    expect(settings.newWordsPerDay).toBe(30);
+  });
 });

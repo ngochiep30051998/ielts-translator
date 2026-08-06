@@ -120,4 +120,52 @@ describe('ApiClient', () => {
       expect.objectContaining({ method: 'DELETE' }),
     );
   });
+
+  it('getDueCards gọi đúng đường dẫn kèm limit và newLimit', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await client.getDueCards({ limit: 50, newLimit: 30 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/srs/due?limit=50&newLimit=30`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('submitReview POST đúng body', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ nextDueDate: '2026-08-07', intervalDays: 1, easeFactor: 2.5 }),
+    );
+
+    const result = await client.submitReview({ cardId: 7, rating: 'GOOD' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/srs/review`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ cardId: 7, rating: 'GOOD' }),
+      }),
+    );
+    expect(result.intervalDays).toBe(1);
+  });
+
+  it('srsStats gọi đúng đường dẫn kèm newLimit', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ dueCount: 3, newCount: 1, learnedCount: 9 }));
+
+    const stats = await client.srsStats(30);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/srs/stats?newLimit=30`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(stats.dueCount).toBe(3);
+  });
+
+  it('review thẻ không tồn tại ném NOT_FOUND, không retry được', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(
+      { code: 'NOT_FOUND', message: 'Không tìm thấy thẻ 999', retryable: false }, 404));
+
+    await expect(client.submitReview({ cardId: 999, rating: 'GOOD' }))
+      .rejects.toMatchObject({ code: 'NOT_FOUND', retryable: false });
+  });
 });

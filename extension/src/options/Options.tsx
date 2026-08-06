@@ -72,6 +72,18 @@ export function Options() {
         </div>
       </fieldset>
 
+      <label htmlFor="newWordsPerDay">Từ mới mỗi ngày</label>
+      <input
+        id="newWordsPerDay"
+        type="number"
+        min={0}
+        max={200}
+        value={settings.newWordsPerDay}
+        onChange={(e) =>
+          setSettings({ ...settings, newWordsPerDay: Number(e.target.value) })
+        }
+      />
+
       <label htmlFor="voiceName">Giọng đọc (để trống dùng giọng en mặc định)</label>
       <input
         id="voiceName"

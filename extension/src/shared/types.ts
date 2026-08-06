@@ -89,3 +89,41 @@ export interface SaveVocabResponse {
   id: number;
   alreadyExists: boolean;
 }
+
+/** Mức người dùng tự chấm sau khi lật thẻ. Gương của enum Rating phía backend. */
+export type Rating = 'AGAIN' | 'HARD' | 'GOOD' | 'EASY';
+
+export type CardState = 'NEW' | 'REVIEW' | 'RELEARNING';
+
+/** Gương của CardDto phía backend — thẻ đã gộp sẵn dữ liệu vocab. */
+export interface CardDto {
+  id: number;
+  vocabEntryId: number;
+  term: string;
+  ipa: string | null;
+  pos: string;
+  meaningVi: string;
+  definitionEn: string | null;
+  cefr: string | null;
+  bandLevel: string | null;
+  collocations: unknown;
+  examples: unknown;
+  state: CardState;
+  dueDate: string;
+  /** 3 nghĩa tiếng Việt SAI, làm mồi nhử cho câu hỏi EN → VI. Rỗng khi backend chưa sinh kịp. */
+  viDistractors: string[];
+  /** 3 từ tiếng Anh SAI, làm mồi nhử cho câu hỏi VI → EN. Rỗng khi backend chưa sinh kịp. */
+  enDistractors: string[];
+}
+
+export interface ReviewResponse {
+  nextDueDate: string;
+  intervalDays: number;
+  easeFactor: number;
+}
+
+export interface SrsStats {
+  dueCount: number;
+  newCount: number;
+  learnedCount: number;
+}

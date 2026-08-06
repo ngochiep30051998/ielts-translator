@@ -1,5 +1,6 @@
 import type {
-  ApiError, PageResponse, SaveVocabResponse, TranslateResult, VocabEntryDto,
+  ApiError, CardDto, PageResponse, Rating, ReviewResponse, SaveVocabResponse, SrsStats,
+  TranslateResult, VocabEntryDto,
 } from '../shared/types';
 
 const HEALTH_CACHE_MS = 30_000;
@@ -54,6 +55,23 @@ export class ApiClient {
   async deleteVocab(id: number): Promise<null> {
     await this.request<null>(`/api/vocab/${id}`, { method: 'DELETE' });
     return null;
+  }
+
+  /** Hàng đợi ôn hôm nay: thẻ đến hạn trước, rồi tới thẻ mới trong hạn mức `newLimit`. */
+  async getDueCards(args: { limit: number; newLimit: number }): Promise<CardDto[]> {
+    const params = new URLSearchParams({
+      limit: String(args.limit),
+      newLimit: String(args.newLimit),
+    });
+    return this.request(`/api/srs/due?${params.toString()}`, { method: 'GET' });
+  }
+
+  async submitReview(args: { cardId: number; rating: Rating }): Promise<ReviewResponse> {
+    return this.request('/api/srs/review', { method: 'POST', body: JSON.stringify(args) });
+  }
+
+  async srsStats(newLimit: number): Promise<SrsStats> {
+    return this.request(`/api/srs/stats?newLimit=${newLimit}`, { method: 'GET' });
   }
 
   async health(): Promise<HealthStatus> {

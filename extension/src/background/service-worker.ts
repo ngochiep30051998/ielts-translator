@@ -1,4 +1,5 @@
 import { ApiClient } from './api-client';
+import { refreshBadge } from './badge';
 import { loadSettings } from '../shared/settings';
 import type { ExtensionRequest, ExtensionResponse } from '../shared/messages';
 import type { ApiError, TranslateResult } from '../shared/types';
@@ -67,12 +68,29 @@ async function handle(request: ExtensionRequest, senderTabId?: number): Promise<
     }
     case 'GET_LAST_RESULT':
       return lastResult;
-    case 'SAVE_WORD':
-      return client.saveVocab(buildVocabPayload(request.result, request.tags));
+    case 'SAVE_WORD': {
+      // Từ mới vào sổ = thêm một thẻ vào hàng đợi ôn, nên badge phải đổi ngay.
+      const result = await client.saveVocab(buildVocabPayload(request.result, request.tags));
+      void refreshBadge(client);
+      return result;
+    }
     case 'SEARCH_VOCAB':
       return client.searchVocab({ query: request.query, tag: request.tag, page: request.page });
-    case 'DELETE_VOCAB':
-      return client.deleteVocab(request.id);
+    case 'DELETE_VOCAB': {
+      // Xoá từ là xoá luôn thẻ của nó (ON DELETE CASCADE) — badge phải bỏ số cũ đi.
+      const result = await client.deleteVocab(request.id);
+      void refreshBadge(client);
+      return result;
+    }
+    case 'GET_DUE_CARDS':
+      return client.getDueCards({ limit: request.limit, newLimit: request.newLimit });
+    case 'SUBMIT_REVIEW': {
+      const result = await client.submitReview({ cardId: request.cardId, rating: request.rating });
+      void refreshBadge(client);
+      return result;
+    }
+    case 'GET_SRS_STATS':
+      return client.srsStats(request.newLimit);
     case 'CHECK_HEALTH':
       return client.health();
   }
@@ -96,3 +114,27 @@ chrome.commands.onCommand.addListener(async (command) => {
     chrome.tabs.sendMessage(tab.id, { type: 'HOTKEY_TRANSLATE' });
   }
 });
+
+/* ---------- Badge số thẻ đến hạn ---------- */
+
+const BADGE_ALARM = 'srs-badge';
+const BADGE_REFRESH_MINUTES = 30;
+
+// Alarm chứ không phải setInterval: service worker MV3 bị ngủ bất cứ lúc nào,
+// timer trong bộ nhớ chết theo còn alarm thì đánh thức worker dậy.
+//
+// Phải hỏi `get` trước khi `create`: file này chạy lại MỖI lần worker thức dậy, mà
+// `create` trùng tên sẽ xoá alarm cũ và đếm lại từ đầu 30 phút. Người dùng tra từ
+// đều đặn hơn 30 phút một lần thì alarm bị reset liên tục và không bao giờ nổ.
+void chrome.alarms.get(BADGE_ALARM).then((existing) => {
+  if (!existing) {
+    chrome.alarms.create(BADGE_ALARM, { periodInMinutes: BADGE_REFRESH_MINUTES });
+  }
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === BADGE_ALARM) void refreshBadge(client);
+});
+
+chrome.runtime.onStartup.addListener(() => void refreshBadge(client));
+chrome.runtime.onInstalled.addListener(() => void refreshBadge(client));

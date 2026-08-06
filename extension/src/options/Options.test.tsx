@@ -42,6 +42,24 @@ describe('Options', () => {
     await waitFor(async () => expect((await loadSettings()).triggerMode).toBe('hotkey'));
   });
 
+  it('sửa và lưu được số từ mới mỗi ngày', async () => {
+    render(<Options />);
+
+    const input = await screen.findByLabelText(/từ mới mỗi ngày/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, '15');
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+
+    expect(await screen.findByText(/đã lưu cài đặt/i)).toBeInTheDocument();
+    expect((await loadSettings()).newWordsPerDay).toBe(15);
+  });
+
+  it('hiện mặc định 30 từ mới mỗi ngày khi chưa cấu hình', async () => {
+    render(<Options />);
+
+    expect(await screen.findByLabelText(/từ mới mỗi ngày/i)).toHaveValue(30);
+  });
+
   it('nút kiểm tra kết nối báo thành công', async () => {
     render(<Options />);
     await screen.findByLabelText(/Địa chỉ backend/i);
