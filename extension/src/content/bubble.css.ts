@@ -54,6 +54,10 @@ button[data-action="retry"] { width: auto; padding: 0 9px; font-size: 12.5px; co
 
 svg { display: block; pointer-events: none; }
 
+/* trạng thái đầu: chỉ một icon, bám sát nội dung nên bỏ padding chữ */
+.bubble.icon-only { padding: 4px; gap: 0; }
+.bubble.icon-only button { width: 30px; height: 30px; color: #4338ca; }
+
 /* trạng thái đang tải */
 .dots { display: inline-flex; gap: 3.5px; align-items: center; padding: 3px 2px; }
 .dots i {
@@ -91,6 +95,7 @@ svg { display: block; pointer-events: none; }
   button:hover { background: rgba(255, 255, 255, 0.09); color: #e9ecf1; }
   button[data-action="save"] { color: #b3aefb; }
   button[data-action="retry"] { color: #ff9c92; }
+  .bubble.icon-only button { color: #b3aefb; }
   .dots i { background: #79818f; }
   .loading .text { color: #a3abb9; }
   .bubble.error { border-color: rgba(255, 156, 146, .3); background: rgba(58, 31, 28, .95); }

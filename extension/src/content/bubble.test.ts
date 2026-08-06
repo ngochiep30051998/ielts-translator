@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  showLoadingBubble, showResultBubble, showErrorBubble, hideBubble, BUBBLE_HOST_ID,
+  showLoadingBubble, showResultBubble, showErrorBubble, showIconBubble, hideBubble, BUBBLE_HOST_ID,
 } from './bubble';
 
 const rect = { left: 100, top: 200, bottom: 220, width: 80, height: 20 } as DOMRect;
@@ -71,6 +71,44 @@ describe('bubble', () => {
     showErrorBubble(rect, 'Đã hết quota Gemini', false, handlers());
 
     expect(shadow().querySelector('[data-action="retry"]')).toBeNull();
+  });
+
+  it('icon chỉ có đúng một nút, không lộ nghĩa hay text nào', () => {
+    showIconBubble(rect, vi.fn());
+
+    const root = shadow();
+    expect(root.querySelector('[data-action="translate"]')).not.toBeNull();
+    expect(root.querySelectorAll('button')).toHaveLength(1);
+    expect(root.querySelector('.text')).toBeNull();
+  });
+
+  it('bấm icon gọi handler đúng một lần', () => {
+    const onTranslate = vi.fn();
+    showIconBubble(rect, onTranslate);
+
+    (shadow().querySelector('[data-action="translate"]') as HTMLElement).click();
+
+    expect(onTranslate).toHaveBeenCalledOnce();
+  });
+
+  it('mousedown trên icon bị preventDefault để không mất vùng bôi đen', () => {
+    // Trình duyệt collapse selection khi mousedown lên nút. Không chặn thì người dùng
+    // thấy vệt bôi đen biến mất ngay lúc bấm — trông như thao tác đã hỏng.
+    showIconBubble(rect, vi.fn());
+
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    (shadow().querySelector('[data-action="translate"]') as HTMLElement).dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('icon bị thay thế bởi bubble loading, không chồng lên nhau', () => {
+    showIconBubble(rect, vi.fn());
+    showLoadingBubble(rect);
+
+    expect(document.querySelectorAll(`#${BUBBLE_HOST_ID}`)).toHaveLength(1);
+    expect(shadow().querySelector('[data-action="translate"]')).toBeNull();
+    expect(shadow().textContent).toContain('Đang dịch');
   });
 
   it('hideBubble gỡ hẳn host khỏi DOM', () => {

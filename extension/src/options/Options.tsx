@@ -58,7 +58,7 @@ export function Options() {
               checked={settings.triggerMode === 'auto'}
               onChange={() => setSettings({ ...settings, triggerMode: 'auto' })}
             />
-            Tự hiện bubble khi bôi đen
+            Hiện icon khi bôi đen
           </label>
           <label>
             <input
