@@ -1,11 +1,13 @@
 package com.hiepnn.ieltstranslator.translation;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -125,5 +127,25 @@ class PromptLoaderTest {
                         .contains("{{TEXT}}");
             }
         }
+    }
+
+    @Test
+    @DisplayName("load theo tên file đọc được prompt mồi nhử và lấy đúng version")
+    void loadsByFileName() {
+        PromptTemplate template = loader.load("srs-distractors.md");
+
+        assertThat(template.version()).isEqualTo(1);
+        assertThat(template.body()).contains("{{TERM}}", "{{MEANING_VI}}");
+    }
+
+    @Test
+    @DisplayName("render(Map) thay đúng mọi khoá")
+    void rendersEveryPlaceholder() {
+        String rendered = loader.load("srs-distractors.md")
+                .render(Map.of("TERM", "mitigate", "MEANING_VI", "giảm nhẹ",
+                               "POS", "verb", "DEFINITION_EN", "to make less severe"));
+
+        assertThat(rendered).contains("mitigate", "giảm nhẹ", "verb", "to make less severe");
+        assertThat(rendered).doesNotContain("{{");
     }
 }
