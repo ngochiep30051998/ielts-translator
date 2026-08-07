@@ -156,6 +156,45 @@ describe('service worker', () => {
     });
   });
 
+  describe('định tuyến message dịch', () => {
+    it('TRANSLATE_TEXT gọi translate không kèm ngữ cảnh và không kèm trang nguồn', async () => {
+      api.translate.mockResolvedValue(RESULT);
+      await loadServiceWorker();
+
+      const response = await send({ type: 'TRANSLATE_TEXT', text: 'mitigate' });
+
+      // sourceUrl/pageTitle rỗng chứ không phải null: api-client đổi chuỗi rỗng thành
+      // undefined, và bản ghi vào sổ từ nhận sourceUrl null. Text gõ tay không có trang nguồn.
+      expect(api.translate).toHaveBeenCalledWith({
+        text: 'mitigate', contextSentence: null, sourceUrl: '', pageTitle: '',
+      });
+      expect(response).toMatchObject({ ok: true, data: { sourceText: 'mitigate' } });
+    });
+
+    it('TRANSLATE_TEXT cập nhật kết quả gần nhất mà GET_LAST_RESULT đọc', async () => {
+      api.translate.mockResolvedValue(RESULT);
+      await loadServiceWorker();
+
+      await send({ type: 'TRANSLATE_TEXT', text: 'mitigate' });
+      const response = await send({ type: 'GET_LAST_RESULT' });
+
+      // Cùng một ô nhớ với đường bôi đen: side panel chỉ có MỘT vùng kết quả.
+      expect(response).toMatchObject({ ok: true, data: { sourceText: 'mitigate' } });
+    });
+
+    it('lỗi khi dịch trả về dạng { ok: false, error }', async () => {
+      api.translate.mockRejectedValue(
+        { code: 'GEMINI_QUOTA', message: 'Hết quota Gemini hôm nay.', retryable: false });
+      await loadServiceWorker();
+
+      const response = await send({ type: 'TRANSLATE_TEXT', text: 'mitigate' });
+
+      expect(response).toMatchObject({
+        ok: false, error: { code: 'GEMINI_QUOTA', retryable: false },
+      });
+    });
+  });
+
   describe('định tuyến message Quiz', () => {
     it('GENERATE_QUIZ đổi tên quizType của message thành type của HTTP body', async () => {
       await loadServiceWorker();

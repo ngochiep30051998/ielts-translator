@@ -59,6 +59,18 @@ async function handle(request: ExtensionRequest, senderTabId?: number): Promise<
       lastResult = result;
       return result;
     }
+    case 'TRANSLATE_TEXT': {
+      // Chuỗi rỗng chứ không phải null cho sourceUrl/pageTitle: api-client đã có sẵn
+      // `args.sourceUrl || undefined`, nên rỗng tự biến thành "không có nguồn".
+      const result = await client.translate({
+        text: request.text,
+        contextSentence: null,
+        sourceUrl: '',
+        pageTitle: '',
+      });
+      lastResult = result;
+      return result;
+    }
     case 'OPEN_PANEL_WITH_RESULT': {
       lastResult = request.result;
       if (senderTabId !== undefined) {

@@ -11,6 +11,17 @@ export interface TranslateSelectionRequest {
   pageTitle: string;
 }
 
+/**
+ * Dịch đoạn text người dùng gõ/dán thẳng vào side panel.
+ *
+ * Tách khỏi TRANSLATE_SELECTION chứ không tái dùng: không có trang nguồn, không có câu
+ * ngữ cảnh, và service worker cần phân biệt được hai nguồn nếu sau này chúng phải khác nhau.
+ */
+export interface TranslateTextRequest {
+  type: 'TRANSLATE_TEXT';
+  text: string;
+}
+
 export interface OpenPanelRequest {
   type: 'OPEN_PANEL_WITH_RESULT';
   result: TranslateResult;
@@ -82,6 +93,7 @@ export interface AnswerQuizRequest {
 
 export type ExtensionRequest =
   | TranslateSelectionRequest
+  | TranslateTextRequest
   | OpenPanelRequest
   | SaveWordRequest
   | SearchVocabRequest
@@ -98,6 +110,7 @@ export type ExtensionResponse<T> = { ok: true; data: T } | { ok: false; error: A
 
 export interface ResponseMap {
   TRANSLATE_SELECTION: TranslateResult;
+  TRANSLATE_TEXT: TranslateResult;
   OPEN_PANEL_WITH_RESULT: null;
   SAVE_WORD: SaveVocabResponse;
   SEARCH_VOCAB: PageResponse<VocabEntryDto>;
