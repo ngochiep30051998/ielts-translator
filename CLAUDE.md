@@ -74,7 +74,7 @@ Bốn tổ hợp direction × mode sinh ra **bốn hình dạng payload JSON kh�
 
 8. **Migration Flyway là append-only.** Không sửa file `V*.sql` đã chạy; thêm version mới, và cập nhật entity JPA trong cùng thay đổi (`ddl-auto: validate` sẽ fail khi lệch).
 
-9. **Giới hạn 1500 ký tự chặn ở cả hai phía** (`TranslationService.MAX_TEXT_LENGTH` và `content/selection.ts`). Đổi số thì đổi đồng bộ.
+9. **Giới hạn 1500 ký tự chặn ở cả hai phía** (`TranslationService.MAX_TEXT_LENGTH` và `shared/text.ts`). Đổi số thì đổi đồng bộ.
 
 10. **`host_permissions` ghim `http://127.0.0.1:8080/*`.** Đổi `APP_PORT` phải sửa cả manifest **và** `backendUrl` mặc định trong `shared/settings.ts` / trang Options — sửa một chỗ là hỏng im lặng.
 

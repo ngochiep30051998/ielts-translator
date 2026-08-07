@@ -1,4 +1,5 @@
-import { validateSelection, extractContextSentence } from './selection';
+import { extractContextSentence } from './selection';
+import { validateSelection } from '../shared/text';
 import {
   showLoadingBubble, showResultBubble, showNoticeBubble, showErrorBubble, showIconBubble,
   hideBubble, BUBBLE_HOST_ID,
