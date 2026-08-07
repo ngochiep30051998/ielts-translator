@@ -1,7 +1,11 @@
 /*
  * Vẽ icon extension bằng Node thuần (không thêm dependency): dựng ảnh RGBA rồi
- * đóng gói PNG thủ công. Hình lấy đúng dấu nhận diện dùng trong giao diện —
- * nền bo góc màu đất nung, vệt bút chéo và một chấm.
+ * đóng gói PNG thủ công. Hình khớp với icon nút dịch trong bubble (`content/bubble.ts`,
+ * ICONS.translate) — nền bo góc màu nhấn, trên đó là một cuốn sách mở.
+ *
+ * Ở cỡ 16px không thể vẽ theo kiểu nét viền như bản SVG: nét 2px trên khung 24 co lại
+ * còn hơn 1px và nhoè thành vệt xám. Nên bản PNG dùng khối ĐẶC, giữ lại đúng dấu hiệu
+ * nhận ra cuốn sách: hai trang chếch lên ở mép ngoài và khe gáy ở giữa.
  *
  * Chạy lại khi đổi màu thương hiệu:  npm run icons
  */
@@ -28,21 +32,35 @@ function sdRoundSquare(x, y, radius) {
   );
 }
 
-function sdSegment(px, py, ax, ay, bx, by) {
-  const vx = bx - ax;
-  const vy = by - ay;
-  const wx = px - ax;
-  const wy = py - ay;
-  const t = Math.min(1, Math.max(0, (wx * vx + wy * vy) / (vx * vx + vy * vy)));
-  return Math.hypot(wx - t * vx, wy - t * vy);
+/**
+ * Trang sách bên TRÁI, 4 đỉnh theo chiều kim đồng hồ (trục y hướng xuống).
+ *
+ * Trang phải là ảnh gương qua x = 0.5, lấy bằng cách soi `1 - x` vào chính đa giác này
+ * — đối xứng tuyệt đối, không phải hai bộ toạ độ chép tay dễ lệch nhau.
+ *
+ * Khe giữa hai trang rộng 0.09 (≈1.4px ở cỡ 16) — chính khe hở màu nền này làm hình đọc
+ * ra "sách mở"; hẹp hơn thì ở cỡ 16px nó dính thành một khối chữ nhật vô nghĩa.
+ */
+const PAGE = [
+  [0.19, 0.32],
+  [0.455, 0.39],
+  [0.455, 0.72],
+  [0.19, 0.65],
+];
+
+function insidePage(x, y) {
+  for (let i = 0; i < PAGE.length; i++) {
+    const [ax, ay] = PAGE[i];
+    const [bx, by] = PAGE[(i + 1) % PAGE.length];
+    if ((bx - ax) * (y - ay) - (by - ay) * (x - ax) < 0) return false;
+  }
+  return true;
 }
 
 /** Màu của một điểm mẫu, hoặc null nếu nằm ngoài hình. */
 function sampleAt(x, y) {
   if (sdRoundSquare(x, y, 0.28) > 0) return null;
-  const stroke = sdSegment(x, y, 0.33, 0.7, 0.7, 0.33) - 0.075;
-  const dot = Math.hypot(x - 0.3, y - 0.315) - 0.085;
-  return Math.min(stroke, dot) <= 0 ? FG : BG;
+  return insidePage(x, y) || insidePage(1 - x, y) ? FG : BG;
 }
 
 /** Khử răng cưa bằng cách lấy trung bình SAMPLES×SAMPLES điểm trong mỗi pixel. */

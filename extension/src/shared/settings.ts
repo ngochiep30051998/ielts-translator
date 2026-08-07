@@ -36,9 +36,26 @@ function normalise(raw: Partial<Settings>): Settings {
   };
 }
 
+/**
+ * Đọc cấu hình. **Không bao giờ ném** — hỏng thì trả mặc định.
+ *
+ * Reload extension biến mọi content script trên các tab đang mở thành mồ côi, và
+ * `chrome.storage.local` của chúng ném "Extension context invalidated". Content script
+ * gọi hàm này ở MỖI lần `mouseup`, trong một callback async không ai bắt, nên ném ở đây
+ * đổ unhandled rejection ra console của mọi trang người dùng đang mở.
+ *
+ * Nuốt được vì có đường lui đúng nghĩa: chạy tiếp bằng mặc định. Bản thân thao tác dịch
+ * vẫn sẽ báo lỗi tử tế qua `sendToBackground`, vốn đã nuốt đúng ca mồ côi này cho
+ * `chrome.runtime.sendMessage`. `saveSettings` thì KHÔNG nuốt — bỏ lặng một lượt lưu tệ
+ * hơn hẳn là báo lỗi.
+ */
 export async function loadSettings(): Promise<Settings> {
-  const stored = await chrome.storage.local.get([STORAGE_KEY]);
-  return normalise((stored[STORAGE_KEY] ?? {}) as Partial<Settings>);
+  try {
+    const stored = await chrome.storage.local.get([STORAGE_KEY]);
+    return normalise((stored[STORAGE_KEY] ?? {}) as Partial<Settings>);
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {

@@ -14,7 +14,12 @@ const ICONS = {
   speak: '<path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>',
   save: '<path d="M12 5v14M5 12h14"/>',
   expand: '<path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"/>',
-  translate: '<path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1"/><path d="m22 22-5-10-5 10M14 18h6"/>',
+  // Sách mở: hai trang và gáy ở giữa. Cố ý KHÔNG dùng glyph chữ tượng hình như các bộ
+  // icon "translate" thông dụng — nét chữ Hán trong một app học tiếng Anh gây hiểu nhầm.
+  translate:
+    '<path d="M12 7v14"/>'
+    + '<path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5'
+    + 'a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3Z"/>',
 };
 
 function icon(path: string): SVGSVGElement {

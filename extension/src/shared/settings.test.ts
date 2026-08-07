@@ -1,9 +1,34 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './settings';
 
 describe('settings', () => {
   beforeEach(async () => {
     await chrome.storage.local.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('context extension chết thì trả mặc định, không ném', async () => {
+    // Reload extension làm mọi content script trên các tab đang mở thành mồ côi:
+    // chrome.storage.local ném "Extension context invalidated". Content script gọi
+    // loadSettings() ở MỖI lần mouseup, và callback đó là async không ai bắt — nên
+    // ném ở đây thành unhandled rejection đổ ra console của mọi trang người dùng mở.
+    // shared/messages.ts đã nuốt đúng ca này cho sendMessage; đây là chỗ còn sót.
+    vi.spyOn(chrome.storage.local, 'get').mockRejectedValue(
+      new Error('Extension context invalidated.'),
+    );
+
+    await expect(loadSettings()).resolves.toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('saveSettings KHÔNG nuốt lỗi — nuốt một lượt lưu hỏng tệ hơn là báo lỗi', async () => {
+    vi.spyOn(chrome.storage.local, 'set').mockRejectedValue(
+      new Error('Extension context invalidated.'),
+    );
+
+    await expect(saveSettings({ triggerMode: 'hotkey' })).rejects.toThrow();
   });
 
   it('trả về mặc định khi chưa lưu gì', async () => {
