@@ -47,6 +47,9 @@ describe('TranslateTab', () => {
     expect(screen.getByText('renewable energy')).toBeInTheDocument();
     expect(screen.getByText('We rely on renewable energy.')).toBeInTheDocument();
     expect(screen.getByText('sustainable')).toBeInTheDocument();
+    // TranslateTab giờ là component thuần: không được tự gọi GET_LAST_RESULT (hay bất kỳ
+    // message nào) khi chỉ render — result/loaded phải đến từ props do App truyền xuống.
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
   });
 
   it('hiện band kèm chú thích đây là ước lượng', async () => {

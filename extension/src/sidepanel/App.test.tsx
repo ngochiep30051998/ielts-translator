@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { App } from './App';
-import type { TranslatePayload, TranslateResult } from '../shared/types';
+import type { TranslateResult } from '../shared/types';
 
 const lastResult: TranslateResult = {
   direction: 'EN_VI', mode: 'WORD', cached: false, sourceText: 'was resiliented',
@@ -9,7 +10,7 @@ const lastResult: TranslateResult = {
     term: 'resilient', lemma: 'resilient', pos: 'adj', ipa: '/rɪˈzɪliənt/',
     meaning_vi: 'kiên cường', definition_en: 'able to recover quickly', cefr: 'B2',
     band_level: '7.0', register: 'academic', collocations: [], examples: [], synonyms: [],
-  } as unknown as TranslatePayload,
+  },
 };
 
 /** Mock đủ cho App + mọi tab con mà test này chạm tới. */
@@ -39,5 +40,20 @@ describe('App', () => {
 
     expect(await screen.findByText('kiên cường')).toBeInTheDocument();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'GET_LAST_RESULT' });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('không gọi lại GET_LAST_RESULT khi đổi tab rồi quay lại tab Dịch', async () => {
+    mockBackend(lastResult);
+    render(<App />);
+
+    await screen.findByText('kiên cường');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Sổ từ' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Dịch' }));
+
+    expect(await screen.findByText('kiên cường')).toBeInTheDocument();
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
   });
 });
