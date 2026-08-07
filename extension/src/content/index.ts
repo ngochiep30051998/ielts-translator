@@ -122,7 +122,17 @@ async function translateCurrentSelection(): Promise<void> {
   await translateSnapshot(shot);
 }
 
-document.addEventListener('mouseup', () => {
+document.addEventListener('mouseup', (event) => {
+  // Thao tác BÊN TRONG bubble không phải là một lượt chọn chữ mới.
+  //
+  // Không có nhánh này thì cú bấm icon tự bắn `mouseup` lên document, khởi động lại
+  // debounce, và 250ms sau vẽ đè icon lên chính kết quả vừa dịch xong. Lỗi chỉ lộ ở
+  // đường cache (trả về trước 250ms); đường Gemini che mất vì kết quả về sau mốc đó
+  // nên nó đè ngược lại icon. Cũng chính nhánh này chặn việc bấm "Lưu vào sổ" kích
+  // hoạt một lượt dịch lại đè lên thông báo vừa lưu.
+  const host = document.getElementById(BUBBLE_HOST_ID);
+  if (host && event.composedPath().includes(host)) return;
+
   window.clearTimeout(debounceTimer);
   debounceTimer = window.setTimeout(async () => {
     const settings = await loadSettings();

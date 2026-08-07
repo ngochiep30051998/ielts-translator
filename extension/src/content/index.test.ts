@@ -111,6 +111,53 @@ describe('content script — bôi đen hiện icon, bấm icon mới dịch', ()
     );
   });
 
+  /**
+   * Bấm chuột thật: mousedown → mouseup → click. `.click()` chỉ phát mỗi `click`, nên
+   * dùng nó là bỏ sót đúng sự kiện gây lỗi — `mouseup` nổi từ trong shadow DOM ra
+   * `document` và khởi động lại debounce chọn-chữ.
+   */
+  function realClick(el: HTMLElement): void {
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true, cancelable: true }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, composed: true }));
+    el.click();
+  }
+
+  it('kết quả từ cache không bị debounce của chính cú bấm icon đè mất', async () => {
+    // Cache trả gần như tức thì nên kết quả hiện TRƯỚC mốc 250ms; nếu mouseup của cú
+    // bấm icon khởi động lại debounce thì tới 250ms icon sẽ vẽ đè lên kết quả và người
+    // dùng thấy nó "hiện xong rồi biến mất". Đường Gemini che được lỗi này vì nó trả về
+    // sau 250ms nên kết quả đè ngược lại icon.
+    await selectText('mitigate');
+
+    realClick(iconButton()!);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shadow().textContent).toContain('giảm nhẹ');
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 10);
+
+    expect(iconButton()).toBeNull();
+    expect(shadow().textContent).toContain('giảm nhẹ');
+  });
+
+  it('bấm Lưu vào sổ không kích hoạt một lượt dịch lại đè lên thông báo', async () => {
+    // Lỗi có sẵn từ trước, cùng gốc với ca trên: mọi mouseup trong bubble đều khởi
+    // động lại debounce. Thông báo "Đã lưu vào sổ" biến mất sau 250ms mà không ai
+    // hiểu vì sao.
+    await selectText('mitigate');
+    realClick(iconButton()!);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const save = shadow().querySelector('[data-action="save"]') as HTMLElement;
+    realClick(save);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shadow().textContent).toContain('Đã lưu vào sổ');
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 10);
+
+    expect(shadow().textContent).toContain('Đã lưu vào sổ');
+    expect(iconButton()).toBeNull();
+  });
+
   it('đoạn quá dài ra bubble lỗi, không ra icon', async () => {
     await selectText('x'.repeat(1501));
 
