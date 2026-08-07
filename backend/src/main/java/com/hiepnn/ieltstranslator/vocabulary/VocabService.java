@@ -6,6 +6,7 @@ import com.hiepnn.ieltstranslator.common.ErrorCode;
 import com.hiepnn.ieltstranslator.vocabulary.dto.SaveVocabRequest;
 import com.hiepnn.ieltstranslator.vocabulary.dto.SaveVocabResponse;
 import com.hiepnn.ieltstranslator.vocabulary.dto.VocabEntryDto;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -22,12 +23,14 @@ public class VocabService {
     private final VocabEntryRepository repository;
     private final CsvExporter csvExporter;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher events;
 
     public VocabService(VocabEntryRepository repository, CsvExporter csvExporter,
-                        ObjectMapper objectMapper) {
+                        ObjectMapper objectMapper, ApplicationEventPublisher events) {
         this.repository = repository;
         this.csvExporter = csvExporter;
         this.objectMapper = objectMapper;
+        this.events = events;
     }
 
     /**
@@ -63,7 +66,11 @@ public class VocabService {
         entry.setExamples(request.examples() == null
                 ? objectMapper.createArrayNode() : request.examples());
 
-        return new SaveVocabResponse(repository.save(entry).getId(), false);
+        // Chỉ phát sự kiện ở nhánh lưu MỚI. Nhánh alreadyExists đã return sớm ở trên,
+        // nên không có chuyện lưu lại một từ cũ mà lịch ôn của nó bị đặt lại từ đầu.
+        VocabEntry saved = repository.save(entry);
+        events.publishEvent(new VocabEntrySavedEvent(saved));
+        return new SaveVocabResponse(saved.getId(), false);
     }
 
     private void mergeTags(VocabEntry entry, List<String> incoming) {

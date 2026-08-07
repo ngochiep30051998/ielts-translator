@@ -20,6 +20,24 @@ vi.stubGlobal('chrome', {
       clear: async () => store.clear(),
     },
   },
-  runtime: { sendMessage: vi.fn(), lastError: undefined },
-  sidePanel: { open: vi.fn(), setPanelBehavior: vi.fn() },
+  runtime: {
+    sendMessage: vi.fn(),
+    lastError: undefined,
+    onMessage: { addListener: vi.fn() },
+    onStartup: { addListener: vi.fn() },
+    onInstalled: { addListener: vi.fn() },
+  },
+  // setPanelBehavior phải trả Promise: service worker gọi .catch() ngay lúc import.
+  sidePanel: { open: vi.fn(), setPanelBehavior: vi.fn(async () => {}) },
+  tabs: { query: vi.fn(async () => []), sendMessage: vi.fn() },
+  commands: { onCommand: { addListener: vi.fn() } },
+  alarms: {
+    create: vi.fn(),
+    get: vi.fn(async () => undefined),
+    onAlarm: { addListener: vi.fn() },
+  },
+  action: {
+    setBadgeText: vi.fn(),
+    setBadgeBackgroundColor: vi.fn(),
+  },
 });

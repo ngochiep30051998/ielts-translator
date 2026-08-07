@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { TranslateTab } from './TranslateTab';
 import { VocabTab } from './VocabTab';
+import { ReviewTab } from './ReviewTab';
+import { QuizTab } from './QuizTab';
 
-type Tab = 'translate' | 'vocab';
+type Tab = 'translate' | 'vocab' | 'review' | 'quiz';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'translate', label: 'Dịch' },
   { id: 'vocab', label: 'Sổ từ' },
+  { id: 'review', label: 'Ôn tập' },
+  { id: 'quiz', label: 'Quiz' },
 ];
 
 export function App() {
@@ -32,7 +36,10 @@ export function App() {
       </nav>
 
       <main className="content" id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {tab === 'translate' ? <TranslateTab /> : <VocabTab />}
+        {tab === 'translate' && <TranslateTab />}
+        {tab === 'vocab' && <VocabTab />}
+        {tab === 'review' && <ReviewTab />}
+        {tab === 'quiz' && <QuizTab />}
       </main>
     </div>
   );

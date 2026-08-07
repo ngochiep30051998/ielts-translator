@@ -35,7 +35,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
 
     @Test
     void returnsDirectionModeAndPayload() throws Exception {
-        when(geminiClient.generateJson(anyString(), any()))
+        when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenReturn(objectMapper.createObjectNode().put("meaning_vi", "tái tạo"));
 
         mockMvc.perform(post("/api/translate")
@@ -52,7 +52,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
 
     @Test
     void quotaErrorReturns429WithErrorShape() throws Exception {
-        when(geminiClient.generateJson(anyString(), any()))
+        when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenThrow(AppException.of(ErrorCode.GEMINI_QUOTA, "Đã hết quota Gemini"));
 
         mockMvc.perform(post("/api/translate")
@@ -66,7 +66,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
 
     @Test
     void unavailableErrorReturns503AndIsMarkedRetryable() throws Exception {
-        when(geminiClient.generateJson(anyString(), any()))
+        when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenThrow(AppException.of(ErrorCode.GEMINI_UNAVAILABLE, "Gemini không phản hồi kịp"));
 
         mockMvc.perform(post("/api/translate")

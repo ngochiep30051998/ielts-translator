@@ -5,6 +5,7 @@ import com.hiepnn.ieltstranslator.common.AppException;
 import com.hiepnn.ieltstranslator.common.ErrorCode;
 import com.hiepnn.ieltstranslator.common.gemini.GeminiClient;
 import com.hiepnn.ieltstranslator.common.gemini.GeminiProperties;
+import com.hiepnn.ieltstranslator.common.gemini.GeminiTimeout;
 import com.hiepnn.ieltstranslator.translation.cache.LookupCache;
 import com.hiepnn.ieltstranslator.translation.cache.LookupCacheRepository;
 import com.hiepnn.ieltstranslator.translation.dto.TranslateRequest;
@@ -64,7 +65,8 @@ public class TranslationService {
         }
 
         Map<String, Object> schema = TranslationSchemas.of(direction, mode);
-        JsonNode payload = geminiClient.generateJson(template.render(text, context), schema);
+        JsonNode payload = geminiClient.generateJson(template.render(text, context), schema,
+                GeminiTimeout.TRANSLATE);
 
         cacheRepository.save(new LookupCache(hash, text, direction.name(), mode.name(),
                 geminiProperties.model(), template.version(), payload));

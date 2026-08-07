@@ -89,3 +89,91 @@ export interface SaveVocabResponse {
   id: number;
   alreadyExists: boolean;
 }
+
+/** Mức người dùng tự chấm sau khi lật thẻ. Gương của enum Rating phía backend. */
+export type Rating = 'AGAIN' | 'HARD' | 'GOOD' | 'EASY';
+
+export type CardState = 'NEW' | 'REVIEW' | 'RELEARNING';
+
+/** Gương của CardDto phía backend — thẻ đã gộp sẵn dữ liệu vocab. */
+export interface CardDto {
+  id: number;
+  vocabEntryId: number;
+  term: string;
+  ipa: string | null;
+  pos: string;
+  meaningVi: string;
+  definitionEn: string | null;
+  cefr: string | null;
+  bandLevel: string | null;
+  collocations: unknown;
+  examples: unknown;
+  state: CardState;
+  dueDate: string;
+  /** 3 nghĩa tiếng Việt SAI, làm mồi nhử cho câu hỏi EN → VI. Rỗng khi backend chưa sinh kịp. */
+  viDistractors: string[];
+  /** 3 từ tiếng Anh SAI, làm mồi nhử cho câu hỏi VI → EN. Rỗng khi backend chưa sinh kịp. */
+  enDistractors: string[];
+}
+
+export interface ReviewResponse {
+  nextDueDate: string;
+  intervalDays: number;
+  easeFactor: number;
+}
+
+export interface SrsStats {
+  dueCount: number;
+  newCount: number;
+  learnedCount: number;
+}
+
+/** Gương của enum QuizType phía backend. */
+export type QuizType = 'FILL_BLANK' | 'COLLOCATION_CHOICE' | 'FREE_WRITE';
+
+/**
+ * Gương của QuizItemDto phía backend. KHÔNG chứa đáp án — backend cố ý không gửi.
+ *
+ * Field nào có mặt phụ thuộc `type`, nên mọi chỗ render phải phân nhánh theo `type`:
+ *
+ * | field       | FILL_BLANK      | COLLOCATION_CHOICE | FREE_WRITE |
+ * |-------------|-----------------|--------------------|------------|
+ * | term        | null            | có                 | có         |
+ * | sentence    | có, chứa "___"  | null               | null       |
+ * | options     | null            | đúng 4 phần tử     | null       |
+ *
+ * `term` null với FILL_BLANK là CỐ Ý: term chính là đáp án của loại đó.
+ */
+export interface QuizItemDto {
+  id: number;
+  type: QuizType;
+  vocabEntryId: number;
+  term: string | null;
+  question: string;
+  sentence: string | null;
+  /**
+   * Đã được backend xáo trộn sẵn lúc sinh đề. TUYỆT ĐỐI KHÔNG xáo lại ở panel:
+   * câu trả lời gửi lên là index 0-based trong CHÍNH mảng này. Xáo lại = mọi
+   * câu trắc nghiệm chấm sai mà không có lỗi nào nổ ra.
+   *
+   * (Khác hẳn ReviewTab của Phase 2 — ở đó panel tự xáo vì backend gửi cả đáp
+   * án đúng lẫn mồi nhử. Đừng bê pattern đó sang đây.)
+   *
+   * Được phép xáo THỨ TỰ CÁC CÂU HỎI trong đề (mảng QuizItemDto[]).
+   * KHÔNG được phép xáo mảng `options` bên trong một câu. Hai chuyện khác nhau.
+   */
+  options: string[] | null;
+}
+
+/**
+ * Gương của AnswerResultDto phía backend.
+ *
+ * `improvedVersion` chỉ non-null với FREE_WRITE. Với hai loại kia luôn null —
+ * nghĩa là "loại này không có khái niệm đó", không phải "chưa chấm xong".
+ */
+export interface AnswerResult {
+  correct: boolean;
+  score: number;
+  feedback: string;
+  improvedVersion: string | null;
+}

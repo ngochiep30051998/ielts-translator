@@ -23,5 +23,10 @@ public abstract class AbstractPostgresIT {
     static void defaultProps(DynamicPropertyRegistry registry) {
         registry.add("gemini.api-key", () -> "test-key");
         registry.add("gemini.retry-backoff-millis", () -> 10L);
+        // Cổng chết trên loopback: mọi đường gọi Gemini KHÔNG được mock (ví dụ
+        // DistractorGenerator chạy nền khi test lưu từ) sẽ bị connection refused ngay
+        // lập tức, thay vì bay ra generativelanguage.googleapis.com thật bằng "test-key".
+        // Không có test nào được phép phụ thuộc mạng; test cần Gemini thì @MockitoBean nó.
+        registry.add("gemini.base-url", () -> "http://127.0.0.1:1");
     }
 }

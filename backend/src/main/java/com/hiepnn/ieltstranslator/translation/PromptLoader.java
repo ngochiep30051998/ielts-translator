@@ -20,14 +20,23 @@ public class PromptLoader {
     private final Map<String, PromptTemplate> cache = new ConcurrentHashMap<>();
 
     public PromptTemplate load(Direction direction, Mode mode) {
-        String fileName = fileNameFor(direction, mode);
-        return cache.computeIfAbsent(fileName, this::readTemplate);
+        return load(fileNameFor(direction, mode));
     }
 
+    /**
+     * @param fileName tên file trong {@code resources/prompts}, ví dụ "srs-distractors.md"
+     */
+    public PromptTemplate load(String fileName) {
+        return cache.computeIfAbsent("prompts/" + fileName, this::readTemplate);
+    }
+
+    // Trả tên file TRẦN, không có tiền tố "prompts/": load(String) mới là chỗ ghép tiền
+    // tố. Thêm lại "prompts/" ở đây thì đường dẫn thành "prompts/prompts/..." và cả bốn
+    // prompt dịch chết ngay từ lần tra đầu tiên.
     private String fileNameFor(Direction direction, Mode mode) {
         String dir = direction == Direction.EN_VI ? "en-vi" : "vi-en";
         String md = mode == Mode.WORD ? "word" : "sentence";
-        return "prompts/" + dir + "-" + md + ".md";
+        return dir + "-" + md + ".md";
     }
 
     private PromptTemplate readTemplate(String path) {

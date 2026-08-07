@@ -21,25 +21,31 @@ public class GeminiClient {
     private static final Logger log = LoggerFactory.getLogger(GeminiClient.class);
     private static final int MAX_ATTEMPTS = 2;
 
-    private final RestClient restClient;
+    private final Map<GeminiTimeout, RestClient> restClients;
     private final GeminiProperties props;
     private final ObjectMapper objectMapper;
 
-    public GeminiClient(RestClient geminiRestClient, GeminiProperties props, ObjectMapper objectMapper) {
-        this.restClient = geminiRestClient;
+    public GeminiClient(Map<GeminiTimeout, RestClient> geminiRestClients,
+                        GeminiProperties props, ObjectMapper objectMapper) {
+        this.restClients = geminiRestClients;
         this.props = props;
         this.objectMapper = objectMapper;
     }
 
     /**
-     * Gọi Gemini với structured output. Chỉ retry lỗi tạm thời (5xx, timeout,
-     * JSON hỏng) đúng 1 lần. Lỗi quota không retry.
+     * Gọi Gemini với structured output ở mức timeout {@code tier}. Chỉ retry lỗi tạm thời
+     * (5xx, timeout, JSON hỏng) đúng 1 lần. Lỗi quota không retry.
+     *
+     * <p>CỐ Ý không có overload hai tham số mặc định về TRANSLATE: overload cho phép một
+     * call sinh quiz lỡ tay chạy ở mức 15 giây — biên dịch sạch, test xanh, chỉ hỏng trên
+     * máy người dùng khi Gemini chậm thật. Bắt buộc truyền tier thì compiler chỉ ra hết.
      */
-    public JsonNode generateJson(String prompt, Map<String, Object> responseSchema) {
+    public JsonNode generateJson(String prompt, Map<String, Object> responseSchema,
+                                 GeminiTimeout tier) {
         AppException last = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                return callOnce(prompt, responseSchema);
+                return callOnce(prompt, responseSchema, tier);
             } catch (AppException ex) {
                 // Chỉ retry lỗi tạm thời (server tạm ngưng, JSON hỏng do model trả sai định
                 // dạng). Liệt kê "được retry" thay vì "không được retry" để an toàn hơn khi
@@ -60,7 +66,8 @@ public class GeminiClient {
         throw last;
     }
 
-    private JsonNode callOnce(String prompt, Map<String, Object> responseSchema) {
+    private JsonNode callOnce(String prompt, Map<String, Object> responseSchema,
+                              GeminiTimeout tier) {
         Map<String, Object> body = Map.of(
                 "contents", List.of(Map.of("role", "user",
                         "parts", List.of(Map.of("text", prompt)))),
@@ -70,7 +77,7 @@ public class GeminiClient {
 
         ResponseEntity<String> response;
         try {
-            response = restClient.post()
+            response = restClients.get(tier).post()
                     .uri(uri -> uri.path("/v1beta/models/{model}:generateContent")
                             .queryParam("key", props.apiKey())
                             .build(props.model()))

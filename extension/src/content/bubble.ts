@@ -14,6 +14,12 @@ const ICONS = {
   speak: '<path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>',
   save: '<path d="M12 5v14M5 12h14"/>',
   expand: '<path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"/>',
+  // Sách mở: hai trang và gáy ở giữa. Cố ý KHÔNG dùng glyph chữ tượng hình như các bộ
+  // icon "translate" thông dụng — nét chữ Hán trong một app học tiếng Anh gây hiểu nhầm.
+  translate:
+    '<path d="M12 7v14"/>'
+    + '<path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5'
+    + 'a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3Z"/>',
 };
 
 function icon(path: string): SVGSVGElement {
@@ -81,6 +87,26 @@ function button(
     onClick();
   });
   return el;
+}
+
+/**
+ * Chỉ một icon, không chữ — trạng thái đầu tiên sau khi bôi đen. Dịch chỉ chạy khi
+ * người dùng bấm vào đây, nên bôi đen để copy hay đọc lại không tốn lượt gọi nào.
+ *
+ * `mousedown` bị chặn vì trình duyệt collapse selection của trang khi nhấn chuột lên
+ * một nút. Không chặn thì vệt bôi đen biến mất ngay lúc bấm, trông như thao tác hỏng.
+ * (Dữ liệu để dịch đã được chụp từ trước nên không phụ thuộc vào selection còn hay mất
+ * — chặn ở đây thuần tuý cho phần nhìn.)
+ */
+export function showIconBubble(rect: DOMRect, onTranslate: () => void): void {
+  const root = mountShadow();
+  const container = positionedContainer(rect, 'icon-only');
+
+  const el = button('translate', 'Dịch đoạn đã chọn', onTranslate, ICONS.translate);
+  el.addEventListener('mousedown', (event) => event.preventDefault());
+
+  container.appendChild(el);
+  root.appendChild(container);
 }
 
 export function showLoadingBubble(rect: DOMRect): void {

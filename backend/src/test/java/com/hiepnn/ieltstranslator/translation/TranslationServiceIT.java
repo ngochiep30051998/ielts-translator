@@ -28,7 +28,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
     @BeforeEach
     void reset() {
         cacheRepository.deleteAll();
-        when(geminiClient.generateJson(anyString(), any()))
+        when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenReturn(objectMapper.createObjectNode().put("meaning_vi", "tái tạo"));
     }
 
@@ -56,7 +56,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
     void firstCallHitsGeminiAndPersistsCache() {
         service.translate(new TranslateRequest("renewable", null, null, null));
 
-        verify(geminiClient, times(1)).generateJson(anyString(), any());
+        verify(geminiClient, times(1)).generateJson(anyString(), any(), any());
         assertThat(cacheRepository.count()).isEqualTo(1);
     }
 
@@ -110,7 +110,8 @@ class TranslationServiceIT extends AbstractPostgresIT {
         service.translate(new TranslateRequest("renewable", null, null, null));
 
         verify(geminiClient).generateJson(anyString(),
-                eq(TranslationSchemas.of(Direction.EN_VI, Mode.WORD)));
+                eq(TranslationSchemas.of(Direction.EN_VI, Mode.WORD)),
+                eq(com.hiepnn.ieltstranslator.common.gemini.GeminiTimeout.TRANSLATE));
     }
 
     @Test
@@ -119,7 +120,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
 
         verify(geminiClient).generateJson(
                 argThat(prompt -> prompt.contains("renewable") && prompt.contains("some context")),
-                any());
+                any(), any());
     }
 
     @Test

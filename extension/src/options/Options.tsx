@@ -58,7 +58,7 @@ export function Options() {
               checked={settings.triggerMode === 'auto'}
               onChange={() => setSettings({ ...settings, triggerMode: 'auto' })}
             />
-            Tự hiện bubble khi bôi đen
+            Hiện icon khi bôi đen
           </label>
           <label>
             <input
@@ -71,6 +71,18 @@ export function Options() {
           </label>
         </div>
       </fieldset>
+
+      <label htmlFor="newWordsPerDay">Từ mới mỗi ngày</label>
+      <input
+        id="newWordsPerDay"
+        type="number"
+        min={0}
+        max={200}
+        value={settings.newWordsPerDay}
+        onChange={(e) =>
+          setSettings({ ...settings, newWordsPerDay: Number(e.target.value) })
+        }
+      />
 
       <label htmlFor="voiceName">Giọng đọc (để trống dùng giọng en mặc định)</label>
       <input

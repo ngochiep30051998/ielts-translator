@@ -40,7 +40,11 @@ gemini:
   api-key: ${GEMINI_API_KEY:}
   model: ${GEMINI_MODEL:gemini-2.5-flash}
   base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+  # Ba mức vì độ dài output khác nhau một bậc. Dịch một từ vài trăm token; sinh một lô
+  # 10 câu quiz vài nghìn. Xem GeminiTimeout.
   timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:15}
+  quiz-generate-timeout-seconds: ${GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS:30}
+  quiz-grade-timeout-seconds: ${GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS:20}
   retry-backoff-millis: ${GEMINI_RETRY_BACKOFF_MS:1000}
 
 extension:
