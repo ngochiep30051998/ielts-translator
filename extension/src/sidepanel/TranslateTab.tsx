@@ -1,22 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { sendToBackground } from '../shared/messages';
 import type { TranslateResult } from '../shared/types';
 import { PayloadView } from './PayloadViews';
 
 type Status = { text: string; kind: 'ok' | 'bad' } | null;
 
-export function TranslateTab() {
-  const [result, setResult] = useState<TranslateResult | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [status, setStatus] = useState<Status>(null);
+export interface TranslateTabProps {
+  result: TranslateResult | null;
+  loaded: boolean;
+}
 
-  useEffect(() => {
-    void (async () => {
-      const response = await sendToBackground({ type: 'GET_LAST_RESULT' });
-      if (response.ok) setResult(response.data);
-      setLoaded(true);
-    })();
-  }, []);
+export function TranslateTab({ result, loaded }: TranslateTabProps) {
+  const [status, setStatus] = useState<Status>(null);
 
   async function save() {
     if (!result) return;

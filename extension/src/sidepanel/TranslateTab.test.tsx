@@ -4,15 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { TranslateTab } from './TranslateTab';
 import type { TranslateResult } from '../shared/types';
 
-function mockLastResult(result: TranslateResult | null) {
+function mockSave(response: unknown) {
   (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
-    async (request: { type: string }) => {
-      if (request.type === 'GET_LAST_RESULT') return { ok: true, data: result };
-      if (request.type === 'SAVE_WORD') return { ok: true, data: { id: 1, alreadyExists: false } };
-      return { ok: true, data: null };
-    },
+    async () => response,
   );
 }
+
+const SAVE_OK = { ok: true, data: { id: 1, alreadyExists: false } };
 
 const enViWord: TranslateResult = {
   direction: 'EN_VI', mode: 'WORD', cached: false, sourceText: 'renewable',
@@ -32,15 +30,15 @@ describe('TranslateTab', () => {
   });
 
   it('hiện trạng thái rỗng khi chưa dịch gì', async () => {
-    mockLastResult(null);
-    render(<TranslateTab />);
+    mockSave(SAVE_OK);
+    render(<TranslateTab result={null} loaded />);
 
     expect(await screen.findByText(/Bôi đen một đoạn text/i)).toBeInTheDocument();
   });
 
   it('hiện đầy đủ thông tin cho EN→VI tra từ', async () => {
-    mockLastResult(enViWord);
-    render(<TranslateTab />);
+    mockSave(SAVE_OK);
+    render(<TranslateTab result={enViWord} loaded />);
 
     expect(await screen.findByText('renewable')).toBeInTheDocument();
     expect(screen.getByText('/rɪˈnjuːəbl/')).toBeInTheDocument();
@@ -52,8 +50,8 @@ describe('TranslateTab', () => {
   });
 
   it('hiện band kèm chú thích đây là ước lượng', async () => {
-    mockLastResult(enViWord);
-    render(<TranslateTab />);
+    mockSave(SAVE_OK);
+    render(<TranslateTab result={enViWord} loaded />);
 
     // Payload có 2 chỗ gắn band (band_level của từ và band của từ đồng nghĩa),
     // cả hai đều phải mang chú thích ước lượng; chỗ đầu là band của chính từ.
@@ -63,15 +61,15 @@ describe('TranslateTab', () => {
   });
 
   it('hiện bản dịch và từ khoá cho EN→VI tra câu', async () => {
-    mockLastResult({
+    mockSave(SAVE_OK);
+    render(<TranslateTab result={{
       direction: 'EN_VI', mode: 'SENTENCE', cached: false, sourceText: 'a sentence',
       payload: {
         translation_vi: 'Chính phủ nên đầu tư nhiều hơn.',
         key_vocab: [{ term: 'allocate', meaning_vi: 'phân bổ', band_level: '7.0' }],
         structure_note: 'Câu dùng mệnh đề quan hệ.',
       },
-    });
-    render(<TranslateTab />);
+    }} loaded />);
 
     expect(await screen.findByText('Chính phủ nên đầu tư nhiều hơn.')).toBeInTheDocument();
     expect(screen.getByText('allocate')).toBeInTheDocument();
@@ -79,7 +77,8 @@ describe('TranslateTab', () => {
   });
 
   it('hiện lựa chọn thay thế cho VI→EN tra từ', async () => {
-    mockLastResult({
+    mockSave(SAVE_OK);
+    render(<TranslateTab result={{
       direction: 'VI_EN', mode: 'WORD', cached: false, sourceText: 'tái tạo',
       payload: {
         best_en: 'renewable',
@@ -88,8 +87,7 @@ describe('TranslateTab', () => {
         collocations: ['renewable energy'],
         examples: ['We need renewable energy.'],
       },
-    });
-    render(<TranslateTab />);
+    }} loaded />);
 
     expect(await screen.findByText('renewable')).toBeInTheDocument();
     expect(screen.getByText('sustainable')).toBeInTheDocument();
@@ -97,7 +95,8 @@ describe('TranslateTab', () => {
   });
 
   it('hiện bản band 6.5 kèm giải thích và mục nên tránh cho VI→EN tra câu', async () => {
-    mockLastResult({
+    mockSave(SAVE_OK);
+    render(<TranslateTab result={{
       direction: 'VI_EN', mode: 'SENTENCE', cached: false, sourceText: 'câu tiếng Việt',
       payload: {
         band65_version: 'The government should allocate more funding.',
@@ -105,8 +104,7 @@ describe('TranslateTab', () => {
         key_phrases: ['allocate funding'],
         avoid: [{ phrase: 'give more money', reason: 'Quá thông tục cho văn viết học thuật.' }],
       },
-    });
-    render(<TranslateTab />);
+    }} loaded />);
 
     expect(await screen.findByText('The government should allocate more funding.')).toBeInTheDocument();
     expect(screen.getByText('Dùng allocate thay cho give để trang trọng hơn.')).toBeInTheDocument();
@@ -115,8 +113,8 @@ describe('TranslateTab', () => {
   });
 
   it('bấm Lưu từ gửi SAVE_WORD và báo đã lưu', async () => {
-    mockLastResult(enViWord);
-    render(<TranslateTab />);
+    mockSave(SAVE_OK);
+    render(<TranslateTab result={enViWord} loaded />);
 
     await userEvent.click(await screen.findByRole('button', { name: /Lưu từ/i }));
 
@@ -127,13 +125,8 @@ describe('TranslateTab', () => {
   });
 
   it('báo Đã có trong sổ khi backend trả alreadyExists', async () => {
-    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
-      async (request: { type: string }) => {
-        if (request.type === 'GET_LAST_RESULT') return { ok: true, data: enViWord };
-        return { ok: true, data: { id: 1, alreadyExists: true } };
-      },
-    );
-    render(<TranslateTab />);
+    mockSave({ ok: true, data: { id: 1, alreadyExists: true } });
+    render(<TranslateTab result={enViWord} loaded />);
 
     await userEvent.click(await screen.findByRole('button', { name: /Lưu từ/i }));
 
@@ -141,13 +134,8 @@ describe('TranslateTab', () => {
   });
 
   it('hiện thông báo lỗi khi lưu thất bại', async () => {
-    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
-      async (request: { type: string }) => {
-        if (request.type === 'GET_LAST_RESULT') return { ok: true, data: enViWord };
-        return { ok: false, error: { code: 'BACKEND_DOWN', message: 'Backend chưa chạy', retryable: true } };
-      },
-    );
-    render(<TranslateTab />);
+    mockSave({ ok: false, error: { code: 'BACKEND_DOWN', message: 'Backend chưa chạy', retryable: true } });
+    render(<TranslateTab result={enViWord} loaded />);
 
     await userEvent.click(await screen.findByRole('button', { name: /Lưu từ/i }));
 
