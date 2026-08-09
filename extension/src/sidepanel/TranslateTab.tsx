@@ -29,6 +29,9 @@ export function TranslateTab({
   const tooLong = !check.ok && check.reason === 'TOO_LONG';
 
   async function translate(text: string) {
+    // Guard nằm ở đây, không phải ở từng call site: cả nút "Dịch" (qua submit()) lẫn nút
+    // "Thử lại" (gọi translate() thẳng) đều phải đi qua đúng một chỗ chặn re-entrant.
+    if (translating) return;
     setTranslating(true);
     setFailure(null);
     setStatus(null);
@@ -40,7 +43,7 @@ export function TranslateTab({
 
   // Chặn ở đây chứ không chỉ dựa vào `disabled` của nút: Ctrl+Enter không đi qua nút.
   function submit() {
-    if (!check.ok || translating) return;
+    if (!check.ok) return;
     void translate(check.text);
   }
 
