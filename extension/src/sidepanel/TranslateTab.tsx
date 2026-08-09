@@ -41,7 +41,8 @@ export function TranslateTab({
     else setFailure({ error: response.error, text });
   }
 
-  // Chặn ở đây chứ không chỉ dựa vào `disabled` của nút: Ctrl+Enter không đi qua nút.
+  // Guard `translating` nằm trong translate(), không ở đây: nó thuộc về hàm giữ
+  // invariant, không thuộc về một call site.
   function submit() {
     if (!check.ok) return;
     void translate(check.text);

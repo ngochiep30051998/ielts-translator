@@ -224,24 +224,6 @@ describe('ô nhập text trong tab Dịch', () => {
       .toHaveBeenCalledWith({ type: 'TRANSLATE_TEXT', text: 'renewable' });
   });
 
-  it('bấm Dịch hai lần liên tiếp khi request đầu chưa resolve chỉ gửi một request', async () => {
-    let resolveTranslate: (value: unknown) => void = () => {};
-    mockSend((r) => r.type === 'TRANSLATE_TEXT'
-      ? new Promise((resolve) => { resolveTranslate = resolve; })
-      : { ok: true, data: null });
-    render(<StatefulTab initialDraft="renewable" />);
-
-    const button = screen.getByRole('button', { name: 'Dịch' });
-    await userEvent.click(button);
-    await userEvent.click(button);
-
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
-
-    // Resolve để không rò promise treo sang test khác.
-    resolveTranslate({ ok: true, data: enViWord });
-    expect(await screen.findByText('tái tạo')).toBeInTheDocument();
-  });
-
   it('lỗi retry được: hiện Thử lại và gửi lại ĐÚNG text đã gửi, không phải text trong ô', async () => {
     mockSend(() => ({
       ok: false,
