@@ -56,4 +56,25 @@ describe('App', () => {
     expect(await screen.findByText('kiên cường')).toBeInTheDocument();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
   });
+
+  it('điền sẵn ô nhập bằng text của kết quả gần nhất', async () => {
+    mockBackend(lastResult);
+    render(<App />);
+
+    expect(await screen.findByDisplayValue('was resiliented')).toBeInTheDocument();
+  });
+
+  it('đổi sang tab khác rồi quay lại vẫn giữ nguyên text đang gõ dở', async () => {
+    mockBackend(null);
+    render(<App />);
+
+    await userEvent.type(await screen.findByLabelText(/Text cần dịch/i), 'resilient');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Sổ từ' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Dịch' }));
+
+    // Khoá quyết định "state ở App": đẩy state ngược xuống TranslateTab cho gọn
+    // sẽ làm ca này đỏ ngay.
+    expect(screen.getByLabelText(/Text cần dịch/i)).toHaveValue('resilient');
+  });
 });

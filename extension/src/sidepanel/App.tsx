@@ -17,6 +17,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function App() {
   const [tab, setTab] = useState<Tab>('translate');
+  const [draft, setDraft] = useState('');
   const [result, setResult] = useState<TranslateResult | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -27,6 +28,9 @@ export function App() {
     void (async () => {
       const response = await sendToBackground({ type: 'GET_LAST_RESULT' });
       if (response.ok) setResult(response.data);
+      // Tự điền để sửa lại đoạn bôi đen hụt rồi dịch lại, không phải gõ từ đầu.
+      // Chỉ chạy một lần mỗi lần mở panel — hết lần này là nháp thuộc về người dùng.
+      if (response.ok && response.data) setDraft(response.data.sourceText);
       setLoaded(true);
     })();
   }, []);
@@ -51,7 +55,12 @@ export function App() {
       </nav>
 
       <main className="content" id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {tab === 'translate' && <TranslateTab result={result} loaded={loaded} />}
+        {tab === 'translate' && (
+          <TranslateTab
+            draft={draft} onDraftChange={setDraft}
+            result={result} onResult={setResult} loaded={loaded}
+          />
+        )}
         {tab === 'vocab' && <VocabTab />}
         {tab === 'review' && <ReviewTab />}
         {tab === 'quiz' && <QuizTab />}
