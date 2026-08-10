@@ -4,7 +4,14 @@ import { vi } from 'vitest';
 // chrome.storage.local giả lập bằng Map, đủ cho mọi test Phase 1
 const store = new Map<string, unknown>();
 
-vi.stubGlobal('chrome', {
+/**
+ * Gán THẲNG vào globalThis chứ không dùng vi.stubGlobal.
+ *
+ * `vi.stubGlobal` ghi lại giá trị gốc (undefined) và `vi.unstubAllGlobals()` trong
+ * afterEach của một test file sẽ XOÁ luôn `chrome` cho những test sau trong cùng file —
+ * lỗi hiện ra là "chrome is not defined" ở một chỗ chẳng liên quan gì.
+ */
+Object.assign(globalThis, { chrome: {
   storage: {
     local: {
       get: async (keys: string[]) => {
@@ -16,6 +23,9 @@ vi.stubGlobal('chrome', {
       },
       set: async (items: Record<string, unknown>) => {
         for (const [key, value] of Object.entries(items)) store.set(key, value);
+      },
+      remove: async (keys: string[] | string) => {
+        for (const key of Array.isArray(keys) ? keys : [keys]) store.delete(key);
       },
       clear: async () => store.clear(),
     },
@@ -40,4 +50,9 @@ vi.stubGlobal('chrome', {
     setBadgeText: vi.fn(),
     setBadgeBackgroundColor: vi.fn(),
   },
-});
+  // chrome.identity chỉ tồn tại ở service worker; test luồng đăng nhập cần cả hai hàm này.
+  identity: {
+    getRedirectURL: vi.fn(() => 'https://testextensionid.chromiumapp.org/'),
+    launchWebAuthFlow: vi.fn(),
+  },
+} });

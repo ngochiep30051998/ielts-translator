@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface QuizItemRepository extends JpaRepository<QuizItem, Long> {
 
@@ -19,13 +20,20 @@ public interface QuizItemRepository extends JpaRepository<QuizItem, Long> {
      */
     @Query("""
             select qi from QuizItem qi join fetch qi.vocabEntry
-            where qi.vocabEntry.id in :vocabIds
+            where qi.vocabEntry.user.id = :userId
+              and qi.vocabEntry.id in :vocabIds
               and qi.type in :types
               and qi.promptVersion = :promptVersion
               and not exists (select 1 from QuizAttempt qa where qa.quizItem = qi)
             order by qi.id asc
             """)
-    List<QuizItem> findReusable(@Param("vocabIds") Collection<Long> vocabIds,
+    /** Chỉ đề của CHÍNH user: vocabIds có thể đến từ client, không được tin. */
+    List<QuizItem> findReusable(@Param("userId") Long userId,
+                                @Param("vocabIds") Collection<Long> vocabIds,
                                 @Param("types") Collection<QuizType> types,
                                 @Param("promptVersion") int promptVersion);
+
+    /** Câu hỏi của CHÍNH user. Trả rỗng cho câu của người khác → 404 ở tầng trên. */
+    @Query("select qi from QuizItem qi where qi.id = :id and qi.vocabEntry.user.id = :userId")
+    Optional<QuizItem> findOwned(@Param("id") Long id, @Param("userId") Long userId);
 }

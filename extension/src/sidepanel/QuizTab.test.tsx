@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QuizTab } from './QuizTab';
-import type { AnswerResult, QuizItemDto } from '../shared/types';
+import type { AnswerResult, QuizExplanation, QuizItemDto } from '../shared/types';
 
 /* ---------- Dữ liệu mẫu, bám đúng bảng field theo type của hợp đồng ---------- */
 
@@ -47,6 +47,13 @@ const CORRECT: AnswerResult = {
   correct: true, score: 100, feedback: 'Chính xác.', improvedVersion: null,
 };
 
+const EXPLANATION: QuizExplanation = {
+  explanation: '"mitigate" đi với "impact"; "reduce" nhạt hơn.',
+  answerMeaning: 'mitigate = giảm nhẹ',
+  sentenceEn: 'Governments must mitigate the effects of climate change.',
+  sentenceVi: 'Các chính phủ phải giảm nhẹ tác động của biến đổi khí hậu.',
+};
+
 interface Sent { type: string; [key: string]: unknown }
 
 /**
@@ -56,6 +63,7 @@ interface Sent { type: string; [key: string]: unknown }
 function mockBackend(opts: {
   generate?: (request: Sent) => unknown;
   answer?: (request: Sent) => unknown;
+  explain?: (request: Sent) => unknown;
 } = {}) {
   (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
     async (request: Sent) => {
@@ -64,6 +72,9 @@ function mockBackend(opts: {
       }
       if (request.type === 'ANSWER_QUIZ') {
         return opts.answer ? opts.answer(request) : { ok: true, data: CORRECT };
+      }
+      if (request.type === 'EXPLAIN_QUIZ') {
+        return opts.explain ? opts.explain(request) : { ok: true, data: EXPLANATION };
       }
       return { ok: true, data: null };
     },
@@ -507,6 +518,136 @@ describe('QuizTab', () => {
       }
 
       expect(screen.getByRole('button', { name: 'Tạo đề' })).toBeDisabled();
+    });
+  });
+
+  /* ================= Giải thích đáp án ================= */
+
+  describe('giải thích đáp án', () => {
+    /** Dựng một đề đúng hai câu FILL_BLANK rồi trả lời câu đầu. */
+    async function answerFirstFillBlank(opts: {
+      answer?: (request: Sent) => unknown;
+      explain?: (request: Sent) => unknown;
+    } = {}) {
+      mockBackend({
+        generate: (r) => (r.quizType === 'FILL_BLANK'
+          ? { ok: true, data: [fillBlank(1), fillBlank(2)] }
+          : { ok: true, data: [] }),
+        answer: opts.answer,
+        explain: opts.explain,
+      });
+      render(<QuizTab />);
+      await generateOnly('Điền từ');
+
+      await userEvent.type(await screen.findByLabelText('Từ cần điền'), 'reduce');
+      await userEvent.click(screen.getByRole('button', { name: 'Nộp' }));
+      await screen.findByRole('button', { name: 'Giải thích' });
+    }
+
+    it('chưa trả lời thì KHÔNG có nút Giải thích — nó tiết lộ đáp án', async () => {
+      mockBackend({
+        generate: (r) => (r.quizType === 'FILL_BLANK'
+          ? { ok: true, data: [fillBlank(1)] }
+          : { ok: true, data: [] }),
+      });
+      render(<QuizTab />);
+      await generateOnly('Điền từ');
+      await screen.findByLabelText('Từ cần điền');
+
+      expect(screen.queryByRole('button', { name: 'Giải thích' })).not.toBeInTheDocument();
+    });
+
+    it('trả lời ĐÚNG vẫn có nút Giải thích — đoán trúng cũng cần biết vì sao', async () => {
+      await answerFirstFillBlank({ answer: () => ({ ok: true, data: CORRECT }) });
+
+      expect(screen.getByRole('button', { name: 'Giải thích' })).toBeEnabled();
+    });
+
+    it('bấm Giải thích gửi EXPLAIN_QUIZ đúng quizItemId và hiện đủ ba khối', async () => {
+      await answerFirstFillBlank();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Giải thích' }));
+
+      await waitFor(() => expect(sentOf('EXPLAIN_QUIZ')).toHaveLength(1));
+      // Body chỉ có quizItemId: câu trả lời KHÔNG được gửi kèm.
+      expect(sentOf('EXPLAIN_QUIZ')[0]).toEqual({ type: 'EXPLAIN_QUIZ', quizItemId: 1 });
+
+      expect(await screen.findByText(EXPLANATION.explanation)).toBeInTheDocument();
+      expect(screen.getByText('mitigate = giảm nhẹ')).toBeInTheDocument();
+      expect(screen.getByText(EXPLANATION.sentenceEn as string)).toBeInTheDocument();
+      expect(screen.getByText(EXPLANATION.sentenceVi as string)).toBeInTheDocument();
+      // Đã có giải thích thì nút biến mất — bấm lại chỉ tốn thêm một lượt gọi Gemini.
+      expect(screen.queryByRole('button', { name: 'Giải thích' })).not.toBeInTheDocument();
+    });
+
+    it('cặp câu null thì KHÔNG render khối "Dịch câu"', async () => {
+      await answerFirstFillBlank({
+        explain: () => ({
+          ok: true,
+          data: {
+            explanation: 'Bạn đã bỏ qua câu này.',
+            answerMeaning: 'mitigate = giảm nhẹ',
+            sentenceEn: null,
+            sentenceVi: null,
+          } satisfies QuizExplanation,
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Giải thích' }));
+
+      expect(await screen.findByText('Bạn đã bỏ qua câu này.')).toBeInTheDocument();
+      expect(screen.queryByText('Dịch câu')).not.toBeInTheDocument();
+    });
+
+    it('lỗi hiện thông báo và nút Giải thích vẫn bấm lại được', async () => {
+      let calls = 0;
+      await answerFirstFillBlank({
+        explain: () => {
+          calls += 1;
+          return calls === 1
+            ? { ok: false, error: { code: 'GEMINI_UNAVAILABLE', message: 'Gemini đang bận.', retryable: true } }
+            : { ok: true, data: EXPLANATION };
+        },
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Giải thích' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Gemini đang bận.');
+      const retry = screen.getByRole('button', { name: 'Giải thích' });
+      expect(retry).toBeEnabled();
+
+      await userEvent.click(retry);
+
+      expect(await screen.findByText(EXPLANATION.explanation)).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('đang giải thích thì nút Tiếp bị KHOÁ — response về muộn sẽ ghi nhầm sang câu sau', async () => {
+      let release!: (value: unknown) => void;
+      await answerFirstFillBlank({
+        explain: () => new Promise((resolve) => { release = resolve; }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Giải thích' }));
+
+      expect(await screen.findByRole('button', { name: 'Đang giải thích…' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Tiếp' })).toBeDisabled();
+
+      release({ ok: true, data: EXPLANATION });
+      await screen.findByText(EXPLANATION.explanation);
+      expect(screen.getByRole('button', { name: 'Tiếp' })).toBeEnabled();
+    });
+
+    it('sang câu mới thì khối giải thích biến sạch', async () => {
+      await answerFirstFillBlank();
+      await userEvent.click(screen.getByRole('button', { name: 'Giải thích' }));
+      await screen.findByText(EXPLANATION.explanation);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Tiếp' }));
+
+      expect(screen.queryByText(EXPLANATION.explanation)).not.toBeInTheDocument();
+      expect(screen.queryByText('Giải thích')).not.toBeInTheDocument();
+      expect(await screen.findByLabelText('Từ cần điền')).toHaveValue('');
     });
   });
 });

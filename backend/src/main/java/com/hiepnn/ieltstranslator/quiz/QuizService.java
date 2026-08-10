@@ -6,6 +6,7 @@ import com.hiepnn.ieltstranslator.common.ErrorCode;
 import com.hiepnn.ieltstranslator.common.gemini.GeminiClient;
 import com.hiepnn.ieltstranslator.common.gemini.GeminiTimeout;
 import com.hiepnn.ieltstranslator.quiz.dto.AnswerResultDto;
+import com.hiepnn.ieltstranslator.quiz.dto.ExplanationDto;
 import com.hiepnn.ieltstranslator.quiz.dto.GenerateQuizRequest;
 import com.hiepnn.ieltstranslator.quiz.dto.QuizItemDto;
 import com.hiepnn.ieltstranslator.translation.PromptLoader;
@@ -35,24 +36,53 @@ public class QuizService {
                     "improved_version", Map.of("type", "string")),
             "required", List.of("meaning_ok", "grammar_ok", "band_ok", "score", "feedback_vi"));
 
+    static final String EXPLAIN_FILL_BLANK_PROMPT = "quiz-explain-fill-blank.md";
+    static final String EXPLAIN_COLLOCATION_PROMPT = "quiz-explain-collocation.md";
+    static final String EXPLAIN_FREE_WRITE_PROMPT = "quiz-explain-free-write.md";
+
+    /**
+     * CHỈ hai field bắt buộc, và đó là chủ ý.
+     *
+     * <p>{@code sentence_en} không bắt buộc vì hai trong ba loại backend đã tự biết câu
+     * tiếng Anh — nhờ Gemini chép lại một chuỗi đang cầm trong tay là mời nó chép sai.
+     * {@code sentence_vi} không bắt buộc vì có đúng một ca không tồn tại câu nào để dịch
+     * (FREE_WRITE bị bỏ qua); bắt buộc field đó là ép Gemini bịa ra một câu tiếng Việt
+     * không gắn với câu tiếng Anh nào.
+     */
+    private static final Map<String, Object> EXPLAIN_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "explanation_vi", Map.of("type", "string"),
+                    "answer_meaning_vi", Map.of("type", "string"),
+                    "sentence_en", Map.of("type", "string"),
+                    "sentence_vi", Map.of("type", "string")),
+            "required", List.of("explanation_vi", "answer_meaning_vi"));
+
     private final QuizGenerator generator;
+    private final com.hiepnn.ieltstranslator.vocabulary.VocabService vocab;
     private final QuizCandidateRepository candidates;
     private final QuizItemRepository items;
     private final QuizAttemptRepository attempts;
     private final QuizGrader grader;
     private final GeminiClient gemini;
     private final PromptLoader prompts;
+    private final com.hiepnn.ieltstranslator.quota.GeminiQuotaGuard quota;
 
-    public QuizService(QuizGenerator generator, QuizCandidateRepository candidates,
+    public QuizService(QuizGenerator generator,
+                       com.hiepnn.ieltstranslator.vocabulary.VocabService vocab,
+                       QuizCandidateRepository candidates,
                        QuizItemRepository items, QuizAttemptRepository attempts,
-                       QuizGrader grader, GeminiClient gemini, PromptLoader prompts) {
+                       QuizGrader grader, GeminiClient gemini, PromptLoader prompts,
+                       com.hiepnn.ieltstranslator.quota.GeminiQuotaGuard quota) {
         this.generator = generator;
+        this.vocab = vocab;
         this.candidates = candidates;
         this.items = items;
         this.attempts = attempts;
         this.grader = grader;
         this.gemini = gemini;
         this.prompts = prompts;
+        this.quota = quota;
     }
 
     /**
@@ -61,15 +91,17 @@ public class QuizService {
      * huống hoàn toàn bình thường.
      */
     @Transactional
-    public List<QuizItemDto> generate(GenerateQuizRequest request) {
+    public List<QuizItemDto> generate(Long userId, GenerateQuizRequest request) {
+        // request.vocabIds() đến THẲNG từ client. Không lọc thì người dùng đặt tay id của
+        // người khác vào và nhận về đề chứa term + câu ví dụ trong sổ từ của họ.
         List<Long> vocabIds = (request.vocabIds() != null && !request.vocabIds().isEmpty())
-                ? request.vocabIds()
-                : candidates.findCandidates(request.count());
+                ? vocab.filterOwnedIds(userId, request.vocabIds())
+                : candidates.findCandidates(userId, request.count());
         if (vocabIds.isEmpty()) {
             return List.of();
         }
 
-        List<QuizItem> built = generator.buildItems(vocabIds, request.type());
+        List<QuizItem> built = generator.buildItems(userId, vocabIds, request.type());
         List<QuizItemDto> out = new ArrayList<>(built.size());
         for (QuizItem item : built) {
             out.add(toDto(item));
@@ -78,14 +110,14 @@ public class QuizService {
     }
 
     @Transactional
-    public AnswerResultDto answer(Long quizItemId, String answer) {
+    public AnswerResultDto answer(Long userId, Long quizItemId, String answer) {
         String given = answer == null ? "" : answer;
         if (given.length() > MAX_ANSWER_LENGTH) {
             throw AppException.of(ErrorCode.TEXT_TOO_LONG,
                     "Bài viết quá dài (tối đa " + MAX_ANSWER_LENGTH + " ký tự)");
         }
 
-        QuizItem item = items.findById(quizItemId)
+        QuizItem item = items.findOwned(quizItemId, userId)
                 .orElseThrow(() -> AppException.of(ErrorCode.NOT_FOUND,
                         "Không tìm thấy câu hỏi id=" + quizItemId));
 
@@ -100,8 +132,162 @@ public class QuizService {
         return switch (item.getType()) {
             case FILL_BLANK -> gradeFillBlank(item, given);
             case COLLOCATION_CHOICE -> gradeCollocation(item, given);
-            case FREE_WRITE -> gradeFreeWrite(item, given);
+            case FREE_WRITE -> gradeFreeWrite(userId, item, given);
         };
+    }
+
+    /**
+     * Giải thích một câu ĐÃ trả lời. Không ghi gì xuống DB.
+     *
+     * <p>Chưa có lượt làm nào thì ném NOT_FOUND TRƯỚC khi gọi Gemini: response này chứa đáp
+     * án nên nó không được phục vụ một request chưa trả lời, và cũng không được đốt quota
+     * cho request đó.
+     */
+    @Transactional(readOnly = true)
+    public ExplanationDto explain(Long userId, Long quizItemId) {
+        // findOwned chứ không findById: /explain TIẾT LỘ ĐÁP ÁN, nên rò ở đây vừa là rò dữ
+        // liệu vừa là đốt quota Gemini của người khác. Chốt chặn nằm TRƯỚC lượt gọi Gemini,
+        // cùng chỗ với chốt "chưa trả lời thì 404".
+        QuizItem item = items.findOwned(quizItemId, userId)
+                .orElseThrow(() -> AppException.of(ErrorCode.NOT_FOUND,
+                        "Không tìm thấy câu hỏi id=" + quizItemId));
+        QuizAttempt attempt = attempts.findFirstByQuizItem_IdOrderByIdDesc(quizItemId)
+                .orElseThrow(() -> AppException.of(ErrorCode.NOT_FOUND,
+                        "Chưa trả lời câu này nên chưa có gì để giải thích"));
+
+        // switch KHÔNG có nhánh default: thêm QuizType mới phải fail compile ở đây, đúng
+        // nguyên tắc của toDto() và GlobalExceptionHandler.statusFor().
+        ExplainInput input = switch (item.getType()) {
+            case FILL_BLANK -> fillBlankInput(item, attempt);
+            case COLLOCATION_CHOICE -> collocationInput(item, attempt);
+            case FREE_WRITE -> freeWriteInput(item, attempt);
+        };
+
+        quota.consume(userId);
+        PromptTemplate template = prompts.load(input.promptFile());
+        JsonNode payload = gemini.generateJson(template.render(input.vars()),
+                EXPLAIN_SCHEMA, GeminiTimeout.QUIZ_GRADE);
+
+        String explanation = firstNonBlank(payload.path("explanation_vi").asText(""),
+                "Chưa lấy được giải thích cho câu này.");
+        String answerMeaning = firstNonBlank(payload.path("answer_meaning_vi").asText(""),
+                meaningFromVocab(item), "(chưa có nghĩa)");
+
+        // knownSentenceEn khác rỗng nghĩa là BACKEND biết câu tiếng Anh; lúc đó chuỗi Gemini
+        // trả về bị bỏ qua hoàn toàn.
+        String sentenceEn = input.knownSentenceEn().isBlank()
+                ? payload.path("sentence_en").asText("")
+                : input.knownSentenceEn();
+        String sentenceVi = payload.path("sentence_vi").asText("");
+        // Thiếu một nửa thì bỏ cả cặp. Trả một nửa là bắt panel render khối "Dịch câu" với
+        // đúng một dòng trống.
+        if (sentenceEn.isBlank() || sentenceVi.isBlank()) {
+            sentenceEn = null;
+            sentenceVi = null;
+        }
+        return new ExplanationDto(explanation, answerMeaning, sentenceEn, sentenceVi);
+    }
+
+    /**
+     * Đầu vào đã chuẩn hoá cho một lượt giải thích.
+     *
+     * @param knownSentenceEn câu tiếng Anh backend đã biết. RỖNG nghĩa là backend không có
+     *                        câu nào — hoặc vì loại đó cần Gemini nghĩ ra
+     *                        (COLLOCATION_CHOICE), hoặc vì thật sự không có câu nào tồn tại
+     *                        (FREE_WRITE bị bỏ qua). Cả hai ca đều xử lý giống nhau: lấy
+     *                        {@code sentence_en} Gemini trả, rỗng thì bỏ cả cặp.
+     */
+    private record ExplainInput(String promptFile, Map<String, String> vars,
+                                String knownSentenceEn) {
+    }
+
+    private ExplainInput fillBlankInput(QuizItem item, QuizAttempt attempt) {
+        Map<String, Object> p = item.getPayload();
+        VocabEntry v = item.getVocabEntry();
+        String sentence = asString(p.get("sentence"));
+        String answer = asString(p.get("answer"));
+        // Câu đã điền đáp án ghép ở đây chứ không nhờ Gemini. Prompt sinh đề đã bảo đảm
+        // "___" xuất hiện đúng một lần trong câu.
+        String filled = sentence.replace("___", answer);
+        return new ExplainInput(EXPLAIN_FILL_BLANK_PROMPT, Map.of(
+                "SENTENCE", sentence,
+                "ANSWER", answer,
+                "TERM", nullToEmpty(v.getTerm()),
+                "POS", nullToEmpty(v.getPos()),
+                "MEANING_VI", nullToEmpty(v.getMeaningVi()),
+                "USER_ANSWER", nullToEmpty(attempt.getUserAnswer())),
+                filled);
+    }
+
+    private ExplainInput collocationInput(QuizItem item, QuizAttempt attempt) {
+        Map<String, Object> p = item.getPayload();
+        VocabEntry v = item.getVocabEntry();
+        List<String> options = asStringList(p.get("options"));
+        int correctIndex = asInt(p.get("correct_index"));
+        String correctOption = (correctIndex >= 0 && correctIndex < options.size())
+                ? options.get(correctIndex) : "";
+
+        StringBuilder rendered = new StringBuilder();
+        for (int i = 0; i < options.size(); i++) {
+            rendered.append(i + 1).append(". ").append(options.get(i)).append('\n');
+        }
+
+        return new ExplainInput(EXPLAIN_COLLOCATION_PROMPT, Map.of(
+                "TERM", nullToEmpty(v.getTerm()),
+                "POS", nullToEmpty(v.getPos()),
+                "MEANING_VI", nullToEmpty(v.getMeaningVi()),
+                "QUESTION", asString(p.get("question")),
+                "OPTIONS", rendered.toString().strip(),
+                "ANSWER", correctOption,
+                // Câu trả lời lưu trong attempt là INDEX dạng chuỗi. Dịch ngược ra nội
+                // dung cụm ngay tại đây: đưa "2" vào prompt thì Gemini không biết người
+                // học đã chọn gì.
+                "USER_ANSWER", optionAt(options, nullToEmpty(attempt.getUserAnswer()))),
+                "");
+    }
+
+    /** Chuỗi không parse được thành index hợp lệ — kể cả rỗng, tức bỏ qua — trả chuỗi rỗng. */
+    private String optionAt(List<String> options, String rawIndex) {
+        try {
+            int index = Integer.parseInt(rawIndex.strip());
+            return (index >= 0 && index < options.size()) ? options.get(index) : "";
+        } catch (NumberFormatException e) {
+            return "";
+        }
+    }
+
+    private ExplainInput freeWriteInput(QuizItem item, QuizAttempt attempt) {
+        VocabEntry v = item.getVocabEntry();
+        String userAnswer = nullToEmpty(attempt.getUserAnswer());
+        // Câu viết lại là câu mẫu đáng học nhất; không có thì lấy chính câu người học.
+        // Bỏ qua câu thì cả hai đều rỗng — lúc đó KHÔNG có câu nào để dịch, và cặp
+        // sentenceEn/sentenceVi sẽ cùng về null ở chỗ ghép kết quả.
+        String sentenceEn = firstNonBlank(nullToEmpty(attempt.getImprovedVersion()), userAnswer);
+        return new ExplainInput(EXPLAIN_FREE_WRITE_PROMPT, Map.of(
+                "TERM", nullToEmpty(v.getTerm()),
+                "POS", nullToEmpty(v.getPos()),
+                "MEANING_VI", nullToEmpty(v.getMeaningVi()),
+                "DEFINITION_EN", nullToEmpty(v.getDefinitionEn()),
+                "USER_ANSWER", userAnswer,
+                "SENTENCE_EN", sentenceEn),
+                sentenceEn);
+    }
+
+    /** Nghĩa lấy từ chính sổ từ của người dùng, làm lưới hứng khi Gemini trả rỗng. */
+    private String meaningFromVocab(QuizItem item) {
+        VocabEntry v = item.getVocabEntry();
+        return (v.getMeaningVi() == null || v.getMeaningVi().isBlank())
+                ? "" : v.getTerm() + " = " + v.getMeaningVi();
+    }
+
+    /** Giá trị đầu tiên khác rỗng; hết sạch thì trả chuỗi rỗng. */
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     /**
@@ -142,7 +328,8 @@ public class QuizService {
                 correct ? "Chính xác." : "Chưa đúng. Đáp án: " + correctOption, null);
     }
 
-    private AnswerResultDto gradeFreeWrite(QuizItem item, String given) {
+    private AnswerResultDto gradeFreeWrite(Long userId, QuizItem item, String given) {
+        quota.consume(userId);
         VocabEntry entry = item.getVocabEntry();
         PromptTemplate template = prompts.load(QuizGenerator.GRADE_PROMPT);
         String prompt = template.render(Map.of(

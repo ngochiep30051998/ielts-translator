@@ -19,6 +19,9 @@ const api = {
   srsStats: vi.fn(),
   generateQuiz: vi.fn(),
   answerQuiz: vi.fn(),
+  explainQuiz: vi.fn(),
+  googleLogin: vi.fn(),
+  logout: vi.fn(),
   health: vi.fn(),
 };
 
@@ -77,6 +80,8 @@ describe('service worker', () => {
     api.answerQuiz.mockResolvedValue({
       correct: true, score: 100, feedback: 'Chính xác.', improvedVersion: null,
     });
+    api.logout.mockResolvedValue(null);
+    void chrome.storage.local.clear();
   });
 
   describe('đăng ký alarm cập nhật badge', () => {
@@ -156,6 +161,45 @@ describe('service worker', () => {
     });
   });
 
+  describe('định tuyến message dịch', () => {
+    it('TRANSLATE_TEXT gọi translate không kèm ngữ cảnh và không kèm trang nguồn', async () => {
+      api.translate.mockResolvedValue(RESULT);
+      await loadServiceWorker();
+
+      const response = await send({ type: 'TRANSLATE_TEXT', text: 'mitigate' });
+
+      // sourceUrl/pageTitle rỗng chứ không phải null: api-client đổi chuỗi rỗng thành
+      // undefined, và bản ghi vào sổ từ nhận sourceUrl null. Text gõ tay không có trang nguồn.
+      expect(api.translate).toHaveBeenCalledWith({
+        text: 'mitigate', contextSentence: null, sourceUrl: '', pageTitle: '',
+      });
+      expect(response).toMatchObject({ ok: true, data: { sourceText: 'mitigate' } });
+    });
+
+    it('TRANSLATE_TEXT cập nhật kết quả gần nhất mà GET_LAST_RESULT đọc', async () => {
+      api.translate.mockResolvedValue(RESULT);
+      await loadServiceWorker();
+
+      await send({ type: 'TRANSLATE_TEXT', text: 'mitigate' });
+      const response = await send({ type: 'GET_LAST_RESULT' });
+
+      // Cùng một ô nhớ với đường bôi đen: side panel chỉ có MỘT vùng kết quả.
+      expect(response).toMatchObject({ ok: true, data: { sourceText: 'mitigate' } });
+    });
+
+    it('lỗi khi dịch trả về dạng { ok: false, error }', async () => {
+      api.translate.mockRejectedValue(
+        { code: 'GEMINI_QUOTA', message: 'Hết quota Gemini hôm nay.', retryable: false });
+      await loadServiceWorker();
+
+      const response = await send({ type: 'TRANSLATE_TEXT', text: 'mitigate' });
+
+      expect(response).toMatchObject({
+        ok: false, error: { code: 'GEMINI_QUOTA', retryable: false },
+      });
+    });
+  });
+
   describe('định tuyến message Quiz', () => {
     it('GENERATE_QUIZ đổi tên quizType của message thành type của HTTP body', async () => {
       await loadServiceWorker();
@@ -191,6 +235,18 @@ describe('service worker', () => {
 
       expect(api.answerQuiz).toHaveBeenCalledWith({ quizItemId: 12, answer: '2' });
       expect(response).toMatchObject({ ok: true, data: { correct: true, score: 100 } });
+    });
+
+    it('EXPLAIN_QUIZ xuống explainQuiz kèm ĐÚNG quizItemId và không gì khác', async () => {
+      api.explainQuiz.mockResolvedValue({
+        explanation: 'x', answerMeaning: 'y', sentenceEn: null, sentenceVi: null,
+      });
+      await loadServiceWorker();
+
+      const response = await send({ type: 'EXPLAIN_QUIZ', quizItemId: 12 });
+
+      expect(api.explainQuiz).toHaveBeenCalledWith({ quizItemId: 12 });
+      expect(response).toMatchObject({ ok: true, data: { explanation: 'x' } });
     });
   });
 
@@ -228,6 +284,17 @@ describe('service worker', () => {
       expect(refreshBadge).not.toHaveBeenCalled();
     });
 
+    it('xin giải thích KHÔNG đụng tới badge — quiz không chạm lịch SRS', async () => {
+      api.explainQuiz.mockResolvedValue({
+        explanation: 'x', answerMeaning: 'y', sentenceEn: null, sentenceVi: null,
+      });
+      await loadServiceWorker();
+
+      await send({ type: 'EXPLAIN_QUIZ', quizItemId: 12 });
+
+      expect(refreshBadge).not.toHaveBeenCalled();
+    });
+
     it('tra từ thường không đụng tới badge', async () => {
       api.searchVocab.mockResolvedValue({ content: [], totalElements: 0, totalPages: 0, number: 0 });
       await loadServiceWorker();
@@ -235,6 +302,112 @@ describe('service worker', () => {
       await send({ type: 'SEARCH_VOCAB', query: 'renew', tag: null, page: 0 });
 
       expect(refreshBadge).not.toHaveBeenCalled();
+    });
+  });
+
+  /* ================= Đăng nhập Google ================= */
+
+  describe('đăng nhập', () => {
+    const USER = { email: 'a@b.com', displayName: 'A', pictureUrl: null };
+    const REDIRECT = 'https://testextensionid.chromiumapp.org/';
+
+    function redirectWith(params: Record<string, string>): string {
+      const url = new URL(REDIRECT);
+      for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+      return url.toString();
+    }
+
+    /** Lấy `state` mà service worker vừa sinh ra, để dựng redirect hợp lệ. */
+    function stateFromLastFlow(): string {
+      const call = vi.mocked(chrome.identity.launchWebAuthFlow).mock.calls.at(-1);
+      const url = new URL((call![0] as { url: string }).url);
+      return url.searchParams.get('state')!;
+    }
+
+    it('SIGN_IN mở launchWebAuthFlow rồi đổi code ở BACKEND', async () => {
+      vi.mocked(chrome.identity.launchWebAuthFlow).mockImplementation(async () =>
+        redirectWith({ code: 'abc', state: pendingState() }));
+      api.googleLogin.mockResolvedValue({ token: 't', expiresAt: 'x', user: USER });
+      await loadServiceWorker();
+
+      const response = await send({ type: 'SIGN_IN' });
+
+      // code đi qua backend chứ không đổi ở extension: client_secret không bao giờ rời server.
+      expect(api.googleLogin).toHaveBeenCalledWith({ code: 'abc', redirectUri: REDIRECT });
+      expect(response).toMatchObject({ ok: true, data: { email: 'a@b.com' } });
+    });
+
+    /** launchWebAuthFlow được gọi TRƯỚC khi ta đọc state, nên phải lấy nó ngay trong mock. */
+    function pendingState(): string {
+      return stateFromLastFlow();
+    }
+
+    it('state trả về khác state gửi đi → từ chối và KHÔNG đổi code', async () => {
+      vi.mocked(chrome.identity.launchWebAuthFlow).mockResolvedValue(
+        redirectWith({ code: 'abc', state: 'state-gia' }));
+      await loadServiceWorker();
+
+      const response = await send({ type: 'SIGN_IN' });
+
+      // state là thứ duy nhất phân biệt "Google vừa trả lời mình" với một redirect bị nhét
+      // vào. Sinh ra mà không đối chiếu thì thà đừng sinh.
+      expect(api.googleLogin).not.toHaveBeenCalled();
+      expect(response).toMatchObject({ ok: false });
+    });
+
+    it('người dùng đóng cửa sổ → lỗi ĐÚNG hình dạng, không ném thô', async () => {
+      vi.mocked(chrome.identity.launchWebAuthFlow).mockRejectedValue(
+        new Error('The user did not approve access.'));
+      await loadServiceWorker();
+
+      const response = await send({ type: 'SIGN_IN' });
+
+      expect(response).toMatchObject({
+        ok: false, error: { code: 'UNAUTHORIZED', retryable: false },
+      });
+    });
+
+    it('redirect mang ?error=access_denied → thông điệp riêng', async () => {
+      vi.mocked(chrome.identity.launchWebAuthFlow).mockResolvedValue(
+        redirectWith({ error: 'access_denied' }));
+      await loadServiceWorker();
+
+      const response = await send({ type: 'SIGN_IN' }) as { error?: { message: string } };
+
+      expect(response.error?.message).toContain('từ chối cấp quyền');
+    });
+
+    it('SIGN_OUT xoá token DÙ backend lỗi', async () => {
+      api.logout.mockRejectedValue({ code: 'BACKEND_DOWN', message: 'x', retryable: true });
+      await chrome.storage.local.set({ authToken: 't', authUser: USER });
+      await loadServiceWorker();
+
+      await send({ type: 'SIGN_OUT' });
+
+      // Giữ token khi server không phản hồi sẽ kẹt người dùng ở trạng thái "đã bấm đăng
+      // xuất nhưng vẫn đang đăng nhập" — trên máy mượn thì đó đúng là điều họ vừa cố tránh.
+      const left = await chrome.storage.local.get(['authToken']);
+      expect(left.authToken).toBeUndefined();
+    });
+
+    it('GET_AUTH_STATE chưa đăng nhập trả data: null, KHÔNG phải ok: false', async () => {
+      await chrome.storage.local.clear();
+      await loadServiceWorker();
+
+      const response = await send({ type: 'GET_AUTH_STATE' });
+
+      // Chưa đăng nhập không phải lỗi. Trả ok:false ở đây làm panel hiện "backend chết".
+      expect(response).toEqual({ ok: true, data: null });
+    });
+
+    it('GET_AUTH_STATE đọc từ storage, KHÔNG gọi backend mỗi lần mở panel', async () => {
+      await chrome.storage.local.set({ authToken: 't', authUser: USER });
+      await loadServiceWorker();
+
+      const response = await send({ type: 'GET_AUTH_STATE' });
+
+      expect(response).toMatchObject({ ok: true, data: { email: 'a@b.com' } });
+      expect(api.health).not.toHaveBeenCalled();
     });
   });
 });

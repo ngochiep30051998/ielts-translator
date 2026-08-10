@@ -1,4 +1,5 @@
-import { validateSelection, extractContextSentence } from './selection';
+import { extractContextSentence } from './selection';
+import { validateSelection } from '../shared/text';
 import {
   showLoadingBubble, showResultBubble, showNoticeBubble, showErrorBubble, showIconBubble,
   hideBubble, BUBBLE_HOST_ID,
@@ -48,11 +49,21 @@ function spokenTextOf(result: TranslateResult): string {
   return result.direction === 'EN_VI' ? result.sourceText : shortMeaning(result);
 }
 
+/**
+ * Chưa đăng nhập là một nguyên nhân CỤ THỂ, và bong bóng là chỗ người dùng đang nhìn.
+ * Để nguyên thông điệp chung chung ở đây là bắt họ tự đoán vì sao tra từ không ra gì.
+ */
+function messageFor(error: { code: string; message: string }): string {
+  return error.code === 'UNAUTHORIZED'
+    ? 'Cần đăng nhập. Mở side panel của extension để đăng nhập với Google.'
+    : error.message;
+}
+
 async function saveCurrent(rect: DOMRect): Promise<void> {
   if (!currentResult) return;
   const response = await sendToBackground({ type: 'SAVE_WORD', result: currentResult, tags: [] });
   if (!response.ok) {
-    showErrorBubble(rect, response.error.message, response.error.retryable, noopHandlers());
+    showErrorBubble(rect, messageFor(response.error), response.error.retryable, noopHandlers());
     return;
   }
   showNoticeBubble(rect, response.data.alreadyExists ? 'Đã có trong sổ' : 'Đã lưu vào sổ');
@@ -97,7 +108,7 @@ async function translateSnapshot(shot: SelectionSnapshot): Promise<void> {
   });
 
   if (!response.ok) {
-    showErrorBubble(shot.rect, response.error.message, response.error.retryable, {
+    showErrorBubble(shot.rect, messageFor(response.error), response.error.retryable, {
       ...noopHandlers(),
       // Dùng lại ảnh chụp: đọc lại selection ở đây thì sau khi người dùng bấm đi chỗ
       // khác, "Thử lại" sẽ im lặng không làm gì.

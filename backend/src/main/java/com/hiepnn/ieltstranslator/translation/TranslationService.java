@@ -31,21 +31,24 @@ public class TranslationService {
     private final GeminiClient geminiClient;
     private final GeminiProperties geminiProperties;
     private final LookupCacheRepository cacheRepository;
+    private final com.hiepnn.ieltstranslator.quota.GeminiQuotaGuard quota;
 
     public TranslationService(LanguageDetector languageDetector,
                               PromptLoader promptLoader,
                               GeminiClient geminiClient,
                               GeminiProperties geminiProperties,
-                              LookupCacheRepository cacheRepository) {
+                              LookupCacheRepository cacheRepository,
+                              com.hiepnn.ieltstranslator.quota.GeminiQuotaGuard quota) {
         this.languageDetector = languageDetector;
         this.promptLoader = promptLoader;
         this.geminiClient = geminiClient;
         this.geminiProperties = geminiProperties;
         this.cacheRepository = cacheRepository;
+        this.quota = quota;
     }
 
     @Transactional
-    public TranslateResponse translate(TranslateRequest request) {
+    public TranslateResponse translate(Long userId, TranslateRequest request) {
         String text = request.text() == null ? "" : request.text().trim();
         if (text.length() > MAX_TEXT_LENGTH) {
             throw AppException.of(ErrorCode.TEXT_TOO_LONG,
@@ -63,6 +66,9 @@ public class TranslationService {
             cacheRepository.incrementHitCount(cached.get().getId());
             return new TranslateResponse(direction, mode, true, cached.get().getResponse());
         }
+
+        // SAU cache, TRƯỚC Gemini: cache hit không chạm Gemini nên không tính hạn mức.
+        quota.consume(userId);
 
         Map<String, Object> schema = TranslationSchemas.of(direction, mode);
         JsonNode payload = geminiClient.generateJson(template.render(text, context), schema,

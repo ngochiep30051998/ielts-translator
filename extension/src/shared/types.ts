@@ -177,3 +177,30 @@ export interface AnswerResult {
   feedback: string;
   improvedVersion: string | null;
 }
+
+/**
+ * Gương của ExplanationDto phía backend.
+ *
+ * KHÔNG nằm trong QuizItemDto và cũng không nằm trong AnswerResult: nó chứa đáp án nên chỉ
+ * lấy được qua EXPLAIN_QUIZ, sau khi câu đã có lượt làm.
+ *
+ * `sentenceEn` và `sentenceVi` là MỘT CẶP — cùng null hoặc cùng non-null, backend không bao
+ * giờ gửi một nửa. Cùng null xảy ra đúng một ca: FREE_WRITE bị bỏ qua nên không có câu nào
+ * để dịch.
+ */
+export interface QuizExplanation {
+  explanation: string;
+  answerMeaning: string;
+  sentenceEn: string | null;
+  sentenceVi: string | null;
+}
+
+/**
+ * Gương của AuthUserDto phía backend. Đây là TOÀN BỘ những gì extension biết về người dùng
+ * — không có id, không có token, vì panel không cần và không nên cầm.
+ */
+export interface AuthUser {
+  email: string;
+  displayName: string | null;
+  pictureUrl: string | null;
+}

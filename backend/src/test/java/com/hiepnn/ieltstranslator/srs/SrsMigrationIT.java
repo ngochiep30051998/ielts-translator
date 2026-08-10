@@ -34,6 +34,8 @@ class SrsMigrationIT extends AbstractPostgresIT {
 
     private VocabEntry entry(String term, String pos) {
         VocabEntry e = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        e.setUser(ownerUser());
         e.setTerm(term);
         e.setLemma(term);
         e.setLang("en");
@@ -125,6 +127,6 @@ class SrsMigrationIT extends AbstractPostgresIT {
         second.setNewInterval(6);
         logs.saveAndFlush(second);
 
-        assertThat(logs.countIntroducedSince(Instant.EPOCH)).isEqualTo(1L);
+        assertThat(logs.countIntroducedSince(ownerId(), Instant.EPOCH)).isEqualTo(1L);
     }
 }

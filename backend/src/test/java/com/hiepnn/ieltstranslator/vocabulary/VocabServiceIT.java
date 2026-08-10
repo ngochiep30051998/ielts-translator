@@ -37,7 +37,7 @@ class VocabServiceIT extends AbstractPostgresIT {
 
     @Test
     void savesNewEntry() {
-        SaveVocabResponse response = service.save(request("renewable", "adj", "tái tạo", List.of()));
+        SaveVocabResponse response = service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of()));
 
         assertThat(response.id()).isNotNull();
         assertThat(response.alreadyExists()).isFalse();
@@ -46,8 +46,8 @@ class VocabServiceIT extends AbstractPostgresIT {
 
     @Test
     void savingSameTermAndPosReturnsAlreadyExistsWithoutDuplicating() {
-        SaveVocabResponse first = service.save(request("renewable", "adj", "tái tạo", List.of()));
-        SaveVocabResponse second = service.save(request("renewable", "adj", "nghĩa khác", List.of()));
+        SaveVocabResponse first = service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of()));
+        SaveVocabResponse second = service.save(ownerId(), request("renewable", "adj", "nghĩa khác", List.of()));
 
         assertThat(second.alreadyExists()).isTrue();
         assertThat(second.id()).isEqualTo(first.id());
@@ -56,16 +56,16 @@ class VocabServiceIT extends AbstractPostgresIT {
 
     @Test
     void existingEntryKeepsItsOriginalMeaning() {
-        service.save(request("renewable", "adj", "tái tạo", List.of()));
-        service.save(request("renewable", "adj", "nghĩa bị ghi đè", List.of()));
+        service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of()));
+        service.save(ownerId(), request("renewable", "adj", "nghĩa bị ghi đè", List.of()));
 
         assertThat(repository.findAll().get(0).getMeaningVi()).isEqualTo("tái tạo");
     }
 
     @Test
     void savingExistingEntryMergesNewTags() {
-        service.save(request("renewable", "adj", "tái tạo", List.of("environment")));
-        service.save(request("renewable", "adj", "tái tạo", List.of("environment", "writing")));
+        service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of("environment")));
+        service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of("environment", "writing")));
 
         assertThat(repository.findAll().get(0).getTags())
                 .containsExactlyInAnyOrder("environment", "writing");
@@ -73,18 +73,18 @@ class VocabServiceIT extends AbstractPostgresIT {
 
     @Test
     void sameTermWithDifferentPosAreSeparateEntries() {
-        service.save(request("run", "v", "chạy", List.of()));
-        service.save(request("run", "n", "lượt chạy", List.of()));
+        service.save(ownerId(), request("run", "v", "chạy", List.of()));
+        service.save(ownerId(), request("run", "n", "lượt chạy", List.of()));
 
         assertThat(repository.count()).isEqualTo(2);
     }
 
     @Test
     void searchMatchesTermSubstringCaseInsensitively() {
-        service.save(request("renewable", "adj", "tái tạo", List.of()));
-        service.save(request("mitigate", "v", "giảm nhẹ", List.of()));
+        service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of()));
+        service.save(ownerId(), request("mitigate", "v", "giảm nhẹ", List.of()));
 
-        List<VocabEntryDto> found = service.search("RENEW", null, PageRequest.of(0, 20)).getContent();
+        List<VocabEntryDto> found = service.search(ownerId(), "RENEW", null, PageRequest.of(0, 20)).getContent();
 
         assertThat(found).hasSize(1);
         assertThat(found.get(0).term()).isEqualTo("renewable");
@@ -92,17 +92,17 @@ class VocabServiceIT extends AbstractPostgresIT {
 
     @Test
     void searchMatchesVietnameseMeaning() {
-        service.save(request("mitigate", "v", "giảm nhẹ", List.of()));
+        service.save(ownerId(), request("mitigate", "v", "giảm nhẹ", List.of()));
 
-        assertThat(service.search("giảm", null, PageRequest.of(0, 20)).getContent()).hasSize(1);
+        assertThat(service.search(ownerId(), "giảm", null, PageRequest.of(0, 20)).getContent()).hasSize(1);
     }
 
     @Test
     void searchFiltersByTag() {
-        service.save(request("renewable", "adj", "tái tạo", List.of("environment")));
-        service.save(request("mitigate", "v", "giảm nhẹ", List.of("writing")));
+        service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of("environment")));
+        service.save(ownerId(), request("mitigate", "v", "giảm nhẹ", List.of("writing")));
 
-        List<VocabEntryDto> found = service.search(null, "writing", PageRequest.of(0, 20)).getContent();
+        List<VocabEntryDto> found = service.search(ownerId(), null, "writing", PageRequest.of(0, 20)).getContent();
 
         assertThat(found).hasSize(1);
         assertThat(found.get(0).term()).isEqualTo("mitigate");
@@ -110,34 +110,34 @@ class VocabServiceIT extends AbstractPostgresIT {
 
     @Test
     void searchWithoutFiltersReturnsAllNewestFirst() {
-        service.save(request("first", "n", "một", List.of()));
-        service.save(request("second", "n", "hai", List.of()));
+        service.save(ownerId(), request("first", "n", "một", List.of()));
+        service.save(ownerId(), request("second", "n", "hai", List.of()));
 
-        List<VocabEntryDto> found = service.search(null, null, PageRequest.of(0, 20)).getContent();
+        List<VocabEntryDto> found = service.search(ownerId(), null, null, PageRequest.of(0, 20)).getContent();
 
         assertThat(found).extracting(VocabEntryDto::term).containsExactly("second", "first");
     }
 
     @Test
     void deleteRemovesEntry() {
-        Long id = service.save(request("renewable", "adj", "tái tạo", List.of())).id();
+        Long id = service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of())).id();
 
-        service.delete(id);
+        service.delete(ownerId(), id);
 
         assertThat(repository.count()).isZero();
     }
 
     @Test
     void deletingUnknownIdThrowsNotFound() {
-        assertThatThrownBy(() -> service.delete(999999L))
+        assertThatThrownBy(() -> service.delete(ownerId(), 999999L))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).code()).isEqualTo(ErrorCode.NOT_FOUND));
     }
 
     @Test
     void findByIdReturnsEntry() {
-        Long id = service.save(request("renewable", "adj", "tái tạo", List.of())).id();
+        Long id = service.save(ownerId(), request("renewable", "adj", "tái tạo", List.of())).id();
 
-        assertThat(service.findById(id).term()).isEqualTo("renewable");
+        assertThat(service.findById(ownerId(), id).term()).isEqualTo("renewable");
     }
 }

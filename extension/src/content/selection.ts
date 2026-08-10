@@ -1,16 +1,4 @@
-export const MAX_SELECTION_LENGTH = 1500;
 const MAX_CONTEXT_LENGTH = 400;
-
-export type SelectionCheck =
-  | { ok: true; text: string }
-  | { ok: false; reason: 'EMPTY' | 'TOO_LONG' };
-
-export function validateSelection(raw: string): SelectionCheck {
-  const text = raw.trim();
-  if (text.length === 0) return { ok: false, reason: 'EMPTY' };
-  if (text.length > MAX_SELECTION_LENGTH) return { ok: false, reason: 'TOO_LONG' };
-  return { ok: true, text };
-}
 
 /**
  * Tìm câu chứa đoạn được chọn. Mở rộng sang trái tới dấu kết câu gần nhất và

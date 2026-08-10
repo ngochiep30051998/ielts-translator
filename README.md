@@ -42,6 +42,13 @@ docker compose down       # tắt backend, dữ liệu từ vựng vẫn còn
 
 Bôi đen text bất kỳ trên web để dịch. Bấm `+` để lưu vào sổ, `⤢` để mở side panel.
 
+Không có sẵn text trên trang thì mở side panel và gõ/dán thẳng vào ô trên tab **Dịch**
+(`Ctrl/Cmd+Enter` để dịch). Ô này được điền sẵn đoạn của lần dịch gần nhất, nên bôi
+hụt một chút thì sửa lại rồi dịch lại, không phải gõ từ đầu.
+
+Panel đang mở không tự cập nhật khi bạn bôi đen và dịch trên trang — đóng rồi mở lại
+panel để kéo kết quả mới nhất vào tab Dịch.
+
 ## Ôn tập
 
 Mỗi từ đơn lưu vào sổ tự động vào lịch ôn (câu dài thì không — flashcard cả câu
@@ -193,6 +200,22 @@ không hardcode thông số nào nữa:
 | `GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS` | `20` | Chấm một bài tự viết |
 | `GEMINI_RETRY_BACKOFF_MS` | `1000` | |
 | `TZ` | `Asia/Ho_Chi_Minh` | Quyết định "hôm nay" của lịch ôn. Container mặc định UTC → thiếu biến này thì ngày ôn đổi lúc 07:00 thay vì nửa đêm |
+| `AUTH_GOOGLE_CLIENT_ID` | (bắt buộc) | OAuth client kiểu **Web application** |
+| `AUTH_GOOGLE_CLIENT_SECRET` | (bắt buộc) | **Chỉ ở backend.** Không bao giờ vào bundle extension |
+| `AUTH_ALLOWED_EMAILS` | (rỗng) | Danh sách email được phép, ngăn cách bằng dấu phẩy. **Rỗng = khoá hết** |
+| `AUTH_BOOTSTRAP_EMAIL` | (bắt buộc) | Chủ sở hữu dữ liệu cũ. Migration V6 gán toàn bộ sổ từ hiện có cho email này |
+| `AUTH_SESSION_DAYS` | `60` | Hạn phiên, trượt theo mỗi lần dùng |
+| `AUTH_DAILY_GEMINI_CALLS` | `300` | Trần lượt gọi AI mỗi người mỗi ngày. `0` = tắt |
+| `AUTH_GOOGLE_TOKEN_URL` | endpoint Google | Đổi khi test bằng WireMock |
+| `API_SERVICE_PORT` | `8081` | Cổng publish ra host của `api-service` (bản FastAPI). Khác `APP_PORT` để hai backend chạy song song và đối chiếu được |
+| `DATABASE_URL` | (rỗng) | **Chỉ `api-service`.** Rỗng thì ghép từ `DB_*` như backend Spring. Đặt giá trị khi deploy lên Supabase/Vercel, nơi chỉ có một chuỗi kết nối chứ không có năm mảnh rời |
+| `VERCEL` | (rỗng) | **Không tự đặt.** Vercel tự gán `1` trong mọi function; `api-service` đọc nó để chuyển sang `NullPool` và tắt prepared statement (bắt buộc với Supavisor transaction mode) |
+
+Phía extension, `extension/.env` cần **một** biến (xem `extension/.env.example`):
+
+| Biến | Ghi chú |
+|---|---|
+| `VITE_GOOGLE_CLIENT_ID` | Cùng giá trị với `AUTH_GOOGLE_CLIENT_ID`. Client **id** công khai được; `client_secret` thì tuyệt đối không |
 
 `backend/src/main/resources/application.yml` không hardcode giá trị nào nữa — mọi
 mục đều là `${BIEN:mặc-định}`, và default trong file chính là cấu hình chạy local.

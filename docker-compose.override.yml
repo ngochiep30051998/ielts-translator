@@ -1,0 +1,21 @@
+# CHỈ dùng ở máy dev. Docker Compose tự nạp file này khi nó có mặt.
+#
+# KHÔNG copy lên VPS: nó mở lại cổng Postgres và cổng app ra host, đúng thứ mà
+# docker-compose.yml vừa đóng lại vì lý do bảo mật.
+services:
+  db:
+    ports:
+      # Chỉ bind loopback. DB_PORT đổi cổng publish trên host; trong mạng compose db
+      # luôn là 5432.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+
+  app:
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+
+  # Cổng khác `app` để hai backend chạy cùng lúc và đối chiếu được:
+  #   curl 127.0.0.1:8080/api/health   -> Spring
+  #   curl 127.0.0.1:8081/api/health   -> FastAPI
+  api-service:
+    ports:
+      - "127.0.0.1:${API_SERVICE_PORT:-8081}:8080"

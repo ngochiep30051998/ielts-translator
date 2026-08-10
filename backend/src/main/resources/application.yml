@@ -35,6 +35,11 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+    placeholders:
+      # Email chủ sở hữu dữ liệu cũ — V6 dùng nó để backfill vocab_entry.user_id.
+      # KHÔNG đặt default: chạy migration với một email đoán bừa sẽ gán toàn bộ sổ từ cho
+      # một tài khoản không ai đăng nhập được, mà Flyway thì không chạy lại.
+      bootstrap_email: ${AUTH_BOOTSTRAP_EMAIL}
 
 gemini:
   api-key: ${GEMINI_API_KEY:}
@@ -49,3 +54,17 @@ gemini:
 
 extension:
   id: ${EXTENSION_ID:}
+
+auth:
+  google-client-id: ${AUTH_GOOGLE_CLIENT_ID:}
+  # CHỈ sống ở backend. Không bao giờ được xuất hiện trong bundle extension.
+  google-client-secret: ${AUTH_GOOGLE_CLIENT_SECRET:}
+  google-token-url: ${AUTH_GOOGLE_TOKEN_URL:https://oauth2.googleapis.com}
+  # Rỗng = KHÓA HẾT, cố ý: cấu hình thiếu phải làm hệ thống đóng lại chứ không mở toang
+  # cho mọi tài khoản Google trên đời.
+  allowed-emails: ${AUTH_ALLOWED_EMAILS:}
+  # Redirect URI dựng từ đây, nên nó phải khớp EXTENSION_ID thật.
+  extension-id: ${EXTENSION_ID:}
+  session-days: ${AUTH_SESSION_DAYS:60}
+  # 0 = tắt hạn mức (chỉ dùng ở máy dev).
+  daily-gemini-calls: ${AUTH_DAILY_GEMINI_CALLS:300}

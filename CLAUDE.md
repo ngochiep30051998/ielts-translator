@@ -30,7 +30,7 @@ curl http://127.0.0.1:8080/api/health # phải trả geminiConfigured: true
 
 Surefire được cấu hình include cả `**/*Test.java` và `**/*IT.java`. Đặt sai tên file test = test bị bỏ qua **im lặng**.
 
-**Không bao giờ chạy `docker compose down -v`** — xoá volume `ielts_pgdata`, tức xoá sạch sổ từ vựng của người dùng. Cần reset DB thì hỏi trước và nhắc export CSV (`GET /api/vocab/export.csv`).
+**Không bao giờ chạy `docker compose down -v`** — xoá volume `ielts_pgdata`, tức xoá sạch sổ từ vựng của **mọi người dùng**, không riêng ai. Cần reset DB thì hỏi trước và nhắc export CSV (`GET /api/vocab/export.csv`). Trên VPS phải có `pg_dump` hằng ngày trước khi đưa người thứ hai vào dùng.
 
 ## Kiến trúc
 
@@ -74,13 +74,17 @@ Bốn tổ hợp direction × mode sinh ra **bốn hình dạng payload JSON kh�
 
 8. **Migration Flyway là append-only.** Không sửa file `V*.sql` đã chạy; thêm version mới, và cập nhật entity JPA trong cùng thay đổi (`ddl-auto: validate` sẽ fail khi lệch).
 
-9. **Giới hạn 1500 ký tự chặn ở cả hai phía** (`TranslationService.MAX_TEXT_LENGTH` và `content/selection.ts`). Đổi số thì đổi đồng bộ.
+9. **Giới hạn 1500 ký tự chặn ở cả hai phía** (`TranslationService.MAX_TEXT_LENGTH` và `shared/text.ts`). Đổi số thì đổi đồng bộ.
 
-10. **`host_permissions` ghim `http://127.0.0.1:8080/*`.** Đổi `APP_PORT` phải sửa cả manifest **và** `backendUrl` mặc định trong `shared/settings.ts` / trang Options — sửa một chỗ là hỏng im lặng.
+10. **`host_permissions` nay có BA chỗ phải khớp**, không phải hai: danh sách trong `manifest.config.ts`, `backendUrl` mặc định trong `shared/settings.ts` / trang Options, và domain thật trên VPS. Options là ô nhập tự do nhưng Chrome chỉ cho gọi origin đã khai trong manifest — trỏ sang domain chưa khai thì request chết **im lặng**, không lỗi mạng, không lỗi CORS.
 
 11. **Bubble render trong Shadow DOM** (`content/bubble.ts`) — cách duy nhất tránh CSS trang chủ đè lên. Đừng chèn thẳng vào DOM trang hay thêm `<link>` toàn cục.
 
-12. **Không thêm dependency mới** nếu chưa nêu lý do và được đồng ý. Dự án cố ý gọn: backend không Lombok/MapStruct, extension chỉ React + Vite + Vitest.
+12. **Không thêm dependency mới** nếu chưa nêu lý do và được đồng ý. Dự án cố ý gọn: backend không Lombok/MapStruct, extension chỉ React + Vite + Vitest. Đăng nhập Google **không** thêm dependency nào: backend tự đổi `code` với Google qua `RestClient`, và vì token đến thẳng từ token endpoint qua TLS nên không phải verify chữ ký (xem `auth/GoogleTokenClient.parse`). Nếu ai đó đổi sang nhận `id_token` từ client thì **bắt buộc** phải verify RS256 qua JWKS — lúc đó mới bàn tới thư viện.
+
+13. **Mọi truy vấn chạm dữ liệu học PHẢI lọc theo `userId`.** Chủ sở hữu nằm ở đúng một cột — `vocab_entry.user_id`; mọi bảng khác treo vào nó. Quên một mệnh đề `WHERE user_id = ?` không làm gì đỏ cả, nó chỉ lặng lẽ cho người này đọc dữ liệu người kia. Chốt chặn là `MultiUserIsolationIT`: **endpoint mới không có mặt trong file đó là endpoint chưa được chứng minh an toàn**. Id nhận từ client (`vocabIds`, `quizItemId`, `cardId`, `/vocab/{id}`) phải tra theo `(id, userId)` và trả `NOT_FOUND` — không phải `FORBIDDEN`, vì 403 xác nhận id đó có tồn tại.
+
+14. **`lookup_cache` CỐ Ý không có `user_id`.** Nó là cache bản dịch của một chuỗi công khai; dùng chung là phần tiết kiệm quota Gemini lớn nhất của hệ thống. "Sửa cho nhất quán" sẽ làm `lookupCacheIsSharedOnPurpose` đỏ.
 
 ## Quy ước test
 

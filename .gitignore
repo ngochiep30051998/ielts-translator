@@ -5,3 +5,13 @@ target/
 .DS_Store
 .idea/
 extension/key.pem
+
+# api-service (Python)
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.vercel/

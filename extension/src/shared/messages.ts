@@ -1,6 +1,7 @@
 import type {
-  AnswerResult, ApiError, CardDto, PageResponse, QuizItemDto, QuizType, Rating,
-  ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult, VocabEntryDto,
+  AnswerResult, ApiError, AuthUser, CardDto, PageResponse, QuizExplanation, QuizItemDto,
+  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult,
+  VocabEntryDto,
 } from './types';
 
 export interface TranslateSelectionRequest {
@@ -9,6 +10,17 @@ export interface TranslateSelectionRequest {
   contextSentence: string | null;
   sourceUrl: string;
   pageTitle: string;
+}
+
+/**
+ * Dịch đoạn text người dùng gõ/dán thẳng vào side panel.
+ *
+ * Tách khỏi TRANSLATE_SELECTION chứ không tái dùng: không có trang nguồn, không có câu
+ * ngữ cảnh, và service worker cần phân biệt được hai nguồn nếu sau này chúng phải khác nhau.
+ */
+export interface TranslateTextRequest {
+  type: 'TRANSLATE_TEXT';
+  text: string;
 }
 
 export interface OpenPanelRequest {
@@ -80,8 +92,43 @@ export interface AnswerQuizRequest {
   answer: string;
 }
 
+/**
+ * CỐ Ý không mang câu trả lời, dù panel đang giữ nó: backend tự đọc lượt làm gần nhất và
+ * trả 404 khi chưa có. Response chứa đáp án, nên gửi kèm câu trả lời từ đây là mở một đường
+ * vòng đọc đáp án trước khi trả lời.
+ */
+export interface ExplainQuizRequest {
+  type: 'EXPLAIN_QUIZ';
+  quizItemId: number;
+}
+
+/**
+ * Mở cửa sổ đăng nhập Google.
+ *
+ * <p>`chrome.identity` CHỈ gọi được từ service worker, nên panel không tự mở được luồng
+ * OAuth — nó gửi message này. Cùng lý do với ràng buộc #1: token không bao giờ đi qua
+ * content script hay panel.
+ */
+export interface SignInRequest {
+  type: 'SIGN_IN';
+}
+
+export interface SignOutRequest {
+  type: 'SIGN_OUT';
+}
+
+/**
+ * Trạng thái đăng nhập hiện tại. Chưa đăng nhập trả `data: null` — đó KHÔNG phải lỗi, nên
+ * nó không được là `ok: false`. Panel phân biệt "chưa đăng nhập" với "backend chết" bằng
+ * đúng chỗ này.
+ */
+export interface GetAuthStateRequest {
+  type: 'GET_AUTH_STATE';
+}
+
 export type ExtensionRequest =
   | TranslateSelectionRequest
+  | TranslateTextRequest
   | OpenPanelRequest
   | SaveWordRequest
   | SearchVocabRequest
@@ -92,12 +139,17 @@ export type ExtensionRequest =
   | SubmitReviewRequest
   | GetSrsStatsRequest
   | GenerateQuizRequest
-  | AnswerQuizRequest;
+  | AnswerQuizRequest
+  | ExplainQuizRequest
+  | SignInRequest
+  | SignOutRequest
+  | GetAuthStateRequest;
 
 export type ExtensionResponse<T> = { ok: true; data: T } | { ok: false; error: ApiError };
 
 export interface ResponseMap {
   TRANSLATE_SELECTION: TranslateResult;
+  TRANSLATE_TEXT: TranslateResult;
   OPEN_PANEL_WITH_RESULT: null;
   SAVE_WORD: SaveVocabResponse;
   SEARCH_VOCAB: PageResponse<VocabEntryDto>;
@@ -109,6 +161,10 @@ export interface ResponseMap {
   GET_SRS_STATS: SrsStats;
   GENERATE_QUIZ: QuizItemDto[];
   ANSWER_QUIZ: AnswerResult;
+  EXPLAIN_QUIZ: QuizExplanation;
+  SIGN_IN: AuthUser;
+  SIGN_OUT: null;
+  GET_AUTH_STATE: AuthUser | null;
 }
 
 function localError(code: string, message: string, retryable: boolean): { ok: false; error: ApiError } {

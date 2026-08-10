@@ -36,6 +36,8 @@ class QuizMigrationIT extends AbstractPostgresIT {
 
     private VocabEntry savedEntry() {
         VocabEntry v = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        v.setUser(ownerUser());
         v.setTerm("mitigate");
         v.setLemma("mitigate");
         v.setLang("en");
@@ -134,7 +136,7 @@ class QuizMigrationIT extends AbstractPostgresIT {
         stale.setPromptVersion(99);
         items.saveAndFlush(stale);
 
-        assertThat(items.findReusable(List.of(v.getId()), List.of(QuizType.FILL_BLANK), 1))
+        assertThat(items.findReusable(ownerId(), List.of(v.getId()), List.of(QuizType.FILL_BLANK), 1))
                 .extracting(QuizItem::getId)
                 .containsExactly(fresh.getId());
     }

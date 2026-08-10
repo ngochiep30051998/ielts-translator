@@ -63,7 +63,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
     void generatesOnSave() throws Exception {
         geminiReturnsValidSet();
 
-        SaveVocabResponse saved = vocabService.save(request("mitigate", "verb"));
+        SaveVocabResponse saved = vocabService.save(ownerId(), request("mitigate", "verb"));
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             SrsDistractor d = distractors.findByVocabEntry_Id(saved.id()).orElseThrow();
@@ -78,7 +78,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
     void skipsPhrase() throws Exception {
         geminiReturnsValidSet();
 
-        vocabService.save(request("Governments must act on climate change.", "phrase"));
+        vocabService.save(ownerId(), request("Governments must act on climate change.", "phrase"));
 
         Thread.sleep(300);
         verify(geminiClient, never()).generateJson(anyString(), any(), any());
@@ -91,7 +91,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
         when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenThrow(AppException.of(ErrorCode.GEMINI_UNAVAILABLE, "Gemini chết"));
 
-        SaveVocabResponse saved = vocabService.save(request("resilient", "adjective"));
+        SaveVocabResponse saved = vocabService.save(ownerId(), request("resilient", "adjective"));
 
         assertThat(saved.id()).isNotNull();
         Thread.sleep(500);
@@ -106,7 +106,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
                  "en_options": ["aggravate", "exaggerate", "postpone"]}
                 """));
 
-        SaveVocabResponse saved = vocabService.save(request("mitigate", "verb"));
+        SaveVocabResponse saved = vocabService.save(ownerId(), request("mitigate", "verb"));
 
         Thread.sleep(500);
         assertThat(distractors.findByVocabEntry_Id(saved.id())).isEmpty();
@@ -116,7 +116,7 @@ class DistractorGeneratorIT extends AbstractPostgresIT {
     @DisplayName("Sinh lại cho từ đã có mồi nhử thì ghi đè, không tạo bản ghi thứ hai")
     void overwritesExisting() throws Exception {
         geminiReturnsValidSet();
-        SaveVocabResponse saved = vocabService.save(request("mitigate", "verb"));
+        SaveVocabResponse saved = vocabService.save(ownerId(), request("mitigate", "verb"));
         await().atMost(Duration.ofSeconds(5))
                .until(() -> distractors.findByVocabEntry_Id(saved.id()).isPresent());
 

@@ -1,10 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { refreshBadge } from './badge';
+import { saveAuth } from '../shared/auth-storage';
 
 describe('refreshBadge', () => {
   beforeEach(async () => {
     vi.mocked(chrome.action.setBadgeText).mockClear();
     await chrome.storage.local.clear();
+    // Badge chỉ có nghĩa khi đã đăng nhập; ca chưa đăng nhập có test riêng bên dưới.
+    await saveAuth('test-token', { email: 'a@b.com', displayName: null, pictureUrl: null });
+  });
+
+  it('chưa đăng nhập thì KHÔNG gọi API và xoá số trên badge', async () => {
+    await chrome.storage.local.clear();
+    const srsStats = vi.fn();
+
+    await refreshBadge({ srsStats });
+
+    // Alarm chạy 30 phút một lần. Không chặn ở đây là cứ 30 phút một request 401, log rác,
+    // và badge treo số cũ — con số của NGƯỜI DÙNG TRƯỚC trên một máy dùng chung.
+    expect(srsStats).not.toHaveBeenCalled();
+    expect(chrome.action.setBadgeText).toHaveBeenCalledWith({ text: '' });
   });
 
   it('hiện số thẻ đến hạn', async () => {

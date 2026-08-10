@@ -54,6 +54,8 @@ class QuizControllerIT extends AbstractPostgresIT {
     /** Một từ đã ôn ít nhất một lượt — điều kiện để lọt vào danh sách ứng viên. */
     private Long seedReviewedWord(String term, String meaningVi) {
         VocabEntry v = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        v.setUser(ownerUser());
         v.setTerm(term);
         v.setLemma(term);
         v.setLang("en");
@@ -69,7 +71,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     }
 
     private String generate(String body) throws Exception {
-        return mockMvc.perform(post("/api/quiz/generate")
+        return mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
@@ -142,7 +144,7 @@ class QuizControllerIT extends AbstractPostgresIT {
         }
         assertThat(correctIndex).isNotNegative();
 
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":%d,\"answer\":\"%d\"}"
                                 .formatted(quizItemId, correctIndex)))
@@ -150,7 +152,7 @@ class QuizControllerIT extends AbstractPostgresIT {
                 .andExpect(jsonPath("$.correct").value(true))
                 .andExpect(jsonPath("$.score").value(100));
 
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":%d,\"answer\":\"%d\"}"
                                 .formatted(quizItemId, (correctIndex + 1) % 4)))
@@ -192,7 +194,7 @@ class QuizControllerIT extends AbstractPostgresIT {
 
         // Chấm theo index đọc từ response TÁI DÙNG — lệch thứ tự ở đây là chấm sai toàn
         // bộ câu trắc nghiệm mà không lỗi nào nổ ra.
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":%d,\"answer\":\"%d\"}"
                                 .formatted(reusedItem.get("id").asLong(), correctIndex)))
@@ -206,7 +208,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("[R3] Thiếu cả vocabIds lẫn count → 400 và message nêu ĐÍCH DANH hai field")
     void missingBothSelectorsIsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/quiz/generate")
+        mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"type\":\"FILL_BLANK\"}"))
                 .andExpect(status().isBadRequest())
@@ -225,7 +227,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Có CẢ HAI vocabIds và count → 400")
     void bothSelectorsIsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/quiz/generate")
+        mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"vocabIds\":[1],\"count\":5,\"type\":\"FILL_BLANK\"}"))
                 .andExpect(status().isBadRequest())
@@ -235,7 +237,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Thiếu type → 400")
     void missingTypeIsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/quiz/generate")
+        mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":5}"))
                 .andExpect(status().isBadRequest())
@@ -245,11 +247,11 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("count ngoài khoảng 1..50 và vocabIds rỗng đều là 400")
     void outOfRangeSelectorsAreBadRequest() throws Exception {
-        mockMvc.perform(post("/api/quiz/generate")
+        mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":51,\"type\":\"FILL_BLANK\"}"))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(post("/api/quiz/generate")
+        mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"vocabIds\":[],\"type\":\"FILL_BLANK\"}"))
                 .andExpect(status().isBadRequest());
@@ -260,7 +262,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("quizItemId không tồn tại → 404 NOT_FOUND, không retry được")
     void unknownItemIsNotFound() throws Exception {
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":999999,\"answer\":\"x\"}"))
                 .andExpect(status().isNotFound())
@@ -271,7 +273,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("[Q4] answer 1001 ký tự → 400 TEXT_TOO_LONG, message nêu con số 1000")
     void tooLongAnswerIsRejected() throws Exception {
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 java.util.Map.of("quizItemId", 1, "answer", "a".repeat(1001)))))
@@ -294,7 +296,7 @@ class QuizControllerIT extends AbstractPostgresIT {
                  "feedback_vi":"Câu dùng từ đúng nghĩa.",
                  "improved_version":"Governments must mitigate the impact of flooding."}"""));
 
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":%d,\"answer\":\"We mitigate it.\"}"
                                 .formatted(quizItemId)))
@@ -321,7 +323,7 @@ class QuizControllerIT extends AbstractPostgresIT {
         String body = generate("{\"count\":5,\"type\":\"FILL_BLANK\"}");
         long quizItemId = objectMapper.readTree(body).get(0).get("id").asLong();
 
-        String result = mockMvc.perform(post("/api/quiz/answer")
+        String result = mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":%d,\"answer\":\"mitigate\"}"
                                 .formatted(quizItemId)))
@@ -351,7 +353,7 @@ class QuizControllerIT extends AbstractPostgresIT {
         String body = generate("{\"count\":5,\"type\":\"FILL_BLANK\"}");
         long quizItemId = objectMapper.readTree(body).get(0).get("id").asLong();
 
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":%d,\"answer\":\"mitigate\"}"
                                 .formatted(quizItemId)))
@@ -410,7 +412,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     }
 
     private void expectSkipped(long quizItemId) throws Exception {
-        mockMvc.perform(post("/api/quiz/answer")
+        mockMvc.perform(post("/api/quiz/answer").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quizItemId\":%d,\"answer\":\"\"}".formatted(quizItemId)))
                 .andExpect(status().isOk())
@@ -424,7 +426,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("[C2] type sai chính tả → 400, KHÔNG phải 500")
     void unknownEnumValueIsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/quiz/generate")
+        mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":5,\"type\":\"FILLBLANK\"}"))
                 .andExpect(status().isBadRequest())
@@ -436,7 +438,7 @@ class QuizControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("[C2] JSON méo → 400, và message KHÔNG dội lại nội dung người dùng gửi")
     void malformedJsonIsBadRequest() throws Exception {
-        String body = mockMvc.perform(post("/api/quiz/generate")
+        String body = mockMvc.perform(post("/api/quiz/generate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":5,,,}"))
                 .andExpect(status().isBadRequest())
