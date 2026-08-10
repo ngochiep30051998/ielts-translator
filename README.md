@@ -42,6 +42,10 @@ docker compose down       # tắt backend, dữ liệu từ vựng vẫn còn
 
 Bôi đen text bất kỳ trên web để dịch. Bấm `+` để lưu vào sổ, `⤢` để mở side panel.
 
+Không có sẵn text trên trang thì mở side panel và gõ/dán thẳng vào ô trên tab **Dịch**
+(`Ctrl/Cmd+Enter` để dịch). Ô này được điền sẵn đoạn vừa bôi đen, nên bôi hụt một chút
+thì sửa lại rồi dịch lại, không phải gõ từ đầu.
+
 ## Ôn tập
 
 Mỗi từ đơn lưu vào sổ tự động vào lịch ôn (câu dài thì không — flashcard cả câu

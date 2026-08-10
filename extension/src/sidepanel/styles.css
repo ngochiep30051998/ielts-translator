@@ -240,6 +240,65 @@ body {
 .status.bad { color: var(--danger); }
 
 /* ============================================================
+   Ô nhập text để dịch
+   ============================================================ */
+.translate-input { margin-bottom: 14px; }
+
+.translate-input textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.translate-input textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.translate-input-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.translate-input-foot .counter { color: var(--text-3); font-size: 12px; }
+.translate-input-foot .counter.over { color: var(--danger); }
+.translate-input-foot button {
+  padding: 7px 15px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.translate-input-foot button:hover:not(:disabled) { filter: brightness(1.08); }
+.translate-input-foot button:disabled { opacity: 0.45; cursor: default; }
+
+.translate-input .status.bad { margin-top: 8px; }
+.translate-input .status.bad button {
+  margin-left: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ============================================================
    Tab sổ từ
    ============================================================ */
 .vocab-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
