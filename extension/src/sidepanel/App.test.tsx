@@ -13,6 +13,19 @@ const lastResult: TranslateResult = {
   },
 };
 
+/** Kết quả TRANSLATE_TEXT trả về khi dịch từ ô nhập (khác lastResult để không lẫn với GET_LAST_RESULT). */
+const enViWord: TranslateResult = {
+  direction: 'EN_VI', mode: 'WORD', cached: false, sourceText: 'renewable',
+  payload: {
+    term: 'renewable', lemma: 'renewable', pos: 'adj', ipa: '/rɪˈnjuːəbl/',
+    meaning_vi: 'tái tạo', definition_en: 'able to be renewed', cefr: 'B2',
+    band_level: '6.5', register: 'academic',
+    collocations: ['renewable energy', 'renewable resources'],
+    examples: [{ en: 'We rely on renewable energy.', vi: 'Chúng ta dựa vào năng lượng tái tạo.' }],
+    synonyms: [{ term: 'sustainable', band: '7.0' }],
+  },
+};
+
 /** Mock đủ cho App + mọi tab con mà test này chạm tới. */
 function mockBackend(last: TranslateResult | null) {
   (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
@@ -76,5 +89,24 @@ describe('App', () => {
     // Khoá quyết định "state ở App": đẩy state ngược xuống TranslateTab cho gọn
     // sẽ làm ca này đỏ ngay.
     expect(screen.getByLabelText(/Text cần dịch/i)).toHaveValue('resilient');
+  });
+
+  it('dịch từ ô nhập cập nhật vùng kết quả của panel', async () => {
+    // Không dùng mockBackend(): test này cần TRANSLATE_TEXT trả kết quả riêng
+    // (enViWord), còn GET_LAST_RESULT trả null để ô nhập bắt đầu trống.
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (request: { type: string }) =>
+        request.type === 'TRANSLATE_TEXT' ? { ok: true, data: enViWord } : { ok: true, data: null },
+    );
+    render(<App />);
+    await userEvent.type(await screen.findByLabelText(/Text cần dịch/i), 'renewable');
+    await userEvent.click(screen.getByRole('button', { name: 'Dịch' }));
+
+    // Khoá đường nối App → TranslateTab: nếu App không truyền đúng onResult xuống,
+    // TranslateTab vẫn gọi được onResult nhưng App không cập nhật state result,
+    // nên panel không bao giờ hiện kết quả.
+    expect(await screen.findByText('tái tạo')).toBeInTheDocument();
+    // Dịch xong không được đụng vào nội dung ô nhập (spec §2).
+    expect(screen.getByLabelText(/Text cần dịch/i)).toHaveValue('renewable');
   });
 });
