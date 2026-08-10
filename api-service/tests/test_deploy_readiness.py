@@ -150,78 +150,26 @@ def test_requirements_txt_phu_du_phu_thuoc_runtime() -> None:
 # ── đóng gói cho Vercel ───────────────────────────────────────────────────────
 
 
-def test_vercel_json_dong_goi_prompts_va_migrations() -> None:
-    """`includeFiles` là BẮT BUỘC. Không có nó thì `prompts/*.md` không lên bundle, chạy
-    local ngon mà deploy lên là MỌI lượt dịch chết."""
-    import json
+def test_vercel_json_khong_duoc_co_rewrites() -> None:
+    """Đây là lỗi đã tốn nhiều giờ để tìm ra, nên nó phải có test canh.
 
-    cfg = json.loads((GOC / "vercel.json").read_text("utf-8"))
-    include = cfg["functions"]["api/index.py"]["includeFiles"]
+    Vercel TỰ nhận diện FastAPI và dựng một function tên `fastapi` phục vụ app ở MỌI đường
+    dẫn — `vercel inspect` cho thấy `└── λ fastapi`, không phải `api/index.py`. Thêm
+    `rewrites` vào lúc đó là viết đè đường dẫn TRƯỚC khi function nhận được nó: mọi endpoint
+    biến thành `/api/index` và trả 404.
 
-    assert "prompts" in include
-    assert "migrations" in include
-
-
-#: Trần `maxDuration` của gói Vercel Hobby. Đặt cao hơn thì deploy bị từ chối.
-MAX_DURATION_HOBBY = 60
-
-
-def timeout_sinh_quiz_toi_da(max_duration: int) -> int:
-    """Giá trị `GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS` lớn nhất còn an toàn trên serverless.
-
-    Một lượt sinh quiz xấu nhất tốn `MAX_ATTEMPTS × timeout + backoff`. Vượt `maxDuration`
-    thì Vercel giết function GIỮA lượt gọi Gemini: người dùng thấy request treo rồi đứt,
-    quota Gemini vẫn bị trừ, và log chỉ có một dòng timeout không nói được nguyên nhân.
-    """
-    from app.common.gemini import MAX_ATTEMPTS
-
-    return (max_duration - 1) // MAX_ATTEMPTS
-
-
-def test_max_duration_khai_tuong_minh_va_du_cho_mot_timeout_dung_duoc() -> None:
-    """Mặc định 30s của `.env` (hợp cho Docker) KHÔNG vừa trên Hobby: 2×30+1 = 61 > 60.
-
-    Nên đây không phải là chuyện nâng `maxDuration` — 60 đã là trần Hobby — mà là chuyện
-    trên Vercel phải hạ timeout xuống. Test canh rằng `maxDuration` đủ lớn để còn tồn tại
-    một giá trị timeout dùng được; con số cụ thể nằm trong `DEPLOY.md`.
+    Triệu chứng đặc biệt khó lần vì nó trông y hệt lỗi định tuyến của ứng dụng: app CHẠY,
+    trả đúng hình dạng lỗi của mình, chỉ là không route nào khớp.
     """
     import json
 
     cfg = json.loads((GOC / "vercel.json").read_text("utf-8"))
-    max_duration = cfg["functions"]["api/index.py"].get("maxDuration")
 
-    assert max_duration is not None, "Phải khai maxDuration, đừng dựa vào mặc định của gói"
-    assert max_duration <= MAX_DURATION_HOBBY, (
-        f"maxDuration={max_duration}s vượt trần Hobby {MAX_DURATION_HOBBY}s — deploy sẽ bị từ chối."
+    assert "rewrites" not in cfg, (
+        "Vercel tự route mọi đường dẫn vào app FastAPI. Thêm rewrites là viết đè đường dẫn "
+        "và làm TOÀN BỘ API trả 404."
     )
-
-    cho_phep = timeout_sinh_quiz_toi_da(max_duration)
-    mac_dinh = Settings(_env_file=None).gemini_quiz_generate_timeout_seconds  # type: ignore[call-arg]
-    assert cho_phep >= 20, f"maxDuration={max_duration}s chỉ cho timeout {cho_phep}s — quá ngắn."
-    assert mac_dinh > cho_phep, (
-        "Mặc định giờ đã vừa maxDuration — cập nhật DEPLOY.md, phần dặn hạ "
-        "GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS trên Vercel không còn cần nữa."
-    )
-
-
-def test_moi_duong_dan_deu_rewrite_ve_mot_function() -> None:
-    """Gói Hobby giới hạn 12 function mỗi lần deploy; API có 16 endpoint. Chia theo file là
-    chạm trần ngay.
-
-    `destination` PHẢI mang theo `__path=/$1`. Vercel rewrite bằng cách THAY đường dẫn gốc,
-    không phải chỉ định tuyến tới function — thiếu tham số này thì FastAPI thấy mọi request
-    đều là `/api/index` và trả 404 cho TOÀN BỘ API. Đây là lỗi đã xảy ra thật, và nó không
-    lộ ra ở bất kỳ test nào khác vì local thì đường dẫn không bao giờ bị viết đè.
-    """
-    import json
-
-    from api.index import PATH_PARAM
-
-    cfg = json.loads((GOC / "vercel.json").read_text("utf-8"))
-
-    assert cfg["rewrites"] == [
-        {"source": "/(.*)", "destination": f"/api/index?{PATH_PARAM}=/$1"}
-    ]
+    assert "routes" not in cfg, "Cùng lý do với rewrites."
 
 
 def test_entry_point_vercel_import_duoc_app() -> None:

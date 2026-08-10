@@ -15,3 +15,5 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 .vercel/
+.vercel
+.env*
