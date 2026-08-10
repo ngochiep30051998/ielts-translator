@@ -1,10 +1,75 @@
 import { ApiClient } from './api-client';
 import { refreshBadge } from './badge';
 import { loadSettings } from '../shared/settings';
+import { clearAuth, loadAuth, saveAuth } from '../shared/auth-storage';
 import type { ExtensionRequest, ExtensionResponse } from '../shared/messages';
 import type { ApiError, TranslateResult } from '../shared/types';
 
 const client = new ApiClient(async () => (await loadSettings()).backendUrl);
+
+/**
+ * Client id của OAuth client kiểu "Web application". CÔNG KHAI được — nó nằm trong URL mà
+ * người dùng nhìn thấy. `client_secret` thì TUYỆT ĐỐI không: nó chỉ sống ở backend.
+ */
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
+
+/**
+ * Mở luồng OAuth và đổi code lấy phiên.
+ *
+ * `chrome.identity` chỉ dùng được ở service worker, nên toàn bộ luồng nằm ở đây và panel
+ * chỉ gửi message SIGN_IN.
+ */
+async function signIn() {
+  const redirectUri = chrome.identity.getRedirectURL();
+  const state = crypto.randomUUID();
+
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('state', state);
+  url.searchParams.set('nonce', crypto.randomUUID());
+  // Thiếu select_account thì Chrome im lặng dùng lại tài khoản Google lần trước — người có
+  // hai tài khoản không đổi được mà cũng không hiểu vì sao.
+  url.searchParams.set('prompt', 'select_account');
+
+  let redirect: string | undefined;
+  try {
+    redirect = await chrome.identity.launchWebAuthFlow({ url: url.toString(), interactive: true });
+  } catch {
+    // Người dùng đóng cửa sổ là ca thường gặp nhất, không phải sự cố.
+    throw { code: 'UNAUTHORIZED', message: 'Đã huỷ đăng nhập.', retryable: false };
+  }
+  if (!redirect) {
+    throw { code: 'UNAUTHORIZED', message: 'Đã huỷ đăng nhập.', retryable: false };
+  }
+
+  const params = new URL(redirect).searchParams;
+  if (params.get('error')) {
+    throw {
+      code: 'UNAUTHORIZED',
+      message: params.get('error') === 'access_denied'
+        ? 'Bạn đã từ chối cấp quyền cho extension.'
+        : `Google từ chối đăng nhập (${params.get('error')}).`,
+      retryable: false,
+    };
+  }
+  // state là thứ DUY NHẤT phân biệt "Google vừa trả lời mình" với một redirect bị nhét vào.
+  // Sinh ra mà không đối chiếu thì thà đừng sinh.
+  if (params.get('state') !== state) {
+    throw { code: 'UNAUTHORIZED', message: 'Phản hồi đăng nhập không khớp.', retryable: false };
+  }
+  const code = params.get('code');
+  if (!code) {
+    throw { code: 'UNAUTHORIZED', message: 'Google không trả mã đăng nhập.', retryable: false };
+  }
+
+  const session = await client.googleLogin({ code, redirectUri });
+  await saveAuth(session.token, session.user);
+  await refreshBadge(client);
+  return session.user;
+}
 
 /** Kết quả dịch gần nhất, để side panel đọc lại khi vừa mở. */
 let lastResult: TranslateResult | null = null;
@@ -113,6 +178,29 @@ async function handle(request: ExtensionRequest, senderTabId?: number): Promise<
       // KHÔNG gọi refreshBadge ở đây: quiz không chạm lịch SRS, nên số thẻ đến hạn
       // không thể đổi vì một lượt nộp bài.
       return client.answerQuiz({ quizItemId: request.quizItemId, answer: request.answer });
+    case 'EXPLAIN_QUIZ':
+      // Cũng như ANSWER_QUIZ: không refreshBadge. Quiz không chạm lịch SRS nên số thẻ đến
+      // hạn không thể đổi vì một lượt xin giải thích.
+      return client.explainQuiz({ quizItemId: request.quizItemId });
+    case 'SIGN_IN':
+      return signIn();
+    case 'SIGN_OUT':
+      // Xoá token phía client DÙ backend lỗi. Giữ lại vì server không phản hồi sẽ kẹt người
+      // dùng ở trạng thái "đã bấm đăng xuất nhưng vẫn đang đăng nhập" — và trên máy mượn
+      // thì đó đúng là điều họ vừa cố tránh.
+      try {
+        await client.logout();
+      } finally {
+        await clearAuth();
+        await refreshBadge(client);
+      }
+      return null;
+    case 'GET_AUTH_STATE': {
+      // Đọc từ storage chứ không gọi /auth/me mỗi lần mở panel: panel mở rất thường xuyên,
+      // và token chết sẽ tự lộ ra ở request nghiệp vụ đầu tiên qua 401.
+      const stored = await loadAuth();
+      return stored?.user ?? null;
+    }
     case 'CHECK_HEALTH':
       return client.health();
   }

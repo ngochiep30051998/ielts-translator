@@ -21,25 +21,28 @@ public class SrsController {
     private static final int MAX_LIMIT = 200;
 
     private final SrsService srsService;
+    private final com.hiepnn.ieltstranslator.auth.AuthContext auth;
 
-    public SrsController(SrsService srsService) {
+    public SrsController(SrsService srsService,
+                         com.hiepnn.ieltstranslator.auth.AuthContext auth) {
         this.srsService = srsService;
+        this.auth = auth;
     }
 
     @GetMapping("/due")
     public List<CardDto> due(@RequestParam(defaultValue = "50") int limit,
                              @RequestParam(defaultValue = "30") int newLimit) {
-        return srsService.due(clamp(limit, MAX_LIMIT), Math.max(0, newLimit));
+        return srsService.due(auth.requireUserId(), clamp(limit, MAX_LIMIT), Math.max(0, newLimit));
     }
 
     @GetMapping("/stats")
     public SrsStatsDto stats(@RequestParam(defaultValue = "30") int newLimit) {
-        return srsService.stats(Math.max(0, newLimit));
+        return srsService.stats(auth.requireUserId(), Math.max(0, newLimit));
     }
 
     @PostMapping("/review")
     public ReviewResponse review(@Valid @RequestBody ReviewRequest request) {
-        return srsService.review(request.cardId(), request.rating());
+        return srsService.review(auth.requireUserId(), request.cardId(), request.rating());
     }
 
     /** limit phải >= 1 vì PageRequest.of(0, size) ném IllegalArgument khi size = 0. */

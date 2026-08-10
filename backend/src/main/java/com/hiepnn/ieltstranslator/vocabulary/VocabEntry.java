@@ -16,6 +16,16 @@ public class VocabEntry {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Chủ sở hữu. Đây là cột user_id DUY NHẤT của toàn bộ dữ liệu học — srs_card,
+     * srs_distractor, quiz_item đều treo vào entry này, review_log treo vào srs_card,
+     * quiz_attempt treo vào quiz_item. Suy ra được thì đừng nhân bản: hai nguồn sự thật
+     * lệch nhau ở đây nghĩa là dữ liệu người này lọt sang người kia, im lặng.
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private com.hiepnn.ieltstranslator.auth.AppUser user;
+
     @Column(nullable = false)
     private String term;
 
@@ -97,6 +107,9 @@ public class VocabEntry {
     public void setCollocations(JsonNode collocations) { this.collocations = collocations; }
     public JsonNode getExamples() { return examples; }
     public void setExamples(JsonNode examples) { this.examples = examples; }
+    public com.hiepnn.ieltstranslator.auth.AppUser getUser() { return user; }
+    public void setUser(com.hiepnn.ieltstranslator.auth.AppUser user) { this.user = user; }
+
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

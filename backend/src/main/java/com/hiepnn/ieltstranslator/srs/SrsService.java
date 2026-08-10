@@ -44,14 +44,14 @@ public class SrsService {
      * phần hạn mức còn lại của ngày. Tổng cắt ở {@code limit}.
      */
     @Transactional(readOnly = true)
-    public List<CardDto> due(int limit, int newLimit) {
+    public List<CardDto> due(Long userId, int limit, int newLimit) {
         List<SrsCard> dueCards = cards.findDue(
-                LocalDate.now(), CardState.NEW, PageRequest.of(0, limit));
+                userId, LocalDate.now(), CardState.NEW, PageRequest.of(0, limit));
 
         List<SrsCard> queue = new ArrayList<>(dueCards);
-        int room = Math.min(limit - dueCards.size(), remainingNewToday(newLimit));
+        int room = Math.min(limit - dueCards.size(), remainingNewToday(userId, newLimit));
         if (room > 0) {
-            queue.addAll(cards.findNewCards(CardState.NEW, PageRequest.of(0, room)));
+            queue.addAll(cards.findNewCards(userId, CardState.NEW, PageRequest.of(0, room)));
         }
 
         Map<Long, SrsDistractor> byVocabId = loadFreshDistractors(queue);
@@ -61,16 +61,18 @@ public class SrsService {
     }
 
     @Transactional(readOnly = true)
-    public SrsStatsDto stats(int newLimit) {
-        long dueNow = cards.countDue(LocalDate.now(), CardState.NEW);
-        long newTotal = cards.countByState(CardState.NEW);
-        long newAllowed = Math.min(newTotal, remainingNewToday(newLimit));
-        return new SrsStatsDto(dueNow + newAllowed, newTotal, cards.countLearned());
+    public SrsStatsDto stats(Long userId, int newLimit) {
+        long dueNow = cards.countDue(userId, LocalDate.now(), CardState.NEW);
+        long newTotal = cards.countByState(userId, CardState.NEW);
+        long newAllowed = Math.min(newTotal, remainingNewToday(userId, newLimit));
+        return new SrsStatsDto(dueNow + newAllowed, newTotal, cards.countLearned(userId));
     }
 
     @Transactional
-    public ReviewResponse review(Long cardId, Rating rating) {
-        SrsCard card = cards.findById(cardId).orElseThrow(
+    public ReviewResponse review(Long userId, Long cardId, Rating rating) {
+        // findOwned chứ không findById: thẻ của người khác trả NOT_FOUND, không phải
+        // FORBIDDEN — FORBIDDEN xác nhận id đó có tồn tại, tức là một kênh dò id.
+        SrsCard card = cards.findOwned(cardId, userId).orElseThrow(
                 () -> AppException.of(ErrorCode.NOT_FOUND, "Không tìm thấy thẻ id=" + cardId));
 
         int prevInterval = card.getIntervalDays();
@@ -129,9 +131,9 @@ public class SrsService {
     }
 
     /** Hạn mức từ mới còn lại của hôm nay, không bao giờ âm. */
-    private int remainingNewToday(int newLimit) {
+    private int remainingNewToday(Long userId, int newLimit) {
         Instant startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();
-        long introduced = logs.countIntroducedSince(startOfDay);
+        long introduced = logs.countIntroducedSince(userId, startOfDay);
         return (int) Math.max(0L, newLimit - introduced);
     }
 

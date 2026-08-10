@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { sendToBackground } from '../shared/messages';
-import type { AnswerResult, ApiError, QuizItemDto, QuizType } from '../shared/types';
+import type {
+  AnswerResult, ApiError, QuizExplanation, QuizItemDto, QuizType,
+} from '../shared/types';
 
 /**
  * Giới hạn cứng độ dài câu trả lời, áp cho CẢ BA loại.
@@ -70,6 +72,15 @@ export function QuizTab() {
   const [grading, setGrading] = useState(false);
   const [answerError, setAnswerError] = useState<ApiError | null>(null);
 
+  /**
+   * MỘT ô chứ không phải mảng song song với `results`: điều hướng chỉ đi tới — `next()`
+   * không có đường lùi — nên không bao giờ quay lại câu cũ. `results` là mảng vì màn tổng
+   * kết đếm số câu đúng; giải thích không vào tổng kết.
+   */
+  const [explanation, setExplanation] = useState<QuizExplanation | null>(null);
+  const [explaining, setExplaining] = useState(false);
+  const [explainError, setExplainError] = useState<ApiError | null>(null);
+
   const count = Number.parseInt(countText, 10);
   const countValid = Number.isInteger(count) && count >= MIN_COUNT && count <= MAX_COUNT;
   const canGenerate = !generating && countValid && types.length > 0;
@@ -133,6 +144,8 @@ export function QuizTab() {
     setIndex(0);
     setDraft('');
     setAnswerError(null);
+    setExplanation(null);
+    setExplainError(null);
     // "Hỏng một phần" chỉ có nghĩa khi CÓ phần chạy được. Hỏng sạch thì nó là lỗi
     // chặn, và hiện kèm cảnh báo "một phần" vừa thừa vừa sai sự thật.
     setWarnings(collected.length > 0 ? failed : []);
@@ -162,9 +175,27 @@ export function QuizTab() {
     }
   }
 
+  async function explain() {
+    const item = items[index];
+    if (!item || explaining) return;
+
+    setExplaining(true);
+    setExplainError(null);
+    const response = await sendToBackground({ type: 'EXPLAIN_QUIZ', quizItemId: item.id });
+    setExplaining(false);
+
+    if (response.ok) {
+      setExplanation(response.data);
+    } else {
+      setExplainError(response.error);
+    }
+  }
+
   function next() {
     setDraft('');
     setAnswerError(null);
+    setExplanation(null);
+    setExplainError(null);
     setIndex((i) => i + 1);
   }
 
@@ -177,6 +208,8 @@ export function QuizTab() {
     setWarnings([]);
     setError(null);
     setAnswerError(null);
+    setExplanation(null);
+    setExplainError(null);
   }
 
   const warningBlock = warnings.length > 0 && (
@@ -388,7 +421,59 @@ export function QuizTab() {
             </div>
           )}
 
-          <button type="button" className="quiz-next" onClick={next}>
+          {!explanation && (
+            <button
+              type="button"
+              className="quiz-explain"
+              disabled={explaining}
+              onClick={() => void explain()}
+            >
+              {explaining ? 'Đang giải thích…' : 'Giải thích'}
+            </button>
+          )}
+
+          {explainError && (
+            <p className="status bad" role="alert">
+              {explainError.message} Bấm "Giải thích" để thử lại.
+            </p>
+          )}
+
+          {explanation && (
+            <div className="quiz-explanation">
+              <h3>Giải thích</h3>
+              <p>{explanation.explanation}</p>
+
+              <h3>Nghĩa đáp án</h3>
+              <p>{explanation.answerMeaning}</p>
+
+              {/*
+                sentenceEn và sentenceVi là MỘT CẶP — backend không bao giờ gửi một nửa.
+                Kiểm cả hai vừa để TypeScript hẹp được kiểu, vừa để một nửa lọt qua (nếu
+                hợp đồng vỡ) không render ra một khối trống.
+              */}
+              {explanation.sentenceEn && explanation.sentenceVi && (
+                <>
+                  <h3>Dịch câu</h3>
+                  <p className="quiz-sentence-en">{explanation.sentenceEn}</p>
+                  <p>{explanation.sentenceVi}</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/*
+            Khoá nút Tiếp trong lúc đang giải thích. Không khoá thì bấm Tiếp khi request
+            đang bay sẽ làm response về muộn ghi giải thích của câu cũ lên câu mới — sai
+            câu, và không có lỗi nào nổ ra. Người vừa bấm "Giải thích" là người đang muốn
+            đọc, nên chờ một hai giây không mất gì; response lỗi cũng kết thúc `explaining`
+            nên không có đường kẹt vĩnh viễn.
+          */}
+          <button
+            type="button"
+            className="quiz-next"
+            disabled={explaining}
+            onClick={next}
+          >
             {index + 1 < items.length ? 'Tiếp' : 'Xem kết quả'}
           </button>
         </div>

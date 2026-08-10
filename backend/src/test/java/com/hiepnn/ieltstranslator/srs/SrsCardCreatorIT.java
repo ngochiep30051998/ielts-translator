@@ -36,7 +36,7 @@ class SrsCardCreatorIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Lưu một từ đơn thì thẻ ôn tập được tạo ngay, due hôm nay, state NEW")
     void createsCardForWord() {
-        SaveVocabResponse saved = vocabService.save(request("mitigate", "verb"));
+        SaveVocabResponse saved = vocabService.save(ownerId(), request("mitigate", "verb"));
 
         assertThat(cards.existsByVocabEntry_Id(saved.id())).isTrue();
         SrsCard card = cards.findAll().getFirst();
@@ -49,7 +49,7 @@ class SrsCardCreatorIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Lưu cả một câu (pos = 'phrase') thì KHÔNG tạo thẻ — flashcard câu dài vô nghĩa")
     void skipsPhrase() {
-        SaveVocabResponse saved = vocabService.save(
+        SaveVocabResponse saved = vocabService.save(ownerId(),
                 request("Governments must act on climate change.", "phrase"));
 
         assertThat(cards.existsByVocabEntry_Id(saved.id())).isFalse();
@@ -59,8 +59,8 @@ class SrsCardCreatorIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Lưu lại từ đã có không tạo thẻ thứ hai")
     void doesNotDuplicateOnResave() {
-        vocabService.save(request("resilient", "adjective"));
-        vocabService.save(request("resilient", "adjective"));
+        vocabService.save(ownerId(), request("resilient", "adjective"));
+        vocabService.save(ownerId(), request("resilient", "adjective"));
 
         assertThat(cards.count()).isEqualTo(1L);
     }

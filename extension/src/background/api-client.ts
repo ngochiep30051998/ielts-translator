@@ -1,7 +1,9 @@
 import type {
-  AnswerResult, ApiError, CardDto, PageResponse, QuizItemDto, QuizType, Rating,
-  ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult, VocabEntryDto,
+  AnswerResult, ApiError, AuthUser, CardDto, PageResponse, QuizExplanation, QuizItemDto,
+  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult,
+  VocabEntryDto,
 } from '../shared/types';
+import { clearAuth, loadToken } from '../shared/auth-storage';
 
 const HEALTH_CACHE_MS = 30_000;
 
@@ -112,26 +114,78 @@ export class ApiClient {
       { method: 'POST', body: JSON.stringify(args) }, QUIZ_ANSWER_TIMEOUT_MS);
   }
 
+  /**
+   * Giải thích một câu ĐÃ trả lời. Cũng là một lượt gọi Gemini nên dùng chung mức chờ với
+   * chấm bài — 40 giây mặc định là ngắn khi backend đang đợi Gemini.
+   */
+  async explainQuiz(args: { quizItemId: number }): Promise<QuizExplanation> {
+    return this.request('/api/quiz/explain',
+      { method: 'POST', body: JSON.stringify(args) }, QUIZ_ANSWER_TIMEOUT_MS);
+  }
+
+  /**
+   * Đổi authorization code lấy phiên. KHÔNG gắn Authorization — lúc này chưa có token nào,
+   * và đây là đường DUY NHẤT để có.
+   */
+  async googleLogin(args: { code: string; redirectUri: string }):
+      Promise<{ token: string; expiresAt: string; user: AuthUser }> {
+    return this.request('/api/auth/google',
+      { method: 'POST', body: JSON.stringify(args) }, DEFAULT_TIMEOUT_MS, false);
+  }
+
+  /** Kiểm token còn sống, thay vì đợi một request nghiệp vụ nào đó nhận 401. */
+  async authMe(): Promise<AuthUser> {
+    return this.request('/api/auth/me', { method: 'GET' });
+  }
+
+  async logout(): Promise<null> {
+    await this.request<null>('/api/auth/logout', { method: 'POST' });
+    return null;
+  }
+
   async health(): Promise<HealthStatus> {
     const now = Date.now();
     if (this.healthCache && now - this.healthCache.at < HEALTH_CACHE_MS) {
       return this.healthCache.value;
     }
-    const value = await this.request<HealthStatus>('/api/health', { method: 'GET' });
+    // KHÔNG gắn token: /api/health là thứ dùng để chẩn đoán KHI đăng nhập đang hỏng.
+    // Bắt nó phải có token là tự khoá mình ngoài cửa đúng lúc cần nó nhất.
+    const value = await this.request<HealthStatus>('/api/health', { method: 'GET' },
+      DEFAULT_TIMEOUT_MS, false);
     this.healthCache = { value, at: now };   // chỉ cache khi thành công
     return value;
   }
 
+  /**
+   * @param authenticated false CHỈ cho /api/auth/google — mọi đường khác đều phải mang
+   *                      token. Mặc định true để thêm endpoint mới mà quên là không thể.
+   */
   private async request<T>(path: string, init: RequestInit,
-                           timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<T> {
+                           timeoutMs: number = DEFAULT_TIMEOUT_MS,
+                           authenticated = true): Promise<T> {
     const baseUrl = await this.baseUrlProvider();
+
+    const authHeaders: Record<string, string> = {};
+    if (authenticated) {
+      const token = await loadToken();
+      if (!token) {
+        // Ném tại chỗ thay vì gọi rồi nhận 401: cùng kết quả, nhưng không tốn một vòng
+        // mạng và một dòng log rác mỗi lần alarm badge chạy lúc chưa đăng nhập.
+        throw apiError('UNAUTHORIZED', 'Cần đăng nhập để dùng chức năng này', false);
+      }
+      authHeaders.Authorization = `Bearer ${token}`;
+    }
 
     let response: Response;
     try {
       response = await fetch(`${baseUrl}${path}`, {
         ...init,
         signal: AbortSignal.timeout(timeoutMs),
-        headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          ...(init.headers ?? {}),
+        },
       });
     } catch (error) {
       // Nhận diện quá hạn bằng TÊN lỗi, không bằng `instanceof DOMException`: dưới jsdom
@@ -161,6 +215,14 @@ export class ApiClient {
       parsed = await response.json();
     } catch {
       throw apiError('INTERNAL', `Backend trả phản hồi không đọc được (HTTP ${response.status})`, false);
+    }
+
+    if (response.status === 401 && authenticated) {
+      // Phiên chết ở server (hết hạn hoặc bị thu hồi từ thiết bị khác). Xoá token ngay để
+      // request kế tiếp không lặp lại vòng này, rồi để UI đưa người dùng về màn đăng nhập.
+      // KHÔNG tự mở lại luồng OAuth: launchWebAuthFlow bật cửa sổ, và cửa sổ tự bật khi
+      // người dùng không bấm gì là hành vi đáng ngờ.
+      await clearAuth();
     }
 
     if (!response.ok) {

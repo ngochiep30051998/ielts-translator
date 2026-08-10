@@ -2,6 +2,8 @@ package com.hiepnn.ieltstranslator.quiz;
 
 import com.hiepnn.ieltstranslator.quiz.dto.AnswerQuizRequest;
 import com.hiepnn.ieltstranslator.quiz.dto.AnswerResultDto;
+import com.hiepnn.ieltstranslator.quiz.dto.ExplainQuizRequest;
+import com.hiepnn.ieltstranslator.quiz.dto.ExplanationDto;
 import com.hiepnn.ieltstranslator.quiz.dto.GenerateQuizRequest;
 import com.hiepnn.ieltstranslator.quiz.dto.QuizItemDto;
 import jakarta.validation.Valid;
@@ -17,9 +19,12 @@ import java.util.List;
 public class QuizController {
 
     private final QuizService quizService;
+    private final com.hiepnn.ieltstranslator.auth.AuthContext auth;
 
-    public QuizController(QuizService quizService) {
+    public QuizController(QuizService quizService,
+                          com.hiepnn.ieltstranslator.auth.AuthContext auth) {
         this.quizService = quizService;
+        this.auth = auth;
     }
 
     /**
@@ -29,11 +34,20 @@ public class QuizController {
      */
     @PostMapping("/generate")
     public List<QuizItemDto> generate(@Valid @RequestBody GenerateQuizRequest request) {
-        return quizService.generate(request);
+        return quizService.generate(auth.requireUserId(), request);
     }
 
     @PostMapping("/answer")
     public AnswerResultDto answer(@Valid @RequestBody AnswerQuizRequest request) {
-        return quizService.answer(request.quizItemId(), request.answer());
+        return quizService.answer(auth.requireUserId(), request.quizItemId(), request.answer());
+    }
+
+    /**
+     * Giải thích một câu ĐÃ trả lời. Response chứa đáp án, nên endpoint chỉ phục vụ item đã
+     * có lượt làm — chốt chặn đó nằm trong QuizService.explain().
+     */
+    @PostMapping("/explain")
+    public ExplanationDto explain(@Valid @RequestBody ExplainQuizRequest request) {
+        return quizService.explain(auth.requireUserId(), request.quizItemId());
     }
 }

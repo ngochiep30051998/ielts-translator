@@ -32,7 +32,7 @@ class VocabControllerIT extends AbstractPostgresIT {
 
     @Test
     void savesAndReturnsId() throws Exception {
-        mockMvc.perform(post("/api/vocab").contentType(MediaType.APPLICATION_JSON).content(BODY))
+        mockMvc.perform(post("/api/vocab").header("Authorization", BEARER_OWNER).contentType(MediaType.APPLICATION_JSON).content(BODY))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.id").isNumber())
                .andExpect(jsonPath("$.alreadyExists").value(false));
@@ -40,18 +40,18 @@ class VocabControllerIT extends AbstractPostgresIT {
 
     @Test
     void secondSaveReportsAlreadyExists() throws Exception {
-        mockMvc.perform(post("/api/vocab").contentType(MediaType.APPLICATION_JSON).content(BODY));
+        mockMvc.perform(post("/api/vocab").header("Authorization", BEARER_OWNER).contentType(MediaType.APPLICATION_JSON).content(BODY));
 
-        mockMvc.perform(post("/api/vocab").contentType(MediaType.APPLICATION_JSON).content(BODY))
+        mockMvc.perform(post("/api/vocab").header("Authorization", BEARER_OWNER).contentType(MediaType.APPLICATION_JSON).content(BODY))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.alreadyExists").value(true));
     }
 
     @Test
     void searchReturnsPagedResult() throws Exception {
-        mockMvc.perform(post("/api/vocab").contentType(MediaType.APPLICATION_JSON).content(BODY));
+        mockMvc.perform(post("/api/vocab").header("Authorization", BEARER_OWNER).contentType(MediaType.APPLICATION_JSON).content(BODY));
 
-        mockMvc.perform(get("/api/vocab").param("q", "renew"))
+        mockMvc.perform(get("/api/vocab").header("Authorization", BEARER_OWNER).param("q", "renew"))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.content[0].term").value("renewable"))
                .andExpect(jsonPath("$.totalElements").value(1));
@@ -59,22 +59,22 @@ class VocabControllerIT extends AbstractPostgresIT {
 
     @Test
     void deleteReturns204ThenGetReturns404() throws Exception {
-        String response = mockMvc.perform(post("/api/vocab")
+        String response = mockMvc.perform(post("/api/vocab").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andReturn().getResponse().getContentAsString();
         long id = com.jayway.jsonpath.JsonPath.parse(response).read("$.id", Integer.class);
 
-        mockMvc.perform(delete("/api/vocab/" + id)).andExpect(status().isNoContent());
-        mockMvc.perform(get("/api/vocab/" + id))
+        mockMvc.perform(delete("/api/vocab/" + id).header("Authorization", BEARER_OWNER)).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/vocab/" + id).header("Authorization", BEARER_OWNER))
                .andExpect(status().isNotFound())
                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     @Test
     void exportReturnsCsvWithHeaderRow() throws Exception {
-        mockMvc.perform(post("/api/vocab").contentType(MediaType.APPLICATION_JSON).content(BODY));
+        mockMvc.perform(post("/api/vocab").header("Authorization", BEARER_OWNER).contentType(MediaType.APPLICATION_JSON).content(BODY));
 
-        mockMvc.perform(get("/api/vocab/export.csv"))
+        mockMvc.perform(get("/api/vocab/export.csv").header("Authorization", BEARER_OWNER))
                .andExpect(status().isOk())
                .andExpect(header().string("Content-Disposition",
                        "attachment; filename=\"vocabulary.csv\""))

@@ -34,7 +34,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
 
     @Test
     void englishWordRoutesToEnViWordMode() {
-        TranslateResponse response = service.translate(
+        TranslateResponse response = service.translate(ownerId(), 
                 new TranslateRequest("renewable", "We need renewable energy.", null, null));
 
         assertThat(response.direction()).isEqualTo(Direction.EN_VI);
@@ -45,7 +45,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
 
     @Test
     void vietnameseSentenceRoutesToViEnSentenceMode() {
-        TranslateResponse response = service.translate(new TranslateRequest(
+        TranslateResponse response = service.translate(ownerId(), new TranslateRequest(
                 "Chính phủ nên đầu tư nhiều hơn vào năng lượng tái tạo", null, null, null));
 
         assertThat(response.direction()).isEqualTo(Direction.VI_EN);
@@ -54,7 +54,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
 
     @Test
     void firstCallHitsGeminiAndPersistsCache() {
-        service.translate(new TranslateRequest("renewable", null, null, null));
+        service.translate(ownerId(), new TranslateRequest("renewable", null, null, null));
 
         verify(geminiClient, times(1)).generateJson(anyString(), any(), any());
         assertThat(cacheRepository.count()).isEqualTo(1);
@@ -64,9 +64,9 @@ class TranslationServiceIT extends AbstractPostgresIT {
     void secondIdenticalCallServesFromCacheWithoutCallingGemini() {
         TranslateRequest request = new TranslateRequest("renewable", null, null, null);
 
-        service.translate(request);
+        service.translate(ownerId(), request);
         clearInvocations(geminiClient);
-        TranslateResponse second = service.translate(request);
+        TranslateResponse second = service.translate(ownerId(), request);
 
         verifyNoInteractions(geminiClient);
         assertThat(second.cached()).isTrue();
@@ -77,17 +77,17 @@ class TranslationServiceIT extends AbstractPostgresIT {
     @Test
     void cacheHitIncrementsHitCount() {
         TranslateRequest request = new TranslateRequest("renewable", null, null, null);
-        service.translate(request);
-        service.translate(request);
-        service.translate(request);
+        service.translate(ownerId(), request);
+        service.translate(ownerId(), request);
+        service.translate(ownerId(), request);
 
         assertThat(cacheRepository.findAll().get(0).getHitCount()).isEqualTo(2);
     }
 
     @Test
     void differentContextDoesNotShareCacheEntry() {
-        service.translate(new TranslateRequest("renewable", "context A", null, null));
-        service.translate(new TranslateRequest("renewable", "context B", null, null));
+        service.translate(ownerId(), new TranslateRequest("renewable", "context A", null, null));
+        service.translate(ownerId(), new TranslateRequest("renewable", "context B", null, null));
 
         assertThat(cacheRepository.count()).isEqualTo(2);
     }
@@ -96,7 +96,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
     void textOverLimitIsRejected() {
         String tooLong = "a".repeat(1501);
 
-        assertThatThrownBy(() -> service.translate(new TranslateRequest(tooLong, null, null, null)))
+        assertThatThrownBy(() -> service.translate(ownerId(), new TranslateRequest(tooLong, null, null, null)))
                 .isInstanceOf(com.hiepnn.ieltstranslator.common.AppException.class)
                 .satisfies(ex -> assertThat(
                         ((com.hiepnn.ieltstranslator.common.AppException) ex).code())
@@ -107,7 +107,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
 
     @Test
     void geminiIsCalledWithSchemaMatchingDetectedRoute() {
-        service.translate(new TranslateRequest("renewable", null, null, null));
+        service.translate(ownerId(), new TranslateRequest("renewable", null, null, null));
 
         verify(geminiClient).generateJson(anyString(),
                 eq(TranslationSchemas.of(Direction.EN_VI, Mode.WORD)),
@@ -116,7 +116,7 @@ class TranslationServiceIT extends AbstractPostgresIT {
 
     @Test
     void promptSentToGeminiContainsTheSelectedText() {
-        service.translate(new TranslateRequest("renewable", "some context", null, null));
+        service.translate(ownerId(), new TranslateRequest("renewable", "some context", null, null));
 
         verify(geminiClient).generateJson(
                 argThat(prompt -> prompt.contains("renewable") && prompt.contains("some context")),
@@ -125,8 +125,8 @@ class TranslationServiceIT extends AbstractPostgresIT {
 
     @Test
     void cacheKeyDoesNotCollideWhenTextAndContextBoundaryShifts() {
-        service.translate(new TranslateRequest("ab", "c", null, null));
-        service.translate(new TranslateRequest("a", "bc", null, null));
+        service.translate(ownerId(), new TranslateRequest("ab", "c", null, null));
+        service.translate(ownerId(), new TranslateRequest("a", "bc", null, null));
 
         assertThat(cacheRepository.count()).isEqualTo(2);
     }

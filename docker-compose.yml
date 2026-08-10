@@ -7,9 +7,9 @@ services:
       POSTGRES_DB: ${DB_NAME:-ielts}
       POSTGRES_USER: ${DB_USER:-ielts}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-ielts}
-    ports:
-      # DB_PORT chỉ đổi cổng publish ra host. Trong mạng compose luôn là 5432.
-      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    # KHÔNG publish port ở đây nữa. Trên VPS, mở 5432 ra ngoài là đặt sổ từ của cả nhóm
+    # sau đúng một mật khẩu trong .env. Máy dev lấy lại cổng qua
+    # docker-compose.override.yml — file đó KHÔNG copy lên VPS.
     volumes:
       - ielts_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -41,13 +41,42 @@ services:
       GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS: ${GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS:-30}
       GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS: ${GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS:-20}
       EXTENSION_ID: ${EXTENSION_ID}
+      # --- Đăng nhập Google ---
+      # Thiếu những dòng này thì đặt AUTH_* trong .env KHÔNG có tác dụng khi chạy bằng
+      # Docker, và cũng không có cảnh báo nào.
+      AUTH_GOOGLE_CLIENT_ID: ${AUTH_GOOGLE_CLIENT_ID}
+      AUTH_GOOGLE_CLIENT_SECRET: ${AUTH_GOOGLE_CLIENT_SECRET}
+      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS}
+      # Flyway V6 backfill vocab_entry.user_id theo biến này. Không có nó thì app KHÔNG
+      # khởi động được — cố ý, vì chạy migration với một email đoán bừa sẽ gán toàn bộ sổ
+      # từ cho một tài khoản không ai đăng nhập được, mà Flyway thì không chạy lại.
+      AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL}
+      AUTH_SESSION_DAYS: ${AUTH_SESSION_DAYS:-60}
+      AUTH_DAILY_GEMINI_CALLS: ${AUTH_DAILY_GEMINI_CALLS:-300}
       # Không có biến này thì JVM trong container chạy UTC, trong khi lịch ôn tính
       # "hôm nay" bằng LocalDate.now() theo giờ hệ thống. Hệ quả: ngày ôn đổi lúc
       # 07:00 sáng giờ VN thay vì nửa đêm — hạn mức từ mới/ngày và due_date lệch
       # theo. Chạy backend từ IDE không dính vì JVM lấy luôn giờ của máy.
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
+    # Cũng không publish: Caddy đứng trước và nói chuyện với app qua mạng nội bộ.
+    # Máy dev lấy lại cổng qua docker-compose.override.yml.
+
+  caddy:
+    # Caddy tự xin và tự gia hạn chứng chỉ Let's Encrypt. nginx thì phải cắm thêm certbot
+    # và một cron gia hạn — nhiều thứ để quên hơn cho đúng một việc.
+    image: caddy:2
+    depends_on:
+      - app
     ports:
-      - "127.0.0.1:${APP_PORT:-8080}:8080"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
 
 volumes:
   ielts_pgdata:
+  caddy_data:
+  caddy_config:

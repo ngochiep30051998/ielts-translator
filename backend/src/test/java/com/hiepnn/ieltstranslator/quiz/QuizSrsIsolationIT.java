@@ -52,6 +52,8 @@ class QuizSrsIsolationIT extends AbstractPostgresIT {
 
     private Long seed(String term, int repetitions, int lapses) {
         VocabEntry v = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        v.setUser(ownerUser());
         v.setTerm(term);
         v.setLemma(term);
         v.setLang("en");
@@ -129,7 +131,7 @@ class QuizSrsIsolationIT extends AbstractPostgresIT {
     /** Sinh đề một loại rồi nộp hết, cả câu đúng lẫn câu sai. @return số câu đã nộp. */
     private int doWholeQuiz(QuizType type) throws Exception {
         stubFor(type);
-        List<QuizItemDto> generated = service.generate(new GenerateQuizRequest(null, 10, type));
+        List<QuizItemDto> generated = service.generate(ownerId(), new GenerateQuizRequest(null, 10, type));
         assertThat(generated).as("%s phải sinh được đề", type).isNotEmpty();
 
         if (type == QuizType.FREE_WRITE) {
@@ -142,7 +144,7 @@ class QuizSrsIsolationIT extends AbstractPostgresIT {
         int index = 0;
         for (QuizItemDto item : generated) {
             // Xen kẽ đúng/sai để chắc chắn cả hai nhánh chấm đều chạy.
-            service.answer(item.id(), index % 2 == 0 ? "0" : "câu trả lời bất kỳ");
+            service.answer(ownerId(), item.id(), index % 2 == 0 ? "0" : "câu trả lời bất kỳ");
             index++;
         }
         return generated.size();

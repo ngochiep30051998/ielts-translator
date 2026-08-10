@@ -45,6 +45,8 @@ class SrsControllerIT extends AbstractPostgresIT {
 
     private SrsCard seed() {
         VocabEntry e = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        e.setUser(ownerUser());
         e.setTerm("mitigate");
         e.setLemma("mitigate");
         e.setLang("en");
@@ -67,7 +69,7 @@ class SrsControllerIT extends AbstractPostgresIT {
     void due() throws Exception {
         seed();
 
-        mockMvc.perform(get("/api/srs/due").param("limit", "50").param("newLimit", "30"))
+        mockMvc.perform(get("/api/srs/due").header("Authorization", BEARER_OWNER).param("limit", "50").param("newLimit", "30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].term").value("mitigate"))
                 .andExpect(jsonPath("$[0].meaningVi").value("giảm nhẹ"))
@@ -86,7 +88,7 @@ class SrsControllerIT extends AbstractPostgresIT {
     void stats() throws Exception {
         seed();
 
-        mockMvc.perform(get("/api/srs/stats").param("newLimit", "30"))
+        mockMvc.perform(get("/api/srs/stats").header("Authorization", BEARER_OWNER).param("newLimit", "30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.dueCount").value(1))
                 .andExpect(jsonPath("$.newCount").value(1))
@@ -98,7 +100,7 @@ class SrsControllerIT extends AbstractPostgresIT {
     void review() throws Exception {
         SrsCard c = seed();
 
-        mockMvc.perform(post("/api/srs/review")
+        mockMvc.perform(post("/api/srs/review").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cardId\":" + c.getId() + ",\"rating\":\"GOOD\"}"))
                 .andExpect(status().isOk())
@@ -111,7 +113,7 @@ class SrsControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("POST /api/srs/review với thẻ lạ trả 404 đúng hình dạng lỗi chung")
     void reviewNotFound() throws Exception {
-        mockMvc.perform(post("/api/srs/review")
+        mockMvc.perform(post("/api/srs/review").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cardId\":999999,\"rating\":\"GOOD\"}"))
                 .andExpect(status().isNotFound())
@@ -123,7 +125,7 @@ class SrsControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("POST /api/srs/review thiếu rating trả 400")
     void reviewValidation() throws Exception {
-        mockMvc.perform(post("/api/srs/review")
+        mockMvc.perform(post("/api/srs/review").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cardId\":1}"))
                 .andExpect(status().isBadRequest());
@@ -134,7 +136,7 @@ class SrsControllerIT extends AbstractPostgresIT {
     void cardDtoCarriesEmptyDistractorsWhenNotGenerated() throws Exception {
         seed();
 
-        mockMvc.perform(get("/api/srs/due").param("limit", "10").param("newLimit", "30"))
+        mockMvc.perform(get("/api/srs/due").header("Authorization", BEARER_OWNER).param("limit", "10").param("newLimit", "30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].viDistractors").isArray())
                 .andExpect(jsonPath("$[0].viDistractors").isEmpty())

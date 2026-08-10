@@ -596,6 +596,42 @@ body {
 .quiz-skip:hover:not(:disabled) { border-color: var(--border); color: var(--text); }
 .quiz-skip:disabled { opacity: 0.5; cursor: default; }
 
+/* Giải thích là hành động phụ, bấm mới gọi — nhẹ hơn nút Tiếp để không tranh chỗ với nó. */
+.quiz-explain {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 540;
+  cursor: pointer;
+}
+.quiz-explain:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.quiz-explain:disabled { opacity: 0.6; cursor: default; }
+
+.quiz-explanation { margin-top: 12px; }
+.quiz-explanation h3 {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.quiz-explanation h3:first-child { margin-top: 0; }
+.quiz-explanation p { margin: 0; font-size: 13.5px; line-height: 1.55; }
+
+/* Câu tiếng Anh đứng ngay trên bản dịch — nghiêng để mắt tách được hai thứ tiếng. */
+.quiz-explanation .quiz-sentence-en {
+  margin-bottom: 3px;
+  color: var(--text-2);
+  font-style: italic;
+}
+
 .quiz-result {
   margin-top: 14px;
   padding: 13px;
@@ -725,3 +761,55 @@ body {
 }
 .options-actions button + button:hover { background: var(--surface-2); filter: none; }
 .options .status { margin-top: 12px; font-size: 13px; }
+
+/* ---------- Đăng nhập ---------- */
+
+.login {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 32px 20px;
+  text-align: center;
+}
+.login h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.login-lead { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+
+.login-button {
+  margin-top: 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.login-button:hover:not(:disabled) { background: var(--surface-2); }
+.login-button:disabled { opacity: 0.6; cursor: default; }
+
+/* Thanh tài khoản: nhỏ và mờ — nó là thông tin trạng thái, không phải thứ để bấm hằng ngày. */
+.account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.account-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-signout {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.account-signout:hover { border-color: var(--border); color: var(--text); }

@@ -37,10 +37,10 @@ public interface QuizCandidateRepository extends JpaRepository<QuizItem, Long> {
             JOIN srs_card c ON c.vocab_entry_id = v.id
             LEFT JOIN quiz_item qi ON qi.vocab_entry_id = v.id
             LEFT JOIN quiz_attempt qa ON qa.quiz_item_id = qi.id
-            WHERE c.repetitions >= 1
+            WHERE v.user_id = :userId AND c.repetitions >= 1
             GROUP BY v.id, c.lapses
             ORDER BY count(qa.id) ASC, c.lapses DESC, v.id ASC
             LIMIT :limit
             """, nativeQuery = true)
-    List<Long> findCandidates(@Param("limit") int limit);
+    List<Long> findCandidates(@Param("userId") Long userId, @Param("limit") int limit);
 }

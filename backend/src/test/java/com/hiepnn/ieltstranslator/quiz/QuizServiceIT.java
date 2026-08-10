@@ -57,6 +57,8 @@ class QuizServiceIT extends AbstractPostgresIT {
 
     private Long saveWord(String term) {
         VocabEntry v = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        v.setUser(ownerUser());
         v.setTerm(term);
         v.setLemma(term);
         v.setLang("en");
@@ -98,7 +100,7 @@ class QuizServiceIT extends AbstractPostgresIT {
         card(fresh, 0, 0);
         stubFillBlank("reviewed", "fresh");
 
-        List<QuizItemDto> generated = service.generate(byCount(10, QuizType.FILL_BLANK));
+        List<QuizItemDto> generated = service.generate(ownerId(), byCount(10, QuizType.FILL_BLANK));
 
         assertThat(generated).extracting(QuizItemDto::vocabEntryId).containsExactly(reviewed);
     }
@@ -112,7 +114,7 @@ class QuizServiceIT extends AbstractPostgresIT {
         card(highLapses, 3, 9);
         stubFillBlank("high", "low");
 
-        List<QuizItemDto> generated = service.generate(byCount(10, QuizType.FILL_BLANK));
+        List<QuizItemDto> generated = service.generate(ownerId(), byCount(10, QuizType.FILL_BLANK));
 
         assertThat(generated).extracting(QuizItemDto::vocabEntryId)
                 .containsExactly(highLapses, lowLapses);
@@ -123,7 +125,7 @@ class QuizServiceIT extends AbstractPostgresIT {
     void emptyWhenNoCandidates() {
         card(saveWord("fresh"), 0, 0);
 
-        assertThat(service.generate(byCount(10, QuizType.FILL_BLANK))).isEmpty();
+        assertThat(service.generate(ownerId(), byCount(10, QuizType.FILL_BLANK))).isEmpty();
         verify(geminiClient, never())
                 .generateJson(anyString(), any(), eq(GeminiTimeout.QUIZ_GENERATE));
     }
@@ -131,7 +133,7 @@ class QuizServiceIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Sổ rỗng → mảng rỗng, không ném")
     void emptyWhenVocabBookIsEmpty() {
-        assertThat(service.generate(byCount(10, QuizType.FILL_BLANK))).isEmpty();
+        assertThat(service.generate(ownerId(), byCount(10, QuizType.FILL_BLANK))).isEmpty();
     }
 
     @Test
@@ -141,7 +143,7 @@ class QuizServiceIT extends AbstractPostgresIT {
         card(fresh, 0, 0);
         stubFillBlank("fresh");
 
-        List<QuizItemDto> generated = service.generate(
+        List<QuizItemDto> generated = service.generate(ownerId(), 
                 new GenerateQuizRequest(List.of(fresh), null, QuizType.FILL_BLANK));
 
         assertThat(generated).hasSize(1);
@@ -150,7 +152,7 @@ class QuizServiceIT extends AbstractPostgresIT {
     @Test
     @DisplayName("vocabIds toàn id không tồn tại → mảng rỗng, không gọi Gemini")
     void unknownVocabIdsGiveEmptyList() {
-        assertThat(service.generate(
+        assertThat(service.generate(ownerId(), 
                 new GenerateQuizRequest(List.of(999_999L), null, QuizType.FILL_BLANK)))
                 .isEmpty();
         verify(geminiClient, never()).generateJson(anyString(), any(), any());
@@ -164,7 +166,7 @@ class QuizServiceIT extends AbstractPostgresIT {
         }
         stubFillBlank("w0", "w1", "w2", "w3");
 
-        assertThat(service.generate(byCount(10, QuizType.FILL_BLANK))).hasSize(4);
+        assertThat(service.generate(ownerId(), byCount(10, QuizType.FILL_BLANK))).hasSize(4);
     }
 
     /* ---------- Đếm call Gemini ---------- */
@@ -175,8 +177,8 @@ class QuizServiceIT extends AbstractPostgresIT {
         card(saveWord("w0"), 2, 0);
         stubFillBlank("w0");
 
-        List<QuizItemDto> first = service.generate(byCount(5, QuizType.FILL_BLANK));
-        List<QuizItemDto> second = service.generate(byCount(5, QuizType.FILL_BLANK));
+        List<QuizItemDto> first = service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK));
+        List<QuizItemDto> second = service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK));
 
         assertThat(second).extracting(QuizItemDto::id)
                 .containsExactlyElementsOf(first.stream().map(QuizItemDto::id).toList());
@@ -192,9 +194,9 @@ class QuizServiceIT extends AbstractPostgresIT {
         card(saveWord("w0"), 2, 0);
         stubFillBlank("w0");
 
-        service.generate(byCount(5, QuizType.FILL_BLANK));
+        service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK));
         jdbc.update("UPDATE quiz_item SET prompt_version = 99");
-        service.generate(byCount(5, QuizType.FILL_BLANK));
+        service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK));
 
         verify(geminiClient, times(2))
                 .generateJson(anyString(), any(), eq(GeminiTimeout.QUIZ_GENERATE));
@@ -205,7 +207,7 @@ class QuizServiceIT extends AbstractPostgresIT {
     void freeWriteCostsNothingToGenerate() {
         card(saveWord("w0"), 2, 0);
 
-        assertThat(service.generate(byCount(5, QuizType.FREE_WRITE))).hasSize(1);
+        assertThat(service.generate(ownerId(), byCount(5, QuizType.FREE_WRITE))).hasSize(1);
         verify(geminiClient, never()).generateJson(anyString(), any(), any());
     }
 
@@ -217,7 +219,7 @@ class QuizServiceIT extends AbstractPostgresIT {
                 .thenReturn(objectMapper.readTree("""
                 {"items":[{"term":"w0","sentence":"Khong co cho trong.","answer":"w0","hint":"x"}]}"""));
 
-        assertThatThrownBy(() -> service.generate(byCount(5, QuizType.FILL_BLANK)))
+        assertThatThrownBy(() -> service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK)))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).code())
                         .isEqualTo(ErrorCode.PARSE_ERROR));
@@ -230,10 +232,10 @@ class QuizServiceIT extends AbstractPostgresIT {
     void answerRecordsNewAttemptEachTime() throws Exception {
         card(saveWord("w0"), 2, 0);
         stubFillBlank("w0");
-        Long itemId = service.generate(byCount(5, QuizType.FILL_BLANK)).get(0).id();
+        Long itemId = service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK)).get(0).id();
 
-        service.answer(itemId, "w0");
-        service.answer(itemId, "sai rồi");
+        service.answer(ownerId(), itemId, "w0");
+        service.answer(ownerId(), itemId, "sai rồi");
 
         assertThat(attempts.count()).isEqualTo(2L);
     }
@@ -242,10 +244,10 @@ class QuizServiceIT extends AbstractPostgresIT {
     @DisplayName("Chấm FREE_WRITE dùng đúng mức timeout QUIZ_GRADE")
     void freeWriteUsesGradeTimeout() throws Exception {
         card(saveWord("w0"), 2, 0);
-        Long itemId = service.generate(byCount(5, QuizType.FREE_WRITE)).get(0).id();
+        Long itemId = service.generate(ownerId(), byCount(5, QuizType.FREE_WRITE)).get(0).id();
         stubGrade(true, true, true, 80);
 
-        service.answer(itemId, "I will w0 the risk.");
+        service.answer(ownerId(), itemId, "I will w0 the risk.");
 
         verify(geminiClient, times(1))
                 .generateJson(anyString(), any(), eq(GeminiTimeout.QUIZ_GRADE));
@@ -255,10 +257,10 @@ class QuizServiceIT extends AbstractPostgresIT {
     @DisplayName("band_ok = false KHÔNG làm câu trả lời thành sai — nhãn band chỉ là tham khảo")
     void bandOkDoesNotDecideCorrect() throws Exception {
         card(saveWord("w0"), 2, 0);
-        Long itemId = service.generate(byCount(5, QuizType.FREE_WRITE)).get(0).id();
+        Long itemId = service.generate(ownerId(), byCount(5, QuizType.FREE_WRITE)).get(0).id();
         stubGrade(true, true, false, 70);
 
-        AnswerResultDto result = service.answer(itemId, "I will w0 the risk.");
+        AnswerResultDto result = service.answer(ownerId(), itemId, "I will w0 the risk.");
 
         assertThat(result.correct()).isTrue();
         assertThat(result.score()).isEqualTo(70);
@@ -268,20 +270,20 @@ class QuizServiceIT extends AbstractPostgresIT {
     @DisplayName("meaning_ok = false thì sai, dù ngữ pháp đúng")
     void meaningFailureMakesAnswerWrong() throws Exception {
         card(saveWord("w0"), 2, 0);
-        Long itemId = service.generate(byCount(5, QuizType.FREE_WRITE)).get(0).id();
+        Long itemId = service.generate(ownerId(), byCount(5, QuizType.FREE_WRITE)).get(0).id();
         stubGrade(false, true, true, 30);
 
-        assertThat(service.answer(itemId, "I ate a w0.").correct()).isFalse();
+        assertThat(service.answer(ownerId(), itemId, "I ate a w0.").correct()).isFalse();
     }
 
     @Test
     @DisplayName("Điểm Gemini trả ngoài khoảng 0..100 bị kẹp lại, không lọt ra API")
     void scoreIsClamped() throws Exception {
         card(saveWord("w0"), 2, 0);
-        Long itemId = service.generate(byCount(5, QuizType.FREE_WRITE)).get(0).id();
+        Long itemId = service.generate(ownerId(), byCount(5, QuizType.FREE_WRITE)).get(0).id();
         stubGrade(true, true, true, 250);
 
-        assertThat(service.answer(itemId, "I will w0 it.").score()).isEqualTo(100);
+        assertThat(service.answer(ownerId(), itemId, "I will w0 it.").score()).isEqualTo(100);
     }
 
     @Test
@@ -292,9 +294,9 @@ class QuizServiceIT extends AbstractPostgresIT {
                 .thenReturn(objectMapper.readTree("""
                 {"items":[{"term":"w0","question":"Cụm nào tự nhiên?",
                   "options":["a","b","c","d"],"correct_index":1}]}"""));
-        Long itemId = service.generate(byCount(5, QuizType.COLLOCATION_CHOICE)).get(0).id();
+        Long itemId = service.generate(ownerId(), byCount(5, QuizType.COLLOCATION_CHOICE)).get(0).id();
 
-        AnswerResultDto result = service.answer(itemId, "hai");
+        AnswerResultDto result = service.answer(ownerId(), itemId, "hai");
 
         assertThat(result.correct()).isFalse();
         assertThat(result.score()).isZero();
@@ -306,9 +308,9 @@ class QuizServiceIT extends AbstractPostgresIT {
     void tooLongAnswerIsRejectedForEveryType() throws Exception {
         card(saveWord("w0"), 2, 0);
         stubFillBlank("w0");
-        Long itemId = service.generate(byCount(5, QuizType.FILL_BLANK)).get(0).id();
+        Long itemId = service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK)).get(0).id();
 
-        assertThatThrownBy(() -> service.answer(itemId, "a".repeat(1001)))
+        assertThatThrownBy(() -> service.answer(ownerId(), itemId, "a".repeat(1001)))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).code())
                         .isEqualTo(ErrorCode.TEXT_TOO_LONG));
@@ -318,7 +320,7 @@ class QuizServiceIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Item không tồn tại → NOT_FOUND")
     void unknownItemThrowsNotFound() {
-        assertThatThrownBy(() -> service.answer(123_456L, "x"))
+        assertThatThrownBy(() -> service.answer(ownerId(), 123_456L, "x"))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).code())
                         .isEqualTo(ErrorCode.NOT_FOUND));
@@ -330,7 +332,7 @@ class QuizServiceIT extends AbstractPostgresIT {
         card(saveWord("w0"), 2, 0);
         stubFillBlank("w0");
 
-        service.generate(byCount(5, QuizType.FILL_BLANK));
+        service.generate(ownerId(), byCount(5, QuizType.FILL_BLANK));
 
         assertThat(items.count()).isEqualTo(1L);
     }
@@ -351,6 +353,6 @@ class QuizServiceIT extends AbstractPostgresIT {
         IntStream.range(0, 3).forEach(i -> card(saveWord("w" + i), 2, 0));
         stubFillBlank("w0", "w1", "w2");
 
-        assertThat(service.generate(byCount(3, QuizType.FILL_BLANK))).hasSize(3);
+        assertThat(service.generate(ownerId(), byCount(3, QuizType.FILL_BLANK))).hasSize(3);
     }
 }

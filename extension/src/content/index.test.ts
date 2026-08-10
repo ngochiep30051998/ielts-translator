@@ -183,4 +183,26 @@ describe('content script — bôi đen hiện icon, bấm icon mới dịch', ()
     expect(document.getElementById(BUBBLE_HOST_ID)).toBeNull();
     expect(sendToBackground).not.toHaveBeenCalled();
   });
+
+  it('chưa đăng nhập thì bong bóng nói rõ nguyên nhân, không phải thông điệp chung chung', async () => {
+    vi.mocked(sendToBackground).mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Cần đăng nhập để dùng chức năng này',
+        retryable: false,
+      },
+    });
+    await import('./index');
+
+    await selectText('mitigate');
+    iconButton()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const text = shadow().textContent ?? '';
+    expect(text).toContain('Cần đăng nhập');
+    expect(text).toContain('side panel');
+    // retryable = false nên KHÔNG có nút "Thử lại": bấm lại mười lần vẫn thế.
+    expect(text).not.toContain('Thử lại');
+  });
 });

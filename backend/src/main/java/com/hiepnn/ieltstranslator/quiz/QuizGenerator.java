@@ -76,15 +76,18 @@ public class QuizGenerator {
     private final QuizItemValidator validator;
     private final GeminiClient gemini;
     private final PromptLoader prompts;
+    private final com.hiepnn.ieltstranslator.quota.GeminiQuotaGuard quota;
     private final Random random = new Random();
 
     public QuizGenerator(VocabEntryRepository vocab, QuizItemRepository items,
-                         QuizItemValidator validator, GeminiClient gemini, PromptLoader prompts) {
+                         QuizItemValidator validator, GeminiClient gemini, PromptLoader prompts,
+                         com.hiepnn.ieltstranslator.quota.GeminiQuotaGuard quota) {
         this.vocab = vocab;
         this.items = items;
         this.validator = validator;
         this.gemini = gemini;
         this.prompts = prompts;
+        this.quota = quota;
     }
 
     /** Version prompt quyết định item loại này còn hiệu lực hay không. */
@@ -108,20 +111,20 @@ public class QuizGenerator {
      * @throws AppException mã {@code PARSE_ERROR} khi có từ để hỏi mà không dựng nổi item
      *         nào — trả mảng rỗng lúc đó là giả vờ thành công.
      */
-    public List<QuizItem> buildItems(List<Long> vocabIds, QuizType type) {
+    public List<QuizItem> buildItems(Long userId, List<Long> vocabIds, QuizType type) {
         List<VocabEntry> entries = loadInRequestedOrder(vocabIds);
         if (entries.isEmpty()) {
             return List.of();
         }
 
         int promptVersion = promptVersionFor(type);
-        Map<Long, QuizItem> byEntry = reusableByEntry(entries, type, promptVersion);
+        Map<Long, QuizItem> byEntry = reusableByEntry(userId, entries, type, promptVersion);
 
         List<VocabEntry> needGeneration = entries.stream()
                 .filter(entry -> !byEntry.containsKey(entry.getId()))
                 .toList();
         if (!needGeneration.isEmpty()) {
-            byEntry.putAll(generate(needGeneration, type, promptVersion));
+            byEntry.putAll(generate(userId, needGeneration, type, promptVersion));
         }
 
         List<QuizItem> result = new ArrayList<>(entries.size());
@@ -156,23 +159,24 @@ public class QuizGenerator {
     }
 
     /** Mỗi từ lấy tối đa MỘT item tái dùng. */
-    private Map<Long, QuizItem> reusableByEntry(List<VocabEntry> entries, QuizType type,
-                                                int promptVersion) {
+    private Map<Long, QuizItem> reusableByEntry(Long userId, List<VocabEntry> entries,
+                                                QuizType type, int promptVersion) {
         List<Long> ids = entries.stream().map(VocabEntry::getId).toList();
         Map<Long, QuizItem> byEntry = new LinkedHashMap<>();
-        for (QuizItem item : items.findReusable(ids, List.of(type), promptVersion)) {
+        for (QuizItem item : items.findReusable(userId, ids, List.of(type), promptVersion)) {
             byEntry.putIfAbsent(item.getVocabEntry().getId(), item);
         }
         return byEntry;
     }
 
-    private Map<Long, QuizItem> generate(List<VocabEntry> entries, QuizType type,
+    private Map<Long, QuizItem> generate(Long userId, List<VocabEntry> entries, QuizType type,
                                          int promptVersion) {
         return switch (type) {
+            // FREE_WRITE dựng thẳng ở Java, KHÔNG gọi Gemini nên không tính hạn mức.
             case FREE_WRITE -> buildFreeWrite(entries, promptVersion);
-            case FILL_BLANK -> callGemini(entries, type, promptVersion,
+            case FILL_BLANK -> callGemini(userId, entries, type, promptVersion,
                     FILL_BLANK_PROMPT, FILL_BLANK_SCHEMA);
-            case COLLOCATION_CHOICE -> callGemini(entries, type, promptVersion,
+            case COLLOCATION_CHOICE -> callGemini(userId, entries, type, promptVersion,
                     COLLOCATION_PROMPT, COLLOCATION_SCHEMA);
         };
     }
@@ -190,11 +194,12 @@ public class QuizGenerator {
         return built;
     }
 
-    private Map<Long, QuizItem> callGemini(List<VocabEntry> entries, QuizType type,
+    private Map<Long, QuizItem> callGemini(Long userId, List<VocabEntry> entries, QuizType type,
                                            int promptVersion, String promptFile,
                                            Map<String, Object> schema) {
         PromptTemplate template = prompts.load(promptFile);
         String prompt = template.render(Map.of("TERMS", renderTerms(entries)));
+        quota.consume(userId);
         JsonNode payload = gemini.generateJson(prompt, schema, GeminiTimeout.QUIZ_GENERATE);
 
         // Ghép item Gemini trả về với từ trong sổ bằng chính field `term`. Deque vì hai

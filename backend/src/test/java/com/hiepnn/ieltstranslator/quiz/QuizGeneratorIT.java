@@ -56,6 +56,8 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         List<Long> ids = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             VocabEntry v = new VocabEntry();
+            // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+            v.setUser(ownerUser());
             v.setTerm("w" + i);
             v.setLemma("w" + i);
             v.setLang("en");
@@ -85,7 +87,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         List<Long> ids = saveWords(6);
         stubFillBlank(6);
 
-        List<QuizItem> built = generator.buildItems(ids, QuizType.FILL_BLANK);
+        List<QuizItem> built = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK);
 
         assertThat(built).hasSize(6);
         verify(geminiClient, times(1))
@@ -97,7 +99,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
     void freeWriteCostsNoGeminiCall() {
         List<Long> ids = saveWords(3);
 
-        List<QuizItem> built = generator.buildItems(ids, QuizType.FREE_WRITE);
+        List<QuizItem> built = generator.buildItems(ownerId(), ids, QuizType.FREE_WRITE);
 
         assertThat(built).hasSize(3);
         assertThat(built.get(0).getPayload().get("question").toString())
@@ -111,9 +113,9 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         List<Long> ids = saveWords(3);
         stubFillBlank(3);
 
-        List<Long> first = generator.buildItems(ids, QuizType.FILL_BLANK)
+        List<Long> first = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK)
                 .stream().map(QuizItem::getId).toList();
-        List<Long> second = generator.buildItems(ids, QuizType.FILL_BLANK)
+        List<Long> second = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK)
                 .stream().map(QuizItem::getId).toList();
 
         assertThat(second).containsExactlyElementsOf(first);
@@ -128,7 +130,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         List<Long> ids = saveWords(1);
         stubFillBlank(1);
 
-        QuizItem first = generator.buildItems(ids, QuizType.FILL_BLANK).get(0);
+        QuizItem first = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK).get(0);
         QuizAttempt attempt = new QuizAttempt();
         attempt.setQuizItem(first);
         attempt.setUserAnswer("w0");
@@ -136,7 +138,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         attempt.setScore(100);
         attempts.saveAndFlush(attempt);
 
-        QuizItem second = generator.buildItems(ids, QuizType.FILL_BLANK).get(0);
+        QuizItem second = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK).get(0);
 
         assertThat(second.getId()).isNotEqualTo(first.getId());
         verify(geminiClient, times(2))
@@ -149,10 +151,10 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         List<Long> ids = saveWords(1);
         stubFillBlank(1);
 
-        QuizItem first = generator.buildItems(ids, QuizType.FILL_BLANK).get(0);
+        QuizItem first = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK).get(0);
         jdbc.update("UPDATE quiz_item SET prompt_version = 99 WHERE id = ?", first.getId());
 
-        QuizItem second = generator.buildItems(ids, QuizType.FILL_BLANK).get(0);
+        QuizItem second = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK).get(0);
 
         assertThat(second.getId()).isNotEqualTo(first.getId());
         assertThat(second.getPromptVersion())
@@ -173,7 +175,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
                   {"term":"w2","sentence":"They ___ risk.","answer":"w2","hint":"x"}
                 ]}"""));
 
-        List<QuizItem> built = generator.buildItems(ids, QuizType.FILL_BLANK);
+        List<QuizItem> built = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK);
 
         assertThat(built).hasSize(2);
         assertThat(items.count()).isEqualTo(2L);
@@ -190,7 +192,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
                   {"term":"w1","sentence":"Also no blank.","answer":"w1","hint":"x"}
                 ]}"""));
 
-        assertThatThrownBy(() -> generator.buildItems(ids, QuizType.FILL_BLANK))
+        assertThatThrownBy(() -> generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).code())
                         .isEqualTo(ErrorCode.PARSE_ERROR));
@@ -202,7 +204,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         List<Long> ids = saveWords(1);
         stubFillBlank(1);
 
-        QuizItem item = generator.buildItems(ids, QuizType.FILL_BLANK).get(0);
+        QuizItem item = generator.buildItems(ownerId(), ids, QuizType.FILL_BLANK).get(0);
 
         assertThat(item.getPayload())
                 .containsEntry("answer", "w0")
@@ -219,7 +221,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
                 {"items":[{"term":"w0","question":"Cụm nào tự nhiên?",
                   "options":["đúng","sai 1","sai 2","sai 3"],"correct_index":0}]}"""));
 
-        QuizItem item = generator.buildItems(ids, QuizType.COLLOCATION_CHOICE).get(0);
+        QuizItem item = generator.buildItems(ownerId(), ids, QuizType.COLLOCATION_CHOICE).get(0);
 
         @SuppressWarnings("unchecked")
         List<String> options = (List<String>) item.getPayload().get("options");
@@ -241,7 +243,7 @@ class QuizGeneratorIT extends AbstractPostgresIT {
         for (int i = 0; i < 40; i++) {
             // Xoá item cũ để lượt sau không rơi vào đường tái dùng.
             jdbc.update("DELETE FROM quiz_item");
-            QuizItem item = generator.buildItems(ids, QuizType.COLLOCATION_CHOICE).get(0);
+            QuizItem item = generator.buildItems(ownerId(), ids, QuizType.COLLOCATION_CHOICE).get(0);
             positions.add(((Number) item.getPayload().get("correct_index")).intValue());
         }
 

@@ -21,13 +21,17 @@ import java.util.Set;
 public class VocabService {
 
     private final VocabEntryRepository repository;
+    private final com.hiepnn.ieltstranslator.auth.AppUserRepository userRepository;
     private final CsvExporter csvExporter;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher events;
 
-    public VocabService(VocabEntryRepository repository, CsvExporter csvExporter,
+    public VocabService(VocabEntryRepository repository,
+                        com.hiepnn.ieltstranslator.auth.AppUserRepository userRepository,
+                        CsvExporter csvExporter,
                         ObjectMapper objectMapper, ApplicationEventPublisher events) {
         this.repository = repository;
+        this.userRepository = userRepository;
         this.csvExporter = csvExporter;
         this.objectMapper = objectMapper;
         this.events = events;
@@ -38,9 +42,10 @@ public class VocabService {
      * thêm tag mới — và báo alreadyExists để UI hiện "Đã có trong sổ".
      */
     @Transactional
-    public SaveVocabResponse save(SaveVocabRequest request) {
+    public SaveVocabResponse save(Long userId, SaveVocabRequest request) {
         String pos = request.pos() == null ? "" : request.pos();
-        Optional<VocabEntry> existing = repository.findByTermAndPos(request.term(), pos);
+        Optional<VocabEntry> existing =
+                repository.findByUser_IdAndTermAndPos(userId, request.term(), pos);
 
         if (existing.isPresent()) {
             VocabEntry entry = existing.get();
@@ -49,6 +54,8 @@ public class VocabService {
         }
 
         VocabEntry entry = new VocabEntry();
+        // Tham chiếu lười: chỉ cần khoá ngoại, không cần nạp cả hàng app_user.
+        entry.setUser(userRepository.getReferenceById(userId));
         entry.setTerm(request.term());
         entry.setLemma(request.lemma());
         entry.setLang(request.lang());
@@ -83,29 +90,41 @@ public class VocabService {
     }
 
     @Transactional(readOnly = true)
-    public Page<VocabEntryDto> search(String q, String tag, Pageable pageable) {
+    public Page<VocabEntryDto> search(Long userId, String q, String tag, Pageable pageable) {
         String normalisedQ = (q == null || q.isBlank()) ? null : q;
         String normalisedTag = (tag == null || tag.isBlank()) ? null : tag;
-        return repository.search(normalisedQ, normalisedTag, pageable).map(this::toDto);
+        return repository.search(userId, normalisedQ, normalisedTag, pageable).map(this::toDto);
     }
 
+    /**
+     * Tra thẳng theo (id, userId) chứ KHÔNG tra theo id rồi so chủ sở hữu sau — một bước,
+     * không có khe hở giữa đọc và kiểm.
+     *
+     * <p>Trả NOT_FOUND chứ không FORBIDDEN khi từ thuộc về người khác: FORBIDDEN xác nhận
+     * "id này có tồn tại", tức là một kênh dò id.
+     */
     @Transactional(readOnly = true)
-    public VocabEntryDto findById(Long id) {
-        return repository.findById(id).map(this::toDto)
+    public VocabEntryDto findById(Long userId, Long id) {
+        return repository.findByIdAndUser_Id(id, userId).map(this::toDto)
                 .orElseThrow(() -> AppException.of(ErrorCode.NOT_FOUND, "Không tìm thấy từ id=" + id));
     }
 
     @Transactional
-    public void delete(Long id) {
-        if (!repository.existsById(id)) {
-            throw AppException.of(ErrorCode.NOT_FOUND, "Không tìm thấy từ id=" + id);
-        }
-        repository.deleteById(id);
+    public void delete(Long userId, Long id) {
+        VocabEntry entry = repository.findByIdAndUser_Id(id, userId)
+                .orElseThrow(() -> AppException.of(ErrorCode.NOT_FOUND, "Không tìm thấy từ id=" + id));
+        repository.delete(entry);
     }
 
     @Transactional(readOnly = true)
-    public String exportCsv() {
-        return csvExporter.toCsv(repository.findAllByOrderByCreatedAtDesc());
+    public String exportCsv(Long userId) {
+        return csvExporter.toCsv(repository.findAllByUser_IdOrderByCreatedAtDesc(userId));
+    }
+
+    /** Lọc id client gửi lên xuống còn id thuộc về user. Dùng cho /api/quiz/generate. */
+    @Transactional(readOnly = true)
+    public List<Long> filterOwnedIds(Long userId, List<Long> ids) {
+        return (ids == null || ids.isEmpty()) ? List.of() : repository.findOwnedIds(userId, ids);
     }
 
     private VocabEntryDto toDto(VocabEntry e) {

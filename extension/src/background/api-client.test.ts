@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { ApiClient } from './api-client';
+import { loadAuth, saveAuth } from '../shared/auth-storage';
+
+const USER = { email: 'a@b.com', displayName: 'A', pictureUrl: null };
 
 const BASE_URL = 'http://127.0.0.1:8080';
 
@@ -14,10 +17,14 @@ describe('ApiClient', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   let client: ApiClient;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     client = new ApiClient(() => Promise.resolve(BASE_URL));
+    // Mặc định đã đăng nhập: mọi endpoint nghiệp vụ nay đòi token, nên không có nó thì
+    // request() ném trước khi chạm fetch và test cũ đo nhầm thứ khác.
+    await chrome.storage.local.clear();
+    await saveAuth('test-token', USER);
   });
 
   afterEach(() => {
@@ -172,6 +179,79 @@ describe('ApiClient', () => {
       .rejects.toMatchObject({ code: 'NOT_FOUND', retryable: false });
   });
 
+  /* ---------- Đăng nhập và token ---------- */
+
+  describe('auth', () => {
+    it('mọi request nghiệp vụ mang Authorization: Bearer', async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      await client.getDueCards({ limit: 1, newLimit: 1 });
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-token');
+    });
+
+    it('chưa đăng nhập thì KHÔNG gọi fetch, ném UNAUTHORIZED tại chỗ', async () => {
+      // Gọi rồi nhận 401 cũng ra kết quả đó, nhưng tốn một vòng mạng và một dòng log rác
+      // mỗi lần alarm badge chạy lúc chưa đăng nhập.
+      await chrome.storage.local.clear();
+
+      await expect(client.srsStats(30)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('/api/auth/google KHÔNG gắn Authorization — lúc đó chưa có token nào', async () => {
+      await chrome.storage.local.clear();
+      fetchMock.mockResolvedValue(jsonResponse({
+        token: 't', expiresAt: '2026-10-09T00:00:00Z', user: USER,
+      }));
+
+      await client.googleLogin({ code: 'c', redirectUri: 'https://x.chromiumapp.org/' });
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+    });
+
+    it('/api/health KHÔNG cần token — thứ dùng để chẩn đoán khi auth hỏng', async () => {
+      await chrome.storage.local.clear();
+      fetchMock.mockResolvedValue(jsonResponse({
+        status: 'UP', dbConnected: true, geminiConfigured: true,
+      }));
+
+      await expect(client.health()).resolves.toMatchObject({ status: 'UP' });
+    });
+
+    it('nhận 401 thì XOÁ token — request sau không lặp lại vòng đó', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(
+        { code: 'UNAUTHORIZED', message: 'Cần đăng nhập', retryable: false }, 401));
+
+      await expect(client.srsStats(30)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+
+      expect(await loadAuth()).toBeNull();
+    });
+
+    it('lỗi 404 KHÔNG xoá token — chỉ 401 mới là phiên chết', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(
+        { code: 'NOT_FOUND', message: 'x', retryable: false }, 404));
+
+      await expect(client.submitReview({ cardId: 1, rating: 'GOOD' })).rejects.toBeTruthy();
+
+      // Đá người dùng ra màn đăng nhập vì một id sai là mất hết nháp đang gõ dở.
+      expect(await loadAuth()).not.toBeNull();
+    });
+
+    it('logout gọi POST /api/auth/logout kèm token', async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+      await client.logout();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${BASE_URL}/api/auth/logout`,
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
+
   /* ---------- Timeout: lưới chặn cuối, phải LỚN HƠN xấu nhất của backend ---------- */
 
   describe('timeout', () => {
@@ -221,6 +301,17 @@ describe('ApiClient', () => {
       }));
 
       await client.answerQuiz({ quizItemId: 7, answer: '2' });
+
+      expect(timeout).toHaveBeenCalledWith(50_000);
+    });
+
+    it('explainQuiz dùng mức chờ 50 giây như chấm bài — cũng một lượt gọi Gemini', async () => {
+      const timeout = spyTimeout();
+      fetchMock.mockResolvedValue(jsonResponse({
+        explanation: 'x', answerMeaning: 'y', sentenceEn: null, sentenceVi: null,
+      }));
+
+      await client.explainQuiz({ quizItemId: 7 });
 
       expect(timeout).toHaveBeenCalledWith(50_000);
     });
@@ -300,6 +391,27 @@ describe('ApiClient', () => {
       );
       expect(result.feedback).toContain('mitigate');
       expect(result.improvedVersion).toBeNull();
+    });
+
+    it('explainQuiz POST /api/quiz/explain và KHÔNG gửi kèm câu trả lời', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({
+        explanation: '"mitigate" đi với "impact".',
+        answerMeaning: 'mitigate = giảm nhẹ',
+        sentenceEn: 'Governments must mitigate the impact.',
+        sentenceVi: 'Chính phủ phải giảm nhẹ tác động.',
+      }));
+
+      const result = await client.explainQuiz({ quizItemId: 7 });
+
+      // Body đúng bằng { quizItemId }: thêm câu trả lời vào đây là mở đường vòng đọc đáp án.
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${BASE_URL}/api/quiz/explain`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ quizItemId: 7 }),
+        }),
+      );
+      expect(result.sentenceVi).toBe('Chính phủ phải giảm nhẹ tác động.');
     });
 
     it('bài viết quá dài ném TEXT_TOO_LONG, không retry được', async () => {

@@ -31,6 +31,8 @@ class SrsDistractorMigrationIT extends AbstractPostgresIT {
 
     private VocabEntry saveWord(String term) {
         VocabEntry entry = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        entry.setUser(ownerUser());
         entry.setTerm(term);
         entry.setLemma(term);
         entry.setLang("en");

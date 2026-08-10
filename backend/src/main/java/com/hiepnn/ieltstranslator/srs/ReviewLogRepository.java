@@ -15,6 +15,10 @@ public interface ReviewLogRepository extends JpaRepository<ReviewLog, Long> {
      * thẻ mới có {@code intervalDays = 0}, còn bấm Lại luôn đặt interval về 1 nên mọi
      * lượt sau đó đều có {@code prevInterval >= 1}. Nhờ vậy không cần bảng đếm riêng.
      */
-    @Query("select count(l) from ReviewLog l where l.reviewedAt >= :since and l.prevInterval = 0")
-    long countIntroducedSince(@Param("since") Instant since);
+    @Query("""
+            select count(l) from ReviewLog l
+            where l.card.vocabEntry.user.id = :userId
+              and l.reviewedAt >= :since and l.prevInterval = 0
+            """)
+    long countIntroducedSince(@Param("userId") Long userId, @Param("since") Instant since);
 }

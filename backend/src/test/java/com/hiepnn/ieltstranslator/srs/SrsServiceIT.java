@@ -41,6 +41,8 @@ class SrsServiceIT extends AbstractPostgresIT {
 
     private SrsCard card(String term, CardState state, LocalDate due, int repetitions) {
         VocabEntry e = new VocabEntry();
+        // user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ lúc insert.
+        e.setUser(ownerUser());
         e.setTerm(term);
         e.setLemma(term);
         e.setLang("en");
@@ -66,7 +68,7 @@ class SrsServiceIT extends AbstractPostgresIT {
         card("alpha", CardState.REVIEW, LocalDate.now().minusDays(1), 3);
         card("bravo", CardState.NEW, LocalDate.now(), 0);
 
-        List<CardDto> queue = srsService.due(50, 30);
+        List<CardDto> queue = srsService.due(ownerId(), 50, 30);
 
         assertThat(queue).hasSize(2);
         assertThat(queue.get(0).term()).isEqualTo("alpha");
@@ -79,7 +81,7 @@ class SrsServiceIT extends AbstractPostgresIT {
     void skipsNotYetDue() {
         card("later", CardState.REVIEW, LocalDate.now().plusDays(3), 2);
 
-        assertThat(srsService.due(50, 30)).isEmpty();
+        assertThat(srsService.due(ownerId(), 50, 30)).isEmpty();
     }
 
     @Test
@@ -92,7 +94,7 @@ class SrsServiceIT extends AbstractPostgresIT {
             card("due" + i, CardState.REVIEW, LocalDate.now(), 3);
         }
 
-        List<CardDto> queue = srsService.due(50, 2);
+        List<CardDto> queue = srsService.due(ownerId(), 50, 2);
 
         assertThat(queue).hasSize(6);   // 4 đến hạn (không giới hạn) + 2 thẻ mới
         assertThat(queue.stream().filter(c -> c.state() == CardState.NEW)).hasSize(2);
@@ -102,11 +104,11 @@ class SrsServiceIT extends AbstractPostgresIT {
     @DisplayName("Số từ mới đã học hôm nay bị trừ khỏi hạn mức còn lại")
     void newLimitCountsWhatWasAlreadyLearnedToday() {
         SrsCard learned = card("done", CardState.NEW, LocalDate.now(), 0);
-        srsService.review(learned.getId(), Rating.GOOD);   // dùng hết 1 suất từ mới
+        srsService.review(ownerId(), learned.getId(), Rating.GOOD);   // dùng hết 1 suất từ mới
 
         card("waiting", CardState.NEW, LocalDate.now(), 0);
 
-        assertThat(srsService.due(50, 1)).isEmpty();
+        assertThat(srsService.due(ownerId(), 50, 1)).isEmpty();
     }
 
     @Test
@@ -114,7 +116,7 @@ class SrsServiceIT extends AbstractPostgresIT {
     void reviewUpdatesCardAndLogs() {
         SrsCard c = card("mitigate", CardState.NEW, LocalDate.now(), 0);
 
-        ReviewResponse response = srsService.review(c.getId(), Rating.GOOD);
+        ReviewResponse response = srsService.review(ownerId(), c.getId(), Rating.GOOD);
 
         assertThat(response.intervalDays()).isEqualTo(1);
         assertThat(response.nextDueDate()).isEqualTo(LocalDate.now().plusDays(1));
@@ -133,7 +135,7 @@ class SrsServiceIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Review thẻ không tồn tại ném NOT_FOUND")
     void reviewUnknownCard() {
-        assertThatThrownBy(() -> srsService.review(999_999L, Rating.GOOD))
+        assertThatThrownBy(() -> srsService.review(ownerId(), 999_999L, Rating.GOOD))
                 .isInstanceOf(AppException.class)
                 .hasMessageContaining("999999");
     }
@@ -146,10 +148,10 @@ class SrsServiceIT extends AbstractPostgresIT {
         }
         card("due0", CardState.REVIEW, LocalDate.now(), 4);
 
-        SrsStatsDto stats = srsService.stats(2);
+        SrsStatsDto stats = srsService.stats(ownerId(), 2);
 
         assertThat(stats.dueCount()).isEqualTo(3L);      // 1 đến hạn + 2 thẻ mới được phép
-        assertThat(stats.dueCount()).isEqualTo(srsService.due(50, 2).size());
+        assertThat(stats.dueCount()).isEqualTo(srsService.due(ownerId(), 50, 2).size());
         assertThat(stats.newCount()).isEqualTo(3L);
         assertThat(stats.learnedCount()).isEqualTo(1L);
     }
@@ -165,8 +167,8 @@ class SrsServiceIT extends AbstractPostgresIT {
         // limit CHƯA phải ràng buộc chặn. Vượt limit thì badge cố tình báo tổng nợ thật
         // (5) trong khi hàng đợi bị cắt còn 2 — nếu sau này ai đó "sửa" stats cho khớp
         // hàng đợi thì badge sẽ nói dối người dùng là họ chỉ còn 2 thẻ.
-        assertThat(srsService.due(2, 0)).hasSize(2);
-        assertThat(srsService.stats(0).dueCount()).isEqualTo(5L);
+        assertThat(srsService.due(ownerId(), 2, 0)).hasSize(2);
+        assertThat(srsService.stats(ownerId(), 0).dueCount()).isEqualTo(5L);
     }
 
     private void saveDistractor(SrsCard card, int promptVersion) {
@@ -186,7 +188,7 @@ class SrsServiceIT extends AbstractPostgresIT {
         SrsCard c = card("mitigate", CardState.REVIEW, LocalDate.now(), 3);
         saveDistractor(c, generator.currentPromptVersion());
 
-        CardDto dto = srsService.due(50, 30).getFirst();
+        CardDto dto = srsService.due(ownerId(), 50, 30).getFirst();
 
         assertThat(dto.viDistractors())
                 .containsExactly("làm trầm trọng thêm", "phóng đại", "trì hoãn");
@@ -200,7 +202,7 @@ class SrsServiceIT extends AbstractPostgresIT {
         SrsCard c = card("mitigate", CardState.REVIEW, LocalDate.now(), 3);
         saveDistractor(c, generator.currentPromptVersion() - 1);
 
-        CardDto dto = srsService.due(50, 30).getFirst();
+        CardDto dto = srsService.due(ownerId(), 50, 30).getFirst();
 
         assertThat(dto.viDistractors()).isEmpty();
         assertThat(dto.enDistractors()).isEmpty();

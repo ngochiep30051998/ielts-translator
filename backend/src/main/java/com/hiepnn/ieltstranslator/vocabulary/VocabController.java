@@ -1,5 +1,6 @@
 package com.hiepnn.ieltstranslator.vocabulary;
 
+import com.hiepnn.ieltstranslator.auth.AuthContext;
 import com.hiepnn.ieltstranslator.vocabulary.dto.SaveVocabRequest;
 import com.hiepnn.ieltstranslator.vocabulary.dto.SaveVocabResponse;
 import com.hiepnn.ieltstranslator.vocabulary.dto.VocabEntryDto;
@@ -16,14 +17,16 @@ import org.springframework.web.bind.annotation.*;
 public class VocabController {
 
     private final VocabService vocabService;
+    private final AuthContext auth;
 
-    public VocabController(VocabService vocabService) {
+    public VocabController(VocabService vocabService, AuthContext auth) {
         this.vocabService = vocabService;
+        this.auth = auth;
     }
 
     @PostMapping
     public SaveVocabResponse save(@Valid @RequestBody SaveVocabRequest request) {
-        return vocabService.save(request);
+        return vocabService.save(auth.requireUserId(), request);
     }
 
     @GetMapping
@@ -31,17 +34,18 @@ public class VocabController {
                                       @RequestParam(required = false) String tag,
                                       @RequestParam(defaultValue = "0") int page,
                                       @RequestParam(defaultValue = "20") int size) {
-        return vocabService.search(q, tag, PageRequest.of(page, Math.min(size, 100)));
+        return vocabService.search(auth.requireUserId(), q, tag,
+                PageRequest.of(page, Math.min(size, 100)));
     }
 
     @GetMapping("/{id}")
     public VocabEntryDto findById(@PathVariable Long id) {
-        return vocabService.findById(id);
+        return vocabService.findById(auth.requireUserId(), id);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        vocabService.delete(id);
+        vocabService.delete(auth.requireUserId(), id);
         return ResponseEntity.noContent().build();
     }
 
@@ -50,6 +54,6 @@ public class VocabController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"vocabulary.csv\"")
                 .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
-                .body(vocabService.exportCsv());
+                .body(vocabService.exportCsv(auth.requireUserId()));
     }
 }

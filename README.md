@@ -200,6 +200,19 @@ không hardcode thông số nào nữa:
 | `GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS` | `20` | Chấm một bài tự viết |
 | `GEMINI_RETRY_BACKOFF_MS` | `1000` | |
 | `TZ` | `Asia/Ho_Chi_Minh` | Quyết định "hôm nay" của lịch ôn. Container mặc định UTC → thiếu biến này thì ngày ôn đổi lúc 07:00 thay vì nửa đêm |
+| `AUTH_GOOGLE_CLIENT_ID` | (bắt buộc) | OAuth client kiểu **Web application** |
+| `AUTH_GOOGLE_CLIENT_SECRET` | (bắt buộc) | **Chỉ ở backend.** Không bao giờ vào bundle extension |
+| `AUTH_ALLOWED_EMAILS` | (rỗng) | Danh sách email được phép, ngăn cách bằng dấu phẩy. **Rỗng = khoá hết** |
+| `AUTH_BOOTSTRAP_EMAIL` | (bắt buộc) | Chủ sở hữu dữ liệu cũ. Migration V6 gán toàn bộ sổ từ hiện có cho email này |
+| `AUTH_SESSION_DAYS` | `60` | Hạn phiên, trượt theo mỗi lần dùng |
+| `AUTH_DAILY_GEMINI_CALLS` | `300` | Trần lượt gọi AI mỗi người mỗi ngày. `0` = tắt |
+| `AUTH_GOOGLE_TOKEN_URL` | endpoint Google | Đổi khi test bằng WireMock |
+
+Phía extension, `extension/.env` cần **một** biến (xem `extension/.env.example`):
+
+| Biến | Ghi chú |
+|---|---|
+| `VITE_GOOGLE_CLIENT_ID` | Cùng giá trị với `AUTH_GOOGLE_CLIENT_ID`. Client **id** công khai được; `client_secret` thì tuyệt đối không |
 
 `backend/src/main/resources/application.yml` không hardcode giá trị nào nữa — mọi
 mục đều là `${BIEN:mặc-định}`, và default trong file chính là cấu hình chạy local.

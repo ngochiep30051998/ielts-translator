@@ -38,7 +38,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
         when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenReturn(objectMapper.createObjectNode().put("meaning_vi", "tái tạo"));
 
-        mockMvc.perform(post("/api/translate")
+        mockMvc.perform(post("/api/translate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                  {"text":"renewable","contextSentence":"We need renewable energy."}
@@ -55,7 +55,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
         when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenThrow(AppException.of(ErrorCode.GEMINI_QUOTA, "Đã hết quota Gemini"));
 
-        mockMvc.perform(post("/api/translate")
+        mockMvc.perform(post("/api/translate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\":\"renewable\"}"))
                .andExpect(status().isTooManyRequests())
@@ -69,7 +69,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
         when(geminiClient.generateJson(anyString(), any(), any()))
                 .thenThrow(AppException.of(ErrorCode.GEMINI_UNAVAILABLE, "Gemini không phản hồi kịp"));
 
-        mockMvc.perform(post("/api/translate")
+        mockMvc.perform(post("/api/translate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\":\"renewable\"}"))
                .andExpect(status().isServiceUnavailable())
@@ -81,7 +81,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
     void textOverLimitReturns400() throws Exception {
         String tooLong = "a".repeat(1501);
 
-        mockMvc.perform(post("/api/translate")
+        mockMvc.perform(post("/api/translate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 java.util.Map.of("text", tooLong))))
@@ -91,7 +91,7 @@ class TranslateControllerIT extends AbstractPostgresIT {
 
     @Test
     void blankTextFailsValidationWith400() throws Exception {
-        mockMvc.perform(post("/api/translate")
+        mockMvc.perform(post("/api/translate").header("Authorization", BEARER_OWNER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\":\"   \"}"))
                .andExpect(status().isBadRequest())

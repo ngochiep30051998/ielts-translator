@@ -75,7 +75,9 @@ public class GlobalExceptionHandler {
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
             case TEXT_TOO_LONG -> HttpStatus.BAD_REQUEST;
             case GEMINI_QUOTA -> HttpStatus.TOO_MANY_REQUESTS;
-            case GEMINI_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case GEMINI_UNAVAILABLE, AUTH_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case UNAUTHORIZED -> HttpStatus.UNAUTHORIZED;
+            case FORBIDDEN -> HttpStatus.FORBIDDEN;
             case PARSE_ERROR, INTERNAL -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
     }
