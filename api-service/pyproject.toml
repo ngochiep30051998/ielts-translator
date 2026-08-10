@@ -1,0 +1,79 @@
+[project]
+name = "ielts-translator-api"
+version = "0.1.0"
+description = "API service của IELTS Translator — bản port từ backend Spring Boot sang FastAPI"
+requires-python = ">=3.12"
+
+# Mỗi phụ thuộc một lý do (ràng buộc #12 trong CLAUDE.md). Không thêm gì ngoài danh sách
+# này mà chưa nêu lý do: dự án cố ý gọn.
+dependencies = [
+    "fastapi>=0.115",          # framework
+    "uvicorn[standard]>=0.32",  # ASGI server — chỉ dùng khi chạy local/Docker, Vercel tự lo
+    "pydantic>=2.9",            # DTO, thay cho `record` bên Java
+    "pydantic-settings>=2.6",   # đọc cấu hình từ env, thay cho ${BIEN:mặc-định} của application.yml
+    "sqlalchemy>=2.0",          # truy cập DB, thay JPA/Hibernate
+    "psycopg[binary]>=3.2",     # driver — xem ghi chú (a) dưới đây
+    "httpx>=0.27",              # gọi Gemini và Google, thay RestClient
+]
+
+# (a) psycopg v3 chứ không asyncpg: asyncpg mặc định dùng prepared statement, mà Supavisor
+#     ở transaction mode (chế độ dành cho serverless) không hỗ trợ. Triệu chứng là lỗi rời
+#     rạc dưới tải — loại khó lần nhất.
+
+# Tên lệnh ngắn cho CLI. `uv run ielts-api --reload` thay cho
+# `.venv/bin/python -m app --reload`.
+[project.scripts]
+ielts-api = "app.__main__:main"
+
+# `[dependency-groups]` (PEP 735) chứ KHÔNG phải `[project.optional-dependencies]`:
+# `uv sync` và `uv run` cài nhóm này MẶC ĐỊNH, còn extras thì không. Để ở extras nghĩa là
+# một lượt `uv sync` bình thường sẽ gỡ mất pytest/mypy/ruff — và triệu chứng là
+# "command not found" giữa lúc đang chạy test, không phải lúc cài đặt.
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pgserver>=0.1.4",  # Postgres 16 thật mà không cần Docker, thay Testcontainers
+    "mypy>=1.13",       # bù cho việc Python không có switch exhaustive như Java
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Bên Java, Surefire include cả *Test.java lẫn *IT.java — đặt sai tên file là test bị bỏ
+# qua IM LẶNG. Ở đây khai tường minh cùng một lý do.
+python_files = ["test_*.py"]
+filterwarnings = ["error::DeprecationWarning:app.*"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# Java bắt được lúc biên dịch khi thêm ErrorCode mới mà quên nhánh xử lý. Python không có
+# cơ chế đó; mypy --strict + assert_never() ở mọi chỗ rẽ theo enum là phần bù.
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["pgserver.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# RUF001/RUF002/RUF003: ruff cảnh báo ký tự Unicode "nhìn giống ASCII" trong chuỗi và
+# comment. Toàn bộ comment và message lỗi của dự án viết bằng tiếng Việt có dấu
+# (CLAUDE.md), nên cảnh báo này kêu ở mọi dòng.
+#
+# B008: "không gọi hàm trong giá trị mặc định của tham số". `Depends(...)` của FastAPI
+# CHÍNH LÀ cách khai báo đó, và framework tự đánh giá lại mỗi request — đây là ca ngoại lệ
+# mà chính tài liệu FastAPI hướng dẫn tắt.
+ignore = ["RUF001", "RUF002", "RUF003", "B008"]

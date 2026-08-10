@@ -207,6 +207,9 @@ không hardcode thông số nào nữa:
 | `AUTH_SESSION_DAYS` | `60` | Hạn phiên, trượt theo mỗi lần dùng |
 | `AUTH_DAILY_GEMINI_CALLS` | `300` | Trần lượt gọi AI mỗi người mỗi ngày. `0` = tắt |
 | `AUTH_GOOGLE_TOKEN_URL` | endpoint Google | Đổi khi test bằng WireMock |
+| `API_SERVICE_PORT` | `8081` | Cổng publish ra host của `api-service` (bản FastAPI). Khác `APP_PORT` để hai backend chạy song song và đối chiếu được |
+| `DATABASE_URL` | (rỗng) | **Chỉ `api-service`.** Rỗng thì ghép từ `DB_*` như backend Spring. Đặt giá trị khi deploy lên Supabase/Vercel, nơi chỉ có một chuỗi kết nối chứ không có năm mảnh rời |
+| `VERCEL` | (rỗng) | **Không tự đặt.** Vercel tự gán `1` trong mọi function; `api-service` đọc nó để chuyển sang `NullPool` và tắt prepared statement (bắt buộc với Supavisor transaction mode) |
 
 Phía extension, `extension/.env` cần **một** biến (xem `extension/.env.example`):
 

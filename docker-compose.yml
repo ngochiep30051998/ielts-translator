@@ -61,6 +61,42 @@ services:
     # Cũng không publish: Caddy đứng trước và nói chuyện với app qua mạng nội bộ.
     # Máy dev lấy lại cổng qua docker-compose.override.yml.
 
+  # Bản port sang Python/FastAPI. Chạy SONG SONG với `app` trên cùng một Postgres có chủ
+  # ý: hai backend nói cùng một schema, nên so sánh hành vi là gọi lần lượt hai cổng chứ
+  # không phải dựng hai bộ dữ liệu. Migration append-only (ràng buộc #8) là thứ khiến điều
+  # này an toàn — bên nào khởi động trước cũng dựng ra đúng một schema, bên còn lại nhận ra
+  # và không chạy lại.
+  #
+  # Chưa nối vào Caddy: `app` vẫn là bản đang phục vụ thật. Đổi reverse_proxy trong
+  # Caddyfile sang api-service:8080 là bước cắt sang, làm khi đã đối chiếu xong.
+  api-service:
+    build: ./api-service
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ielts}
+      DB_USER: ${DB_USER:-ielts}
+      DB_PASSWORD: ${DB_PASSWORD:-ielts}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-15}
+      GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS: ${GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS:-30}
+      GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS: ${GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS:-20}
+      EXTENSION_ID: ${EXTENSION_ID}
+      AUTH_GOOGLE_CLIENT_ID: ${AUTH_GOOGLE_CLIENT_ID}
+      AUTH_GOOGLE_CLIENT_SECRET: ${AUTH_GOOGLE_CLIENT_SECRET}
+      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS}
+      AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL}
+      AUTH_SESSION_DAYS: ${AUTH_SESSION_DAYS:-60}
+      AUTH_DAILY_GEMINI_CALLS: ${AUTH_DAILY_GEMINI_CALLS:-300}
+      # Cùng lý do như service `app`: lịch ôn tính "hôm nay" theo giờ hệ thống, container
+      # chạy UTC sẽ làm ngày ôn đổi lúc 07:00 sáng giờ VN thay vì nửa đêm.
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+
   caddy:
     # Caddy tự xin và tự gia hạn chứng chỉ Let's Encrypt. nginx thì phải cắm thêm certbot
     # và một cron gia hạn — nhiều thứ để quên hơn cho đúng một việc.

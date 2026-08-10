@@ -12,3 +12,10 @@ services:
   app:
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
+
+  # Cổng khác `app` để hai backend chạy cùng lúc và đối chiếu được:
+  #   curl 127.0.0.1:8080/api/health   -> Spring
+  #   curl 127.0.0.1:8081/api/health   -> FastAPI
+  api-service:
+    ports:
+      - "127.0.0.1:${API_SERVICE_PORT:-8081}:8080"

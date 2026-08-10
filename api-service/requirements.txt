@@ -1,0 +1,11 @@
+# Vercel dựng runtime Python từ file này, không đọc pyproject.toml.
+# Giữ khớp với [project.dependencies] trong pyproject.toml — lệch nhau nghĩa là chạy local
+# ngon mà deploy lên thì thiếu gói, và lỗi chỉ hiện ở log dashboard.
+#
+# uvicorn KHÔNG có ở đây: Vercel tự cung cấp lớp ASGI, cài thêm chỉ làm phình bundle.
+fastapi>=0.115
+pydantic>=2.9
+pydantic-settings>=2.6
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+httpx>=0.27
