@@ -245,7 +245,9 @@ CSS viết tay, cùng lối với các `.quiz-*` sẵn có.
 
 ### Backend
 
-`QuizExplainIT extends AbstractPostgresIT`, WireMock giả lập Gemini:
+`QuizExplainIT extends AbstractPostgresIT`, giả lập Gemini bằng `@MockitoBean GeminiClient`
+— đúng lối `QuizControllerIT` đang dùng. (WireMock chỉ xuất hiện ở `GeminiClientTest`, nơi
+thứ đang test chính là tầng HTTP.)
 
 1. `FILL_BLANK` trả lời sai → 200, `sentenceEn` là câu đề bài đã thay `___` bằng đáp án
    (chuỗi do Java ghép, không phải chuỗi Gemini trả).
@@ -256,11 +258,11 @@ CSS viết tay, cùng lối với các `.quiz-*` sẵn có.
    bỏ qua không phải lý do để mất phần dịch.
 6. Gemini trả `sentence_vi` rỗng cho `COLLOCATION_CHOICE` → cả cặp về null, không trả một
    nửa.
-7. Item chưa có lượt làm → 404 `NOT_FOUND`, **và WireMock không nhận call nào** — vừa chứng
+7. Item chưa có lượt làm → 404 `NOT_FOUND`, **và `geminiClient` không nhận call nào** — vừa chứng
    minh không đốt quota, vừa chứng minh không có đường vòng đọc đáp án trước khi trả lời.
 8. `quizItemId` lạ → 404.
 9. Gemini 503 → `GEMINI_UNAVAILABLE`, `retryable: true`.
-10. Verify body gửi lên WireMock **có chứa câu trả lời của người học** — đó là điều kiện để
+10. Verify prompt truyền vào `geminiClient.generateJson` **có chứa câu trả lời của người học** — đó là điều kiện để
    "chỉ thẳng chỗ sai" là thật, chứ không phải một lời hứa nằm trong prompt.
 
 `PromptLoaderTest.loadsQuizPrompts` mở rộng cho ba file explain mới: đọc được, `version`
