@@ -224,21 +224,24 @@ describe('ô nhập text trong tab Dịch', () => {
       .toHaveBeenCalledWith({ type: 'TRANSLATE_TEXT', text: 'renewable' });
   });
 
-  it('đang dịch thì nút đổi nhãn "Đang dịch…" và bị disable', async () => {
+  it('đang dịch thì nút đổi nhãn "Đang dịch…", bị disable, và giữ nguyên kết quả cũ trên màn hình', async () => {
     let resolveTranslate: (value: unknown) => void = () => {};
     mockSend((r) => r.type === 'TRANSLATE_TEXT'
       ? new Promise((resolve) => { resolveTranslate = resolve; })
       : { ok: true, data: null });
-    render(<StatefulTab initialDraft="renewable" />);
+    // Có sẵn kết quả cũ trên màn hình (mô phỏng dịch lại): dịch lần mới KHÔNG được
+    // xoá/nháy trắng kết quả đang hiện trong lúc chờ.
+    render(<StatefulTab initialResult={enViWord} initialDraft="renewable" />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Dịch' }));
 
     const button = await screen.findByRole('button', { name: 'Đang dịch…' });
     expect(button).toBeDisabled();
+    expect(screen.getByText('tái tạo')).toBeInTheDocument();
 
     // Resolve để không rò promise treo sang test khác.
     resolveTranslate({ ok: true, data: enViWord });
-    expect(await screen.findByText('tái tạo')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Dịch' })).toBeInTheDocument());
   });
 
   it('lỗi retry được: hiện Thử lại và gửi lại ĐÚNG text đã gửi, không phải text trong ô', async () => {
