@@ -154,6 +154,29 @@ class PromptLoaderTest {
     }
 
     @Test
+    @DisplayName("Ba prompt giải thích đọc được và có đủ placeholder theo loại")
+    void loadsQuizExplainPrompts() {
+        for (String file : java.util.List.of("quiz-explain-fill-blank.md",
+                                             "quiz-explain-collocation.md",
+                                             "quiz-explain-free-write.md")) {
+            PromptTemplate template = loader.load(file);
+            assertThat(template.version()).as("%s phải có version dương", file).isPositive();
+            assertThat(template.body()).as("%s không được rỗng", file).isNotBlank();
+            // {{USER_ANSWER}} là điều kiện để giải thích BÁM THEO câu trả lời của người
+            // học. Thiếu nó thì prompt lặng lẽ tụt về giải thích chung chung và không có
+            // gì trong hệ thống phát hiện ra.
+            assertThat(template.body()).as("%s phải có {{USER_ANSWER}}", file)
+                    .contains("{{USER_ANSWER}}");
+        }
+        assertThat(loader.load("quiz-explain-fill-blank.md").body())
+                .contains("{{SENTENCE}}", "{{ANSWER}}");
+        assertThat(loader.load("quiz-explain-collocation.md").body())
+                .contains("{{OPTIONS}}", "{{ANSWER}}");
+        assertThat(loader.load("quiz-explain-free-write.md").body())
+                .contains("{{TERM}}", "{{SENTENCE_EN}}");
+    }
+
+    @Test
     @DisplayName("render(Map) thay đúng mọi khoá")
     void rendersEveryPlaceholder() {
         String rendered = loader.load("srs-distractors.md")
