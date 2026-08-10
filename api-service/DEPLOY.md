@@ -58,14 +58,33 @@ select email from app_user;
 
 Phải thấy 11 bảng và đúng một tài khoản gốc mang email bootstrap của bạn.
 
-### 1.4 Nếu muốn mang dữ liệu cũ sang
+### 1.4 Ba chuỗi kết nối, dùng đúng chỗ
+
+Supabase đưa ba lựa chọn và chúng KHÔNG thay thế được cho nhau:
+
+| Loại | Host / cổng | Dùng cho | Bẫy |
+|---|---|---|---|
+| **Direct connection** | `db.<ref>.supabase.co:5432` | (tránh) | **Chỉ IPv6.** Mạng không có IPv6 sẽ chết bằng `Network is unreachable` ngay ở bước nối |
+| **Session pooler** | `aws-0-<region>.pooler.supabase.com:5432` | migration, `pg_dump`/`psql` | user phải là `postgres.<ref>`, không phải `postgres` |
+| **Transaction pooler** | `aws-0-<region>.pooler.supabase.com:6543` | `DATABASE_URL` trên Vercel | không hợp cho DDL |
+
+Dùng **Session pooler** cho mọi thao tác từ máy bạn. Direct connection chỉ hơn ở chỗ không
+qua pooler, mà cái giá là cả một lớp lỗi mạng không liên quan gì tới dự án.
+
+Mật khẩu có ký tự đặc biệt (`@ : / ? # &`) thì phải URL-encode, không thì phần host bị cắt
+sai và thông điệp lỗi sẽ nói về một host không tồn tại.
+
+### 1.5 Nếu muốn mang dữ liệu cũ sang
 
 ```bash
-docker compose exec -T db pg_dump -U ielts --data-only --no-owner ielts > data.sql
+docker compose exec -T db pg_dump -U ielts --data-only --no-owner --exclude-table=flyway_schema_history ielts > /tmp/data.sql
 ```
 
-Rồi `psql <chuỗi-kết-nối-5432> -f data.sql`. Dùng cổng **5432** (direct) cho việc nhập một
-lần — pooler không hợp với transaction dài.
+Rồi `psql "<chuỗi-session-pooler-5432>" -f /tmp/data.sql`.
+
+`app_user` đã có một dòng do V6 tạo nên bản dump sẽ đụng khoá trùng email. Chỉ khi CHƯA ai
+đăng nhập vào Supabase mới được dọn nó trước: `delete from app_user;` — sau đó thì bảng này
+đã có phiên và dữ liệu thật.
 
 ---
 
@@ -145,21 +164,40 @@ chưa ăn.
 
 ## 3. Extension
 
-Ràng buộc #10: **ba chỗ phải khớp**, không phải hai.
+Ràng buộc #10 từng bắt khớp tay ba chỗ. Nay `host_permissions` và `backendUrl` mặc định
+cùng sinh từ **một biến**, nên chỉ còn một dòng phải sửa.
 
-1. `extension/manifest.config.ts` → `host_permissions`: đổi
-   `'https://ielts.example.com/*'` thành `'https://<project>.vercel.app/*'`
-2. `extension/src/shared/settings.ts` → `backendUrl` mặc định
-3. Trang Options (ô nhập tự do) — người dùng đang dùng phải tự sửa, hoặc bạn xoá key cũ
+Thêm vào `extension/.env`:
 
-Options là ô nhập tự do **nhưng Chrome chỉ cho gọi origin đã khai trong manifest**. Trỏ sang
-domain chưa khai thì request chết **im lặng**: không lỗi mạng, không lỗi CORS, không gì cả.
+```
+VITE_BACKEND_URL=https://<project>.vercel.app
+```
+
+Rồi build lại:
 
 ```bash
 cd extension && npm run build
 ```
 
-Rồi tải lại extension đã unpack.
+Tải lại extension đã unpack. Xong.
+
+Kiểm nếu muốn chắc — hai giá trị phải khớp:
+
+```bash
+cd extension && node -e "console.log(require('./dist/manifest.json').host_permissions)" && grep -rho 'https://[a-z0-9.-]*vercel\.app' dist/assets/*.js | sort -u
+```
+
+**Đổi `VITE_BACKEND_URL` thì BẮT BUỘC build lại.** `host_permissions` nằm trong manifest,
+không phải thứ sửa được từ trang Options — và Chrome chỉ cho gọi origin đã khai ở đó. Trỏ
+Options sang một domain chưa khai thì request chết **im lặng**: không lỗi mạng, không lỗi
+CORS, `fetch` đơn giản là không bao giờ đi.
+
+Danh sách luôn giữ cả `http://127.0.0.1:8080/*`, nên vẫn đổi Options về local để đối chiếu
+hai backend mà không phải build lại.
+
+`manifest.config.test.ts` canh bất biến này: nó dựng manifest qua `loadEnv` (đường Node) và
+đọc `DEFAULT_SETTINGS` qua `import.meta.env` (đường bundle), rồi khẳng định hai đường ra
+cùng một origin.
 
 Redirect URI của Google **không đổi** — nó dựng từ `EXTENSION_ID`
 (`https://<id>.chromiumapp.org/`), không dính gì tới domain backend.

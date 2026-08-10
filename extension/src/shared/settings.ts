@@ -1,3 +1,5 @@
+import { normaliseBackendUrl } from './backend-url';
+
 export type TriggerMode = 'auto' | 'hotkey';
 
 export interface Settings {
@@ -9,7 +11,9 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  backendUrl: 'http://127.0.0.1:8080',
+  // Nhúng lúc build từ `VITE_BACKEND_URL`. Cùng biến đó dựng ra `host_permissions` trong
+  // manifest, nên hai thứ không thể lệch nhau — xem `shared/backend-url.ts`.
+  backendUrl: normaliseBackendUrl(import.meta.env.VITE_BACKEND_URL),
   triggerMode: 'auto',
   voiceName: null,
   newWordsPerDay: 30,

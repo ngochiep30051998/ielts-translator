@@ -91,17 +91,28 @@ def _register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def handle_http(_: Request, exc: Exception) -> Response:
+    async def handle_http(request: Request, exc: Exception) -> Response:
         """404 định tuyến, 405 sai method... vẫn phải mang hình dạng lỗi chuẩn.
 
         Không có handler này thì Starlette trả `{"detail": "Not Found"}` — một hình dạng
         thứ hai mà phía extension không biết đọc, và chỉ lộ ra khi gõ sai URL.
+
+        404 mang theo ĐƯỜNG DẪN NHẬN ĐƯỢC. Nghe thừa cho tới lần đầu deploy sau một proxy:
+        khi proxy viết lại đường dẫn trước khi giao cho ứng dụng, mọi endpoint đều trả 404
+        và thông điệp "Not Found" trần không phân biệt nổi "gõ sai URL" với "proxy giao
+        nhầm đường dẫn" — hai nguyên nhân sửa ở hai chỗ hoàn toàn khác nhau.
+
+        An toàn để lộ: đường dẫn là thứ chính người gọi vừa gửi đi, không phải dữ liệu của
+        ai khác. Query string thì KHÔNG kèm — nó có thể mang token.
         """
         assert isinstance(exc, StarletteHTTPException)
         code = ErrorCode.NOT_FOUND if exc.status_code == 404 else ErrorCode.INTERNAL
+        message = str(exc.detail)
+        if exc.status_code == 404:
+            message = f"{message}: {request.method} {request.url.path}"
         return JSONResponse(
             status_code=exc.status_code,
-            content={"code": code.value, "message": str(exc.detail), "retryable": False},
+            content={"code": code.value, "message": message, "retryable": False},
         )
 
     @app.middleware("http")
