@@ -14,6 +14,7 @@ import sys
 from collections.abc import Awaitable, Callable, MutableMapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 # Vercel đặt working directory ở gốc project chứ không ở `api/`, nhưng không tự thêm gốc
 # vào sys.path. Không có ba dòng này thì `import app.main` chết ngay lúc cold start với
@@ -33,14 +34,23 @@ Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 #: `/api/index` và trả 404 cho toàn bộ API.
 FUNCTION_PATH = "/api/index"
 
-#: Header có thể mang đường dẫn gốc, thử theo thứ tự. Danh sách chứ không phải một cái:
-#: Vercel không cam kết header nào, và đoán sai một cái là hỏng toàn bộ API.
+#: Tham số mà `vercel.json` nhét đường dẫn gốc vào:
+#: `"destination": "/api/index?__path=/$1"`.
+#:
+#: Dùng query string chứ KHÔNG dò header. Đọc header là đoán — Vercel không cam kết header
+#: nào mang đường dẫn gốc, và thực tế thì không cái nào mang cả. Còn capture group trong
+#: `destination` là thứ chính mình khai, nên nó có mặt hay không là chuyện kiểm chứng được
+#: chứ không phải chuyện may rủi.
+PATH_PARAM = "__path"
+
+#: Header có thể mang đường dẫn gốc. Chỉ còn là đường lui: nếu một ngày Vercel đổi cách xử
+#: lý query trong `destination`, những header này có thể cứu được — nhưng không được coi là
+#: cơ chế chính.
 CANDIDATE_HEADERS = (
     b"x-vercel-original-path",
     b"x-original-uri",
     b"x-forwarded-uri",
     b"x-rewrite-url",
-    b"x-vercel-proxied-for-path",
 )
 
 
@@ -48,19 +58,42 @@ def _headers(scope: Scope) -> dict[bytes, bytes]:
     return dict(scope.get("headers") or [])
 
 
-def _duong_dan_goc(scope: Scope) -> str | None:
-    """Đường dẫn người dùng thực sự gọi, lấy từ header do proxy để lại."""
+def _split_query(scope: Scope) -> tuple[str | None, bytes]:
+    """Tách `__path` khỏi query string, trả về (đường dẫn, query còn lại).
+
+    Phải BỎ `__path` khỏi query trước khi giao cho FastAPI: để lại thì nó lọt vào mọi
+    handler như một tham số lạ, và endpoint nào validate query chặt sẽ từ chối request hợp
+    lệ.
+    """
+    raw = scope.get("query_string") or b""
+    if not raw:
+        return None, b""
+
+    path: str | None = None
+    remaining: list[str] = []
+    for pair in raw.decode("latin-1").split("&"):
+        if not pair:
+            continue
+        key, _, value = pair.partition("=")
+        if key == PATH_PARAM:
+            path = unquote(value)
+        else:
+            remaining.append(pair)
+    return path, "&".join(remaining).encode("latin-1")
+
+
+def _path_from_headers(scope: Scope) -> str | None:
     headers = _headers(scope)
-    for ten in CANDIDATE_HEADERS:
-        gia_tri = headers.get(ten)
-        if gia_tri:
-            duong_dan = gia_tri.decode("latin-1").split("?", 1)[0]
-            if duong_dan.startswith("/") and duong_dan != FUNCTION_PATH:
-                return duong_dan
+    for name in CANDIDATE_HEADERS:
+        value = headers.get(name)
+        if value:
+            path = value.decode("latin-1").split("?", 1)[0]
+            if path.startswith("/") and path != FUNCTION_PATH:
+                return path
     return None
 
 
-async def _bao_khong_khoi_phuc_duoc(scope: Scope, send: Send) -> None:
+async def _report_unrecoverable_path(scope: Scope, send: Send) -> None:
     """Không đoán được đường dẫn gốc thì nói ra thứ mình ĐANG CÓ, thay vì trả 404 câm.
 
     404 câm ở đây là ca tệ nhất: mọi endpoint cùng hỏng, thông điệp giống hệt nhau, và
@@ -69,13 +102,13 @@ async def _bao_khong_khoi_phuc_duoc(scope: Scope, send: Send) -> None:
     Chỉ liệt kê TÊN header, không kèm giá trị: `authorization` và `cookie` nằm trong cùng
     danh sách đó.
     """
-    than = json.dumps(
+    body = json.dumps(
         {
             "code": "INTERNAL",
             "message": (
                 "Không khôi phục được đường dẫn gốc sau rewrite của Vercel. "
                 "Header đang có: "
-                + ", ".join(sorted(t.decode("latin-1") for t in _headers(scope)))
+                + ", ".join(sorted(name.decode("latin-1") for name in _headers(scope)))
             ),
             "retryable": False,
         },
@@ -87,19 +120,25 @@ async def _bao_khong_khoi_phuc_duoc(scope: Scope, send: Send) -> None:
             "status": 500,
             "headers": [
                 (b"content-type", b"application/json; charset=utf-8"),
-                (b"content-length", str(len(than)).encode("ascii")),
+                (b"content-length", str(len(body)).encode("ascii")),
             ],
         }
     )
-    await send({"type": "http.response.body", "body": than})
+    await send({"type": "http.response.body", "body": body})
 
 
-class KhoiPhucDuongDan:
+class RestoreOriginalPath:
     """Trả lại đường dẫn gốc cho FastAPI sau khi Vercel đã viết đè nó.
 
     Đặt ở đây chứ không ở `app/main.py` vì đây là chuyện riêng của Vercel: chạy Docker hay
     `python -m app` thì đường dẫn không bao giờ bị viết đè, và một lớp middleware chỉ để
     sửa lỗi của một nền tảng không nên nằm trong đường chạy của mọi môi trường khác.
+
+    Gắn qua `add_middleware` chứ KHÔNG bọc ngoài `app`. Runtime của Vercel tự dò xem biến
+    `app` là ASGI hay WSGI; một instance của class lạ có thể bị dò nhầm, và lúc đó lớp này
+    không bao giờ chạy — đúng triệu chứng đã gặp: mọi endpoint trả 404 `/api/index` mà
+    không có dấu vết nào của middleware. Gắn vào bên trong thì `app` vẫn là một `FastAPI`
+    nguyên vẹn, không còn gì để dò nhầm.
     """
 
     def __init__(self, app: Any) -> None:
@@ -110,17 +149,24 @@ class KhoiPhucDuongDan:
             await self._app(scope, receive, send)
             return
 
-        goc = _duong_dan_goc(scope)
-        if goc is None:
-            await _bao_khong_khoi_phuc_duoc(scope, send)
+        from_query, remaining_query = _split_query(scope)
+        original = from_query or _path_from_headers(scope)
+        if original is None or not original.startswith("/") or original == FUNCTION_PATH:
+            await _report_unrecoverable_path(scope, send)
             return
 
         scope = dict(scope)
-        scope["path"] = goc
-        scope["raw_path"] = goc.encode("utf-8")
+        scope["path"] = original
+        scope["raw_path"] = original.encode("utf-8")
+        if from_query is not None:
+            scope["query_string"] = remaining_query
         await self._app(scope, receive, send)
 
 
-app = KhoiPhucDuongDan(fastapi_app)
+fastapi_app.add_middleware(RestoreOriginalPath)
+
+#: Vercel tìm đúng biến tên `app`. Nó là `FastAPI` chứ không phải object bọc ngoài — xem
+#: docstring của `RestoreOriginalPath`.
+app = fastapi_app
 
 __all__ = ["app"]

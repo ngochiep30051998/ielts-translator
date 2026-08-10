@@ -206,12 +206,22 @@ def test_max_duration_khai_tuong_minh_va_du_cho_mot_timeout_dung_duoc() -> None:
 
 def test_moi_duong_dan_deu_rewrite_ve_mot_function() -> None:
     """Gói Hobby giới hạn 12 function mỗi lần deploy; API có 16 endpoint. Chia theo file là
-    chạm trần ngay."""
+    chạm trần ngay.
+
+    `destination` PHẢI mang theo `__path=/$1`. Vercel rewrite bằng cách THAY đường dẫn gốc,
+    không phải chỉ định tuyến tới function — thiếu tham số này thì FastAPI thấy mọi request
+    đều là `/api/index` và trả 404 cho TOÀN BỘ API. Đây là lỗi đã xảy ra thật, và nó không
+    lộ ra ở bất kỳ test nào khác vì local thì đường dẫn không bao giờ bị viết đè.
+    """
     import json
+
+    from api.index import PATH_PARAM
 
     cfg = json.loads((GOC / "vercel.json").read_text("utf-8"))
 
-    assert cfg["rewrites"] == [{"source": "/(.*)", "destination": "/api/index"}]
+    assert cfg["rewrites"] == [
+        {"source": "/(.*)", "destination": f"/api/index?{PATH_PARAM}=/$1"}
+    ]
 
 
 def test_entry_point_vercel_import_duoc_app() -> None:
