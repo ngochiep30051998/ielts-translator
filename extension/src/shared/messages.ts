@@ -1,6 +1,6 @@
 import type {
   AnswerResult, ApiError, AuthUser, CardDto, PageResponse, QuizExplanation, QuizItemDto,
-  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult,
+  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, StatsDto, TranslateResult,
   VocabEntryDto,
 } from './types';
 
@@ -71,6 +71,16 @@ export interface GetSrsStatsRequest {
   newLimit: number;
 }
 
+/**
+ * Thống kê tiến độ học. Không tham số: cửa sổ thời gian là hằng số phía server.
+ *
+ * Tên `GET_STATS` chứ không `GET_LEARNING_STATS` để ngắn, nhưng ĐỪNG nhầm với
+ * `GET_SRS_STATS` — cái kia trả số thẻ đến hạn cho badge, cái này trả biểu đồ.
+ */
+export interface GetStatsRequest {
+  type: 'GET_STATS';
+}
+
 export interface GenerateQuizRequest {
   type: 'GENERATE_QUIZ';
   /** Đúng một trong hai field dưới được set; field còn lại là null. Backend trả 400 nếu sai. */
@@ -138,6 +148,7 @@ export type ExtensionRequest =
   | GetDueCardsRequest
   | SubmitReviewRequest
   | GetSrsStatsRequest
+  | GetStatsRequest
   | GenerateQuizRequest
   | AnswerQuizRequest
   | ExplainQuizRequest
@@ -159,6 +170,7 @@ export interface ResponseMap {
   GET_DUE_CARDS: CardDto[];
   SUBMIT_REVIEW: ReviewResponse;
   GET_SRS_STATS: SrsStats;
+  GET_STATS: StatsDto;
   GENERATE_QUIZ: QuizItemDto[];
   ANSWER_QUIZ: AnswerResult;
   EXPLAIN_QUIZ: QuizExplanation;

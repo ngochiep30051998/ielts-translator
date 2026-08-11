@@ -1,6 +1,6 @@
 import type {
   AnswerResult, ApiError, AuthUser, CardDto, PageResponse, QuizExplanation, QuizItemDto,
-  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult,
+  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, StatsDto, TranslateResult,
   VocabEntryDto,
 } from '../shared/types';
 import { clearAuth, loadToken } from '../shared/auth-storage';
@@ -93,6 +93,14 @@ export class ApiClient {
 
   async srsStats(newLimit: number): Promise<SrsStats> {
     return this.request(`/api/srs/stats?newLimit=${newLimit}`, { method: 'GET' });
+  }
+
+  /**
+   * Thống kê tiến độ học. Tên `learningStats` chứ không `stats` để không lẫn với
+   * `srsStats` ở ngay trên — cái kia trả số thẻ đến hạn cho badge.
+   */
+  async learningStats(): Promise<StatsDto> {
+    return this.request('/api/stats', { method: 'GET' });
   }
 
   /**

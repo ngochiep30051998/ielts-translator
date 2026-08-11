@@ -171,6 +171,23 @@ describe('ApiClient', () => {
     expect(stats.dueCount).toBe(3);
   });
 
+  it('learningStats gọi GET /api/stats', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({
+      streak: { current: 0, longest: 0, lastActiveDate: null },
+      totals: { reviews: 0, learnedWords: 0, activeDays: 0 },
+      daily: [],
+      recall: { again: 0, hard: 0, good: 0, easy: 0 },
+      quiz: [],
+    }));
+
+    await client.learningStats();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/stats`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
   it('review thẻ không tồn tại ném NOT_FOUND, không retry được', async () => {
     fetchMock.mockResolvedValue(jsonResponse(
       { code: 'NOT_FOUND', message: 'Không tìm thấy thẻ 999', retryable: false }, 404));
