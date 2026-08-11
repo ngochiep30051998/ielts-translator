@@ -1,10 +1,10 @@
-# api-service — bản port FastAPI của `backend/`
+# api-service — backend FastAPI
 
-Cùng một hợp đồng `/api/*`, cùng một schema database, cùng một bộ biến môi trường. Extension
-không biết nó đang nói chuyện với bên nào.
+Backend **duy nhất** của dự án. Bản Spring Boot cũ (`backend/`) đã bị xoá sau khi port xong
+và `Caddyfile` được trỏ sang đây — lịch sử của nó còn trong git nếu cần tra.
 
-`backend/` (Spring Boot) **vẫn là bản đang phục vụ thật**. Thư mục này chạy song song để
-đối chiếu, và chỉ trở thành bản chính khi `Caddyfile` được trỏ sang nó.
+Hợp đồng `/api/*`, schema database và bộ biến môi trường giữ nguyên như bản Java, nên
+extension không phải đổi gì.
 
 ## Chạy
 
@@ -45,8 +45,8 @@ Vẫn dùng được dạng dài nếu muốn (tương đương hệt):
 ```
 
 Lệnh đó chạy migration một lần rồi lên server. Host và cổng lấy từ `SERVER_ADDRESS` /
-`SERVER_PORT` trong `.env` **dùng chung với backend Spring** — không phải gõ tay, và không
-có chỗ nào để hai bên lệch nhau.
+`SERVER_PORT` trong `.env` ở thư mục gốc repo — không phải gõ tay, và không có chỗ nào để
+cấu hình lệch với `docker-compose.yml`.
 
 ```bash
 .venv/bin/python -m app --help
@@ -65,14 +65,14 @@ Sửa file trong `prompts/` thì **không** tự nạp lại, và đó là chủ
 quả parse trong bộ nhớ tiến trình, còn version prompt thì nằm trong khoá cache. Phải khởi
 động lại tay chính là lúc nhớ tăng `version:` ở đầu file (ràng buộc #5).
 
-Chạy bằng Docker cùng lúc với backend Spring — hai cổng, một database:
+Chạy bằng Docker (từ thư mục gốc repo):
 
 ```bash
-docker compose up -d --build db app api-service
+docker compose up -d --build
 ```
 
 ```bash
-curl 127.0.0.1:8080/api/health && curl 127.0.0.1:8081/api/health
+curl 127.0.0.1:8080/api/health
 ```
 
 ## Test
@@ -89,19 +89,20 @@ dùng data directory đó.
 mypy app && ruff check .
 ```
 
-`mypy --strict` không phải để cho đẹp: Java bắt được lúc biên dịch khi thêm `ErrorCode` mới
-mà quên nhánh xử lý, còn Python thì không. `assert_never()` + mypy là phần bù cho chỗ đó.
+`mypy --strict` không phải để cho đẹp: thêm một `ErrorCode` mới mà quên nhánh xử lý là loại
+lỗi Python không tự bắt được. `assert_never()` + mypy + `test_error_code_mapping.py` là ba
+lớp bù cho chỗ đó — đừng thêm `case _`/`else` để né, nó làm cả ba mù cùng lúc.
 
 ## Bố cục
 
-Chia theo tính năng, phản chiếu đúng `backend/src/main/java/.../`:
+Chia theo tính năng:
 
 ```
 app/
 ├── main.py          FastAPI, CORS, exception handler
-├── config.py        Settings từ env — GIỮ NGUYÊN tên biến của application.yml
+├── config.py        Settings từ env — GIỮ NGUYÊN tên biến của .env dùng chung
 ├── db.py            engine + session, SQLAlchemy sync + psycopg3
-├── migrator.py      thay Flyway; nhận biết flyway_schema_history có sẵn
+├── migrator.py      chạy migrations/V*.sql; nhận biết flyway_schema_history do bản Java để lại
 ├── startup.py       chạy migration một lần rồi thoát
 ├── common/          errors.py · gemini.py · schema.py
 ├── auth/            router · service · google · repository · deps · models
@@ -111,19 +112,22 @@ app/
 ├── translation/     router · service · detector · prompts · schemas · cache
 ├── quota/           guard · repository
 └── health/router.py
-migrations/          V1..V7 chép NGUYÊN VĂN từ backend/
-prompts/             *.md chép nguyên, kèm header `version: N`
+migrations/          V1..V7, append-only — SQL thuần, không sinh ra bởi ORM
+prompts/             *.md kèm header `version: N`
 api/index.py         điểm vào Vercel
 ```
 
-## Khác biệt có chủ ý so với bản Java
+## Vì sao nó trông như thế này (di sản từ bản Java)
 
-| Java | Python | Vì sao |
+Thư mục này là bản port 1:1 của một backend Spring Boot. Vài lựa chọn chỉ có nghĩa khi biết
+điều đó — chép lại đây để đừng ai "dọn dẹp" nhầm:
+
+| Bản Java | Ở đây | Vì sao |
 |---|---|---|
 | `SessionFilter` + bean `@RequestScope` | `Depends(current_user_id)` | Không còn trạng thái theo thread để rò giữa hai request |
 | `VocabEntrySavedEvent` + `@EventListener` | gọi thẳng `tao_the_khi_luu_tu()` | Listener đồng bộ trong cùng transaction đúng bằng một lời gọi hàm |
 | `@Async` + `ThreadPoolTaskExecutor` | `BackgroundTasks` | |
-| Flyway | `app/migrator.py` | SQL giữ nguyên dạng thuần để `diff` với `backend/` được |
+| Flyway | `app/migrator.py` | SQL giữ dạng thuần; `migrator.py` đọc được cả `flyway_schema_history` cũ nên schema dựng từ bản Java dùng tiếp được, không cần đánh số lại |
 | Testcontainers | `pgserver` | Postgres 16 thật, không cần Docker |
 | MockMvc | `TestClient` | Gọi app trong tiến trình |
 | WireMock | transport giả của httpx | Chặn ở tầng vận chuyển nên vẫn chạy qua đúng code dựng body và map lỗi |

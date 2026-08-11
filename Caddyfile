@@ -1,5 +1,5 @@
 # Đổi thành domain thật trước khi deploy. Caddy tự xin chứng chỉ Let's Encrypt cho
 # chính tên miền viết ở đây, nên sai tên = không có HTTPS và extension không gọi được.
 ielts.example.com {
-    reverse_proxy app:8080
+    reverse_proxy api-service:8080
 }

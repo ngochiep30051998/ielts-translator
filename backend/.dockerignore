@@ -1,7 +1,0 @@
-# Phòng thủ nhiều lớp: Dockerfile hiện chỉ COPY pom.xml và src/, nhưng nếu sau
-# này ai đó đổi thành "COPY . ." thì config máy cá nhân (kèm GEMINI_API_KEY) sẽ
-# lọt vào image. Chặn sẵn từ đây.
-config/
-target/
-.env
-*.log

@@ -167,17 +167,20 @@ chưa ăn.
 Ràng buộc #10 từng bắt khớp tay ba chỗ. Nay `host_permissions` và `backendUrl` mặc định
 cùng sinh từ **một biến**, nên chỉ còn một dòng phải sửa.
 
-Thêm vào `extension/.env`:
+Thêm vào `extension/.env.prod` (tạo file nếu chưa có — nó bị `.gitignore` chặn):
 
 ```
 VITE_BACKEND_URL=https://<project>.vercel.app
 ```
 
-Rồi build lại:
+Rồi build bản production:
 
 ```bash
-cd extension && npm run build
+cd extension && npm run build:prod
 ```
+
+`npm run build` (không hậu tố) nạp `.env.dev` và cho ra bundle trỏ `127.0.0.1:8080` — dùng
+để thử trên máy, **không** phải bản đem phát hành.
 
 Tải lại extension đã unpack. Xong.
 
@@ -192,8 +195,8 @@ không phải thứ sửa được từ trang Options — và Chrome chỉ cho g
 Options sang một domain chưa khai thì request chết **im lặng**: không lỗi mạng, không lỗi
 CORS, `fetch` đơn giản là không bao giờ đi.
 
-Danh sách luôn giữ cả `http://127.0.0.1:8080/*`, nên vẫn đổi Options về local để đối chiếu
-hai backend mà không phải build lại.
+Danh sách luôn giữ cả `http://127.0.0.1:8080/*`, nên vẫn đổi Options về backend chạy local
+để đối chiếu với bản deploy mà không phải build lại.
 
 `manifest.config.test.ts` canh bất biến này: nó dựng manifest qua `loadEnv` (đường Node) và
 đọc `DEFAULT_SETTINGS` qua `import.meta.env` (đường bundle), rồi khẳng định hai đường ra

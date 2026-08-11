@@ -31,7 +31,7 @@ Chrome extension **cá nhân**: bôi đen text trên web → tra nghĩa hai chi�
 
 **Có yêu cầu rồi, cần plan nhiều bước → dùng skill `superpowers:writing-plans`.** Plan mới đặt cùng chỗ và cùng định dạng với plan Phase 1: `docs/superpowers/plans/YYYY-MM-DD-<slug>.md`, có `Goal` / `Architecture` / `Tech Stack` / `Spec` / `Global Constraints` / các Task đánh số với checkbox. Bám house style của file sẵn có, đừng tự sáng tạo template.
 
-**Mỗi task phải nghiệm thu được.** Có tiêu chí pass/fail cụ thể và lệnh kiểm chứng thật (`cd backend && mvn test`, `cd extension && npm test && npm run build`). Task kiểu "cải thiện trải nghiệm" là chưa xong việc phân rã.
+**Mỗi task phải nghiệm thu được.** Có tiêu chí pass/fail cụ thể và lệnh kiểm chứng thật (`cd api-service && uv run pytest && uv run mypy app`, `cd extension && npm test && npm run build`). Task kiểu "cải thiện trải nghiệm" là chưa xong việc phân rã.
 
 **Task phải chạy được độc lập hoặc nói rõ phụ thuộc.** Ghi rõ task nào chặn task nào, và task nào **cần người thật thao tác** (kiểm chứng trên Chrome, lấy API key, load unpacked) — Phase 1 đã vấp đúng chỗ này.
 
