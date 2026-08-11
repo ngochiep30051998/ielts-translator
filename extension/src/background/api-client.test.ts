@@ -164,9 +164,10 @@ describe('ApiClient', () => {
 
     await client.getPracticeCards(30);
 
-    const calledUrl = fetchMock.mock.calls[0][0] as string;
-    expect(calledUrl).toContain('/api/srs/practice');
-    expect(calledUrl).toContain('limit=30');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/srs/practice?limit=30`,
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   it('submitPractice gọi POST /api/srs/practice', async () => {
