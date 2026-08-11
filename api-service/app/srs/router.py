@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Query, Response
 
 from app.auth.deps import CurrentUserId, Db
 from app.srs import service
-from app.srs.models import CardDto, ReviewRequest, ReviewResponse, SrsStatsDto
+from app.srs.models import CardDto, PracticeRequest, ReviewRequest, ReviewResponse, SrsStatsDto
 
 router = APIRouter(prefix="/api/srs", tags=["srs"])
 
@@ -42,6 +42,30 @@ def stats(
 @router.post("/review", response_model=ReviewResponse)
 def submit_review(request: ReviewRequest, user_id: CurrentUserId, db: Db) -> ReviewResponse:
     return service.review(db, user_id, request.card_id, request.rating)
+
+
+@router.get("/practice", response_model=list[CardDto])
+def practice_queue(
+    user_id: CurrentUserId,
+    db: Db,
+    tasks: BackgroundTasks,
+    limit: int = 50,
+) -> list[CardDto]:
+    """Xấp thẻ luyện thêm — mọi từ đã học, xáo ngẫu nhiên. Không có khái niệm "đến hạn" ở
+    đây, nên cũng không có tham số `newLimit`."""
+    return service.practice_queue(db, user_id, _clamp(limit, MAX_LIMIT), tasks)
+
+
+@router.post("/practice", status_code=204)
+def submit_practice(request: PracticeRequest, user_id: CurrentUserId, db: Db) -> Response:
+    """Tách hẳn khỏi `POST /review` chứ không thêm field `mode` vào đó.
+
+    `ReviewResponse` mang `nextDueDate`, `intervalDays`, `easeFactor` — luyện thêm không có
+    ba thứ đó, nên gộp chung buộc phải trả số giả cho nửa số lượt gọi. Và nhầm mode là hỏng
+    im lặng: gửi PRACTICE cho một lượt ôn thật thì lịch đứng yên mãi mãi.
+    """
+    service.practice(db, user_id, request.card_id, request.rating)
+    return Response(status_code=204)
 
 
 def _clamp(value: int, max_value: int) -> int:

@@ -89,6 +89,40 @@ def review(db: Session, user_id: int, card_id: int, rating: Rating) -> ReviewRes
     )
 
 
+def practice_queue(
+    db: Session, user_id: int, limit: int, tasks: BackgroundTasks
+) -> list[CardDto]:
+    """Xấp thẻ luyện thêm. Dùng lại đúng đường bù mồi nhử của `due()` — bỏ qua sẽ làm chế độ
+    luyện im lặng không dùng được với từ chưa sinh mồi."""
+    queue = repo.find_practice_cards(db, user_id, limit)
+    by_vocab_id = _load_fresh_distractors(db, queue)
+    _request_missing(tasks, db, queue, by_vocab_id)
+    return [_to_dto(card, entry, by_vocab_id) for card, entry in queue]
+
+
+def practice(db: Session, user_id: int, card_id: int, rating: Rating) -> None:
+    """Ghi một lượt luyện thêm. KHÔNG đụng lịch.
+
+    Điều quan trọng nhất của hàm này là thứ nó KHÔNG làm: không gọi `next_schedule`, không
+    gán lại `card.*`. Đó là toàn bộ điểm khác biệt với `review()`. Thêm một dòng chạm `card`
+    ở đây là làm hỏng đúng thứ chế độ luyện thêm sinh ra để bảo vệ — ôn một thẻ 5 lần trong
+    ngày sẽ đẩy interval 1 → 6 → 15 → 37 → 92 ngày.
+    """
+    card = repo.find_owned_card(db, card_id, user_id)
+    if card is None:
+        raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy thẻ id={card_id}")
+
+    repo.insert_review_log(
+        db,
+        card_id=card.id,
+        rating=rating,
+        # Không phải số giả: lịch thật sự không đổi nên hai con số thật sự bằng nhau.
+        prev_interval=card.interval_days,
+        new_interval=card.interval_days,
+        mode=ReviewMode.PRACTICE,
+    )
+
+
 def _load_fresh_distractors(
     db: Session, queue: list[tuple[SrsCard, VocabEntry]]
 ) -> dict[int, SrsDistractor]:

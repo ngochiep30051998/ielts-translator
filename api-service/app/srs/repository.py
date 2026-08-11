@@ -168,6 +168,28 @@ def insert_review_log(
     db.flush()
 
 
+def find_practice_cards(
+    db: Session, user_id: int, limit: int
+) -> list[tuple[SrsCard, VocabEntry]]:
+    """Hàng luyện thêm: mọi từ đã học ít nhất một lượt, xáo ngẫu nhiên.
+
+    `repetitions >= 1` loại thẻ NEW — lượt đầu đời của một thẻ phải đi đường có lịch, nếu
+    không nó mắc kẹt ở trạng thái NEW vĩnh viễn.
+
+    KHÔNG loại thẻ đang đến hạn. Luật "mọi từ đã học" giải thích được bằng một câu, còn "mọi
+    từ đã học trừ những từ đến hạn hôm nay" thì không — và luyện một thẻ đang đến hạn không
+    làm nó biến mất khỏi hàng ôn thật, đúng như nó phải thế.
+    """
+    stmt = (
+        select(SrsCard, VocabEntry)
+        .join(VocabEntry, SrsCard.vocab_entry_id == VocabEntry.id)
+        .where(VocabEntry.user_id == user_id, SrsCard.repetitions >= 1)
+        .order_by(func.random())
+        .limit(limit)
+    )
+    return [(row[0], row[1]) for row in db.execute(stmt).all()]
+
+
 def find_distractor_by_vocab(db: Session, vocab_entry_id: int) -> SrsDistractor | None:
     return db.scalars(
         select(SrsDistractor).where(SrsDistractor.vocab_entry_id == vocab_entry_id)
