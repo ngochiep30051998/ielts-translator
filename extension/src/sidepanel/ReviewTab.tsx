@@ -135,7 +135,17 @@ export function ReviewTab() {
   return (
     // tabIndex để div nhận được phím tắt mà không cần bắt sự kiện toàn cục
     <div className="review-tab" ref={container} tabIndex={-1} onKeyDown={onKeyDown}>
-      <p className="status">{index + 1}/{questions.length}</p>
+      {/* Thanh tiến độ mang aria-hidden: số đếm ngay bên cạnh đã nói đúng thông tin đó,
+          đọc hai lần chỉ làm phiền người dùng trình đọc màn hình. */}
+      <div className="progress-row">
+        <div className="progress-track" aria-hidden="true">
+          <div
+            className="progress-fill"
+            style={{ width: `${((index + 1) / questions.length) * 100}%` }}
+          />
+        </div>
+        <p className="status">{index + 1}/{questions.length}</p>
+      </div>
 
       {error && lastRating && (
         <p className="status bad" role="alert">
@@ -173,23 +183,50 @@ export function ReviewTab() {
       </div>
 
       <div className="review-options">
-        {question.options.map((option, i) => (
-          <button
-            key={option}
-            type="button"
-            disabled={picked !== null}
-            className={optionClass(i, picked, question.correctIndex)}
-            onClick={() => void choose(i)}
-          >
-            {i + 1}. {option}
-          </button>
-        ))}
+        {question.options.map((option, i) => {
+          const state = optionState(i, picked, question.correctIndex);
+          return (
+            <button
+              key={option}
+              type="button"
+              disabled={picked !== null}
+              className={state ? `review-option ${state}` : 'review-option'}
+              onClick={() => void choose(i)}
+            >
+              {/* Số thứ tự CHÍNH LÀ phím tắt của ô này — vẽ như một phím để người dùng
+                  thấy có đường tắt, thay vì giấu nó trong câu trả lời. */}
+              <span className="option-key">{i + 1}</span>
+              <span className="option-text">{option}</span>
+              {state && (
+                <>
+                  {/* Dấu để mắt bắt được trạng thái mà không cần phân biệt đỏ với xanh lá,
+                      kèm chữ cho trình đọc màn hình vì màu không nói được gì với nó. */}
+                  <span className="option-mark" aria-hidden="true">
+                    {state === 'correct' ? '✓' : '✗'}
+                  </span>
+                  <span className="sr-only">
+                    {state === 'correct' ? 'Đáp án đúng' : 'Bạn chọn ô này, sai'}
+                  </span>
+                </>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {picked === null && (
+        <p className="review-hint">
+          Bấm <kbd>1</kbd>–<kbd>{question.options.length}</kbd> để chọn nhanh
+        </p>
+      )}
 
       {picked !== null && (
         <>
           <div className="review-back">
-            <p className="vi">{card.term} — {card.meaningVi}</p>
+            {/* Hai dòng chứ không nối bằng gạch ngang: đây là hai trường dữ liệu khác
+                nhau, xếp chồng thì mắt tách được ngay mà không phải đọc qua dấu nối. */}
+            <p className="review-back-term">{card.term}</p>
+            <p className="vi">{card.meaningVi}</p>
             {card.pos && <span className="meta">{card.pos}</span>}
             {card.cefr && <span className="meta">{card.cefr}</span>}
             {card.bandLevel && (
@@ -210,9 +247,13 @@ export function ReviewTab() {
 }
 
 /** Chỉ tô màu sau khi đã chọn: đáp án đúng luôn xanh, ô chọn sai thì đỏ. */
-function optionClass(index: number, picked: number | null, correctIndex: number): string {
-  if (picked === null) return 'review-option';
-  if (index === correctIndex) return 'review-option correct';
-  if (index === picked) return 'review-option wrong';
-  return 'review-option';
+function optionState(
+  index: number,
+  picked: number | null,
+  correctIndex: number,
+): 'correct' | 'wrong' | null {
+  if (picked === null) return null;
+  if (index === correctIndex) return 'correct';
+  if (index === picked) return 'wrong';
+  return null;
 }

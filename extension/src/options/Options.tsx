@@ -38,7 +38,7 @@ export function Options() {
 
   return (
     <main className="options">
-      <h1>IELTS Translator — Cài đặt</h1>
+      <h1>Cài đặt IELTS Translator</h1>
 
       <label htmlFor="backendUrl">Địa chỉ backend</label>
       <input

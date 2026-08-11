@@ -16,9 +16,9 @@ function card(id: number, term: string): CardDto {
   };
 }
 
-/** Nút lựa chọn hiện dạng "3. nội dung" — cắt số thứ tự để so đúng nội dung. */
+/** Nút lựa chọn mở đầu bằng số thứ tự (cũng là phím tắt) — cắt đi để so đúng nội dung. */
 function optionText(button: HTMLElement): string {
-  return (button.textContent ?? '').replace(/^\d+\.\s*/, '');
+  return (button.textContent ?? '').replace(/^\d+\s*/, '');
 }
 
 /** Đáp án đúng là meaningVi (chiều EN → VI) hoặc term (chiều VI → EN), tuỳ lượt bốc. */
@@ -61,7 +61,7 @@ describe('ReviewTab', () => {
 
     render(<ReviewTab />);
 
-    const options = await screen.findAllByRole('button', { name: /^\d\./ });
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
     expect(options).toHaveLength(4);
   });
 
@@ -73,7 +73,7 @@ describe('ReviewTab', () => {
     mockQueue([card(1, 'mitigate')]);
 
     render(<ReviewTab />);
-    await screen.findAllByRole('button', { name: /^\d\./ });
+    await screen.findAllByRole('button', { name: /^\d/ });
 
     expect(screen.getByText('nghĩa của mitigate')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /phát âm/i })).not.toBeInTheDocument();
@@ -85,7 +85,7 @@ describe('ReviewTab', () => {
     mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
 
     render(<ReviewTab />);
-    const options = await screen.findAllByRole('button', { name: /^\d\./ });
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
     const correct = options.find((b) => isCorrectFor('mitigate', b))!;
     await userEvent.click(correct);
 
@@ -97,7 +97,7 @@ describe('ReviewTab', () => {
     mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
 
     render(<ReviewTab />);
-    const options = await screen.findAllByRole('button', { name: /^\d\./ });
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
     const wrong = options.find((b) => !isCorrectFor('mitigate', b))!;
     await userEvent.click(wrong);
 
@@ -108,7 +108,7 @@ describe('ReviewTab', () => {
     mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
 
     render(<ReviewTab />);
-    const options = await screen.findAllByRole('button', { name: /^\d\./ });
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
     await userEvent.click(options[0]);
     await userEvent.click(options[1]);
     await userEvent.click(options[2]);
@@ -122,7 +122,7 @@ describe('ReviewTab', () => {
     render(<ReviewTab />);
     expect(screen.queryByRole('button', { name: /tiếp/i })).not.toBeInTheDocument();
 
-    const options = await screen.findAllByRole('button', { name: /^\d\./ });
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
     await userEvent.click(options[0]);
 
     expect(screen.getByRole('button', { name: /tiếp/i })).toBeInTheDocument();
@@ -132,7 +132,7 @@ describe('ReviewTab', () => {
     mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
 
     render(<ReviewTab />);
-    const options = await screen.findAllByRole('button', { name: /^\d\./ });
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
     await userEvent.click(options[0]);
     await userEvent.click(screen.getByRole('button', { name: /tiếp/i }));
 
@@ -144,7 +144,7 @@ describe('ReviewTab', () => {
       { ok: false, error: { code: 'INTERNAL', message: 'Backend chết', retryable: true } });
 
     render(<ReviewTab />);
-    const options = await screen.findAllByRole('button', { name: /^\d\./ });
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
     await userEvent.click(options[0]);
 
     expect(await screen.findByText(/backend chết/i)).toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('ReviewTab', () => {
     await chrome.storage.local.set({ settings: { newWordsPerDay: 7 } });
 
     render(<ReviewTab />);
-    await screen.findAllByRole('button', { name: /^\d\./ });
+    await screen.findAllByRole('button', { name: /^\d/ });
 
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'GET_DUE_CARDS', newLimit: 7 }),

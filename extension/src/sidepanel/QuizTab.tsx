@@ -73,6 +73,15 @@ export function QuizTab() {
   const [answerError, setAnswerError] = useState<ApiError | null>(null);
 
   /**
+   * Ô trắc nghiệm vừa bấm, để tô đúng/sai sau khi chấm.
+   *
+   * Chỉ tô được ô NGƯỜI DÙNG CHỌN chứ không tô được đáp án đúng: `AnswerResult` không
+   * mang index đúng, và cố ý — nó nằm trong `feedback` khi sai ("Chưa đúng. Đáp án: …").
+   * Đừng thêm field vào backend chỉ để tô màu; câu chữ giải thích tốt hơn một ô xanh.
+   */
+  const [picked, setPicked] = useState<number | null>(null);
+
+  /**
    * MỘT ô chứ không phải mảng song song với `results`: điều hướng chỉ đi tới — `next()`
    * không có đường lùi — nên không bao giờ quay lại câu cũ. `results` là mảng vì màn tổng
    * kết đếm số câu đúng; giải thích không vào tổng kết.
@@ -143,6 +152,7 @@ export function QuizTab() {
     setResults(collected.map(() => null));
     setIndex(0);
     setDraft('');
+    setPicked(null);
     setAnswerError(null);
     setExplanation(null);
     setExplainError(null);
@@ -193,6 +203,7 @@ export function QuizTab() {
 
   function next() {
     setDraft('');
+    setPicked(null);
     setAnswerError(null);
     setExplanation(null);
     setExplainError(null);
@@ -204,6 +215,7 @@ export function QuizTab() {
     setResults([]);
     setIndex(0);
     setDraft('');
+    setPicked(null);
     setGenerated(false);
     setWarnings([]);
     setError(null);
@@ -299,7 +311,16 @@ export function QuizTab() {
     <div className="quiz-tab">
       {warningBlock}
 
-      <p className="status">{index + 1}/{items.length}</p>
+      {/* Thanh tiến độ mang aria-hidden: số đếm bên cạnh đã nói đúng thông tin đó. */}
+      <div className="progress-row">
+        <div className="progress-track" aria-hidden="true">
+          <div
+            className="progress-fill"
+            style={{ width: `${((index + 1) / items.length) * 100}%` }}
+          />
+        </div>
+        <p className="status">{index + 1}/{items.length}</p>
+      </div>
 
       <div className="quiz-card">
         {/* term là null với FILL_BLANK (nó chính là đáp án) — chỉ hiện khi backend có gửi. */}
@@ -328,17 +349,39 @@ export function QuizTab() {
               (ReviewTab của Phase 2 tự xáo ở client vì backend gửi cả đáp án lẫn mồi
               nhử — đừng bê pattern đó sang đây.)
             */}
-            {item.options.map((option, i) => (
-              <button
-                key={`${i}-${option}`}
-                type="button"
-                className="quiz-option"
-                disabled={answered || grading}
-                onClick={() => void submit(String(i))}
-              >
-                {i + 1}. {option}
-              </button>
-            ))}
+            {item.options.map((option, i) => {
+              // Chỉ ô vừa bấm mới có trạng thái — xem chú thích ở state `picked`.
+              const state = answered && picked === i
+                ? (result.correct ? 'correct' : 'wrong')
+                : null;
+              return (
+                <button
+                  key={`${i}-${option}`}
+                  type="button"
+                  className={state ? `quiz-option ${state}` : 'quiz-option'}
+                  disabled={answered || grading}
+                  onClick={() => {
+                    setPicked(i);
+                    void submit(String(i));
+                  }}
+                >
+                  <span className="option-key">{i + 1}</span>
+                  <span className="option-text">{option}</span>
+                  {state && (
+                    <>
+                      {/* Dấu để không phải phân biệt đỏ với xanh lá mới đọc được kết quả,
+                          kèm chữ cho trình đọc màn hình vì màu không nói được gì với nó. */}
+                      <span className="option-mark" aria-hidden="true">
+                        {state === 'correct' ? '✓' : '✗'}
+                      </span>
+                      <span className="sr-only">
+                        {state === 'correct' ? 'Bạn chọn đúng' : 'Bạn chọn sai'}
+                      </span>
+                    </>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 
