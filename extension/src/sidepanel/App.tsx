@@ -6,14 +6,16 @@ import { TranslateTab } from './TranslateTab';
 import { VocabTab } from './VocabTab';
 import { ReviewTab } from './ReviewTab';
 import { QuizTab } from './QuizTab';
+import { StatsTab } from './StatsTab';
 
-type Tab = 'translate' | 'vocab' | 'review' | 'quiz';
+type Tab = 'translate' | 'vocab' | 'review' | 'quiz' | 'stats';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'translate', label: 'Dịch' },
   { id: 'vocab', label: 'Sổ từ' },
   { id: 'review', label: 'Ôn tập' },
   { id: 'quiz', label: 'Quiz' },
+  { id: 'stats', label: 'Thống kê' },
 ];
 
 /**
@@ -114,6 +116,7 @@ export function App() {
         {tab === 'vocab' && <VocabTab />}
         {tab === 'review' && <ReviewTab />}
         {tab === 'quiz' && <QuizTab />}
+        {tab === 'stats' && <StatsTab />}
       </main>
     </div>
   );

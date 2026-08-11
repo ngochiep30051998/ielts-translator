@@ -282,13 +282,15 @@ body {
 .tabs button {
   flex: 1;
   margin-bottom: -1px;
-  padding: 13px 8px 11px;
+  /* 4px thay vì 8px: năm tab ở 400px cho mỗi tab ~72px, mà "Thống kê" ở 13px cần ~58px.
+     Padding 8px mỗi bên không còn đủ chỗ và nhãn bị cắt. */
+  padding: 13px 4px 11px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
   color: var(--text-2);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 550;
   cursor: pointer;
   transition: color 0.12s;
@@ -989,3 +991,125 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================
+   Thống kê tiến độ
+   Biểu đồ vẽ bằng div + CSS, không thư viện và không SVG (ràng buộc #12).
+   Màu lấy từ token sẵn có nên tự hợp dark mode.
+   ============================================================ */
+.stats { padding-bottom: 16px; }
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 4px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.stat-cell strong {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.stat-cell span {
+  color: var(--text-3);
+  font-size: 10.5px;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.chart { margin-bottom: 20px; }
+.chart h3 {
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 72px;
+  padding: 6px 8px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.bar {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.heatmap {
+  display: flex;
+  gap: 5px;
+  padding: 8px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.heatmap-days {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  color: var(--text-3);
+  font-size: 8.5px;
+  line-height: 16px;
+}
+.heatmap-grid { display: flex; flex: 1; gap: 3px; }
+.heatmap-col {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  flex: 1;
+  gap: 3px;
+}
+.cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+/* Ô đệm ngoài khoảng dữ liệu — trong suốt để không đọc nhầm thành "ngày không ôn". */
+.cell.pad { background: none; }
+.cell.lv0 { background: var(--surface-2); }
+.cell.lv1 { background: color-mix(in srgb, var(--accent) 28%, var(--surface-2)); }
+.cell.lv2 { background: color-mix(in srgb, var(--accent) 52%, var(--surface-2)); }
+.cell.lv3 { background: color-mix(in srgb, var(--accent) 76%, var(--surface-2)); }
+.cell.lv4 { background: var(--accent); }
+
+.acc-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-2);
+  font-size: 13px;
+}
+.acc-line > span:first-child { flex: 1; min-width: 0; }
+.acc-line strong { font-weight: 620; }
+.acc-detail {
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.acc-bar {
+  display: flex;
+  overflow: hidden;
+  height: 8px;
+  margin: 4px 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.seg-again { background: var(--danger); }
+.seg-hard  { background: color-mix(in srgb, var(--accent) 40%, var(--surface-2)); }
+.seg-good  { background: var(--accent); }
+.seg-easy  { background: var(--ok); }
