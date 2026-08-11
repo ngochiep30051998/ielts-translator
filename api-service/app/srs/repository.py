@@ -127,6 +127,10 @@ def count_introduced_since(db: Session, user_id: int, since: datetime) -> int:
     `prev_interval = 0` nhận diện chính xác lượt review đầu đời của một thẻ: thẻ mới có
     `interval_days = 0`, còn bấm Lại luôn đặt interval về 1 nên mọi lượt sau đó đều có
     `prev_interval >= 1`. Nhờ vậy không cần bảng đếm riêng.
+
+    Lọc `mode = SCHEDULED` là bắt buộc: hàng luyện chỉ chứa thẻ `repetitions >= 1` nên hôm
+    nay không dòng PRACTICE nào có `prev_interval = 0` — nhưng bất biến đó phụ thuộc vào
+    định nghĩa hàng luyện, thứ có thể đổi. Một mệnh đề WHERE làm nó không phụ thuộc nữa.
     """
     return _count(
         db,
@@ -138,6 +142,7 @@ def count_introduced_since(db: Session, user_id: int, since: datetime) -> int:
             VocabEntry.user_id == user_id,
             ReviewLog.reviewed_at >= since,
             ReviewLog.prev_interval == 0,
+            ReviewLog.mode == ReviewMode.SCHEDULED.value,
         ),
     )
 

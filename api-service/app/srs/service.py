@@ -35,7 +35,7 @@ def due(
     """
     queue = repo.find_due_cards(db, user_id, date.today(), limit)
 
-    room = min(limit - len(queue), _remaining_new_today(db, user_id, new_limit))
+    room = _new_room(db, user_id, new_limit, limit - len(queue))
     if room > 0:
         queue = queue + repo.find_new_cards(db, user_id, room)
 
@@ -48,7 +48,7 @@ def due(
 def stats(db: Session, user_id: int, new_limit: int) -> SrsStatsDto:
     due_now = repo.count_due(db, user_id, date.today())
     new_total = repo.count_by_state(db, user_id, CardState.NEW)
-    new_allowed = min(new_total, _remaining_new_today(db, user_id, new_limit))
+    new_allowed = _new_room(db, user_id, new_limit, new_total)
     return SrsStatsDto(
         due_count=due_now + new_allowed,
         new_count=new_total,
@@ -157,18 +157,31 @@ def _request_missing(
             requested += 1
 
 
-def _remaining_new_today(db: Session, user_id: int, new_limit: int) -> int:
-    """Hạn mức từ mới còn lại của hôm nay, không bao giờ âm.
+def _introduced_today(db: Session, user_id: int) -> int:
+    """Số thẻ MỚI đã được đưa vào học kể từ nửa đêm hôm nay.
 
-    Mốc nửa đêm tính theo giờ HỆ THỐNG (`astimezone()` gắn offset local vào), đúng như
-    `LocalDate.now().atStartOfDay(ZoneId.systemDefault())` bên Java — và cùng lý do biến TZ
-    được truyền vào container: ngày phải đổi lúc nửa đêm giờ Việt Nam. Gửi một mốc thời gian
-    KHÔNG có offset xuống Postgres thì nó tự diễn giải theo timezone của session, lệch mất
-    vài giờ mà không có gì báo.
+    Mốc nửa đêm tính theo giờ HỆ THỐNG (`astimezone()` gắn offset local vào) — cùng lý do
+    biến TZ được truyền vào container: ngày phải đổi lúc nửa đêm giờ Việt Nam. Gửi một mốc
+    thời gian KHÔNG có offset xuống Postgres thì nó tự diễn giải theo timezone của session,
+    lệch mất vài giờ mà không có gì báo.
     """
     start_of_day = datetime.combine(date.today(), time.min).astimezone()
-    introduced = repo.count_introduced_since(db, user_id, start_of_day)
-    return max(0, new_limit - introduced)
+    return repo.count_introduced_since(db, user_id, start_of_day)
+
+
+def _new_room(db: Session, user_id: int, new_limit: int, cap: int) -> int:
+    """Số thẻ MỚI còn được nhận hôm nay, đã kẹp trong `cap`.
+
+    `new_limit = 0` nghĩa là KHÔNG giới hạn — đó là cách người dùng tắt hẳn hạn mức từ ô
+    "Từ mới mỗi ngày" ở Options. Trước đây `0` nghĩa đen là "cấm học từ mới", một hành vi
+    không ai muốn và không ai dùng.
+
+    Gom hai chỗ tính vào một hàm để luật "0 là không giới hạn" chỉ tồn tại ở đúng một chỗ;
+    `due()` và `stats()` trước đây tự ghép `min()` theo hai cách hơi khác nhau.
+    """
+    if new_limit <= 0:
+        return max(0, cap)
+    return max(0, min(cap, new_limit - _introduced_today(db, user_id)))
 
 
 def _to_dto(card: SrsCard, entry: VocabEntry, by_vocab_id: dict[int, SrsDistractor]) -> CardDto:
