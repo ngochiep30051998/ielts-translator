@@ -310,4 +310,35 @@ describe('ReviewTab', () => {
     expect(sent.filter((s) => s.type === 'SUBMIT_REVIEW')).toHaveLength(0);
     expect(sent.filter((s) => s.type === 'SUBMIT_PRACTICE')).toHaveLength(1);
   });
+
+  it('quay lại từ chế độ luyện thì ôn cùng thẻ đó vẫn gửi SUBMIT_REVIEW', async () => {
+    // `load()` xoá `scheduledSent` mỗi lần nạp. Mất dòng đó thì thẻ đã ôn trong buổi sẽ
+    // vĩnh viễn đi nhánh PRACTICE, kể cả sau khi quay về chế độ theo lịch — lịch SM-2 của
+    // nó không bao giờ được cập nhật nữa trong buổi ấy. Đi qua ĐÚNG nút "Quay lại" (không
+    // gọi load() trực tiếp) để test canh luôn cả sự tồn tại của nút.
+    const sent = mockWithLog([card(1, 'mitigate')], [card(1, 'mitigate')]);
+    render(<ReviewTab />);
+
+    // Lượt 1: ôn theo lịch, đúng → SUBMIT_REVIEW.
+    const firstCorrect = (await screen.findAllByRole('button')).find((b) => isCorrectFor('mitigate', b))!;
+    await userEvent.click(firstCorrect);
+    await userEvent.click(screen.getByRole('button', { name: 'Tiếp' }));
+
+    // Hàng đợi lịch chỉ có một thẻ nên giờ đã hết — sang chế độ luyện.
+    await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+
+    // Trả lời thẻ trong chế độ luyện — đúng/sai không quan trọng ở bước này.
+    const practiceOption = (await screen.findAllByRole('button')).find((b) => /^\d/.test(b.textContent ?? ''))!;
+    await userEvent.click(practiceOption);
+
+    // Quay lại chế độ theo lịch qua ĐÚNG nút "Quay lại".
+    await userEvent.click(screen.getByRole('button', { name: 'Quay lại' }));
+
+    // Lượt 2: cùng thẻ, ôn lại theo lịch, đúng → phải LẠI là SUBMIT_REVIEW, không tụt
+    // sang SUBMIT_PRACTICE vì scheduledSent còn nhớ cardId từ lượt 1.
+    const secondCorrect = (await screen.findAllByRole('button')).find((b) => isCorrectFor('mitigate', b))!;
+    await userEvent.click(secondCorrect);
+
+    expect(sent.filter((s) => s.type === 'SUBMIT_REVIEW')).toHaveLength(2);
+  });
 });
