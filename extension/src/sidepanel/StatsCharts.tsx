@@ -148,7 +148,7 @@ export function Accuracy({
         {(['again', 'hard', 'good', 'easy'] as const).map((ratingKey) => (
           <div
             key={ratingKey}
-            className={`seg seg-${ratingKey}`}
+            className={`seg-${ratingKey}`}
             style={{ width: `${totalRatings > 0 ? (recall[ratingKey] / totalRatings) * 100 : 0}%` }}
           />
         ))}
