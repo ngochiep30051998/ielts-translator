@@ -50,6 +50,30 @@ function submittedReviews() {
     .filter((request: { type: string }) => request.type === 'SUBMIT_REVIEW');
 }
 
+/** Ghi lại mọi message gửi đi để đếm và kiểm thứ tự. */
+function mockWithLog(cards: CardDto[], practice: CardDto[] = []) {
+  const sent: { type: string; cardId?: number }[] = [];
+  (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+    async (request: { type: string; cardId?: number }) => {
+      sent.push({ type: request.type, cardId: request.cardId });
+      if (request.type === 'GET_DUE_CARDS') return { ok: true, data: cards };
+      if (request.type === 'GET_PRACTICE_CARDS') return { ok: true, data: practice };
+      if (request.type === 'SUBMIT_REVIEW') return OK_REVIEW;
+      return { ok: true, data: null };
+    },
+  );
+  return sent;
+}
+
+/** Nút lựa chọn mở đầu bằng số thứ tự. Trả nút SAI cho thẻ `term`. */
+async function nutSai(term: string): Promise<HTMLElement> {
+  const nut = (await screen.findAllByRole('button')).find(
+    (b) => /^\d/.test(b.textContent ?? '') && !isCorrectFor(term, b),
+  );
+  if (!nut) throw new Error(`Không tìm thấy nút sai cho "${term}"`);
+  return nut;
+}
+
 describe('ReviewTab', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -129,11 +153,14 @@ describe('ReviewTab', () => {
   });
 
   it('bấm Tiếp thì sang thẻ sau', async () => {
+    // Chọn ĐÚNG một cách tất định (không phải options[0]): từ khi thẻ trả lời sai chèn
+    // lại vào xấp, bấm trúng nút sai sẽ làm questions.length tăng lên 3 và phá vỡ '2/2'.
     mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
 
     render(<ReviewTab />);
     const options = await screen.findAllByRole('button', { name: /^\d/ });
-    await userEvent.click(options[0]);
+    const correct = options.find((b) => isCorrectFor('mitigate', b))!;
+    await userEvent.click(correct);
     await userEvent.click(screen.getByRole('button', { name: /tiếp/i }));
 
     expect(await screen.findByText('2/2')).toBeInTheDocument();
@@ -145,7 +172,11 @@ describe('ReviewTab', () => {
 
     render(<ReviewTab />);
     const options = await screen.findAllByRole('button', { name: /^\d/ });
-    await userEvent.click(options[0]);
+    // Chọn ĐÚNG một cách tất định — lý do như test "bấm Tiếp" ở trên: chọn sai sẽ chèn
+    // lại thẻ và đổi tổng số câu, phá '1/2'. Test này nhắm vào việc hiển thị lỗi/Thử lại,
+    // không phải nhánh đúng/sai.
+    const correct = options.find((b) => isCorrectFor('mitigate', b))!;
+    await userEvent.click(correct);
 
     expect(await screen.findByText(/backend chết/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /thử lại/i })).toBeInTheDocument();
@@ -182,5 +213,71 @@ describe('ReviewTab', () => {
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'GET_DUE_CARDS', newLimit: 7 }),
     );
+  });
+
+  it('trả lời sai rồi trả lời lại gửi đúng một SUBMIT_REVIEW rồi một SUBMIT_PRACTICE', async () => {
+    // QUY TẮC TRUNG TÂM của cả tính năng: mỗi thẻ đóng góp NHIỀU NHẤT MỘT lượt SCHEDULED
+    // trong một buổi. Mọi lần hiện lại đều là PRACTICE.
+    //
+    // Nếu lượt thứ hai cũng gửi SUBMIT_REVIEW, nó tính tiếp từ trạng thái vừa lapse và đẩy
+    // interval lên lại — tức là trả lời đúng ở lần thứ hai XOÁ MẤT dấu vết đã quên.
+    //
+    // Dùng ĐÚNG MỘT thẻ: với xấp 1 phần tử, thẻ chèn lại rơi vào index 1 nên chỉ cần bấm
+    // "Tiếp" một lần là nó quay lại. Ba thẻ thì phải bấm ba lần và test dài gấp đôi mà không
+    // kiểm thêm được gì.
+    const sent = mockWithLog([card(1, 'mitigate')]);
+    render(<ReviewTab />);
+
+    await userEvent.click(await nutSai('mitigate'));
+    await userEvent.click(screen.getByRole('button', { name: 'Tiếp' }));
+    await userEvent.click(await nutSai('mitigate'));
+
+    expect(sent.filter((s) => s.type === 'SUBMIT_REVIEW')).toHaveLength(1);
+    expect(sent.filter((s) => s.type === 'SUBMIT_PRACTICE')).toHaveLength(1);
+    // Thứ tự cũng là hợp đồng: lượt theo lịch phải đi TRƯỚC.
+    const chiHaiLoai = sent
+      .map((s) => s.type)
+      .filter((t) => t === 'SUBMIT_REVIEW' || t === 'SUBMIT_PRACTICE');
+    expect(chiHaiLoai).toEqual(['SUBMIT_REVIEW', 'SUBMIT_PRACTICE']);
+  });
+
+  it('thẻ trả lời sai hiện lại trong xấp', async () => {
+    // Bộ đếm render dạng `{index + 1}/{questions.length}` (ReviewTab.tsx:147).
+    mockWithLog([card(1, 'mitigate'), card(2, 'robust')]);
+    render(<ReviewTab />);
+    expect(await screen.findByText('1/2')).toBeInTheDocument();
+
+    await userEvent.click(await nutSai('mitigate'));
+
+    // Xấp 2 thẻ; sai một thẻ thì tổng phải thành 3, vị trí hiện tại vẫn là 1.
+    expect(screen.getByText('1/3')).toBeInTheDocument();
+  });
+
+  it('hết hàng đợi thì hiện nút Luyện thêm', async () => {
+    mockWithLog([]);
+    render(<ReviewTab />);
+
+    expect(await screen.findByRole('button', { name: 'Luyện thêm' })).toBeInTheDocument();
+  });
+
+  it('vào chế độ luyện thì hiện dòng cảnh báo không ảnh hưởng lịch', async () => {
+    mockWithLog([], [card(9, 'resilient')]);
+    render(<ReviewTab />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+
+    expect(await screen.findByText(/không ảnh hưởng lịch ôn/)).toBeInTheDocument();
+  });
+
+  it('trả lời trong chế độ luyện chỉ gửi SUBMIT_PRACTICE', async () => {
+    const sent = mockWithLog([], [card(9, 'resilient'), card(10, 'coherent')]);
+    render(<ReviewTab />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+
+    const nut = (await screen.findAllByRole('button')).find((b) => /^\d/.test(b.textContent ?? ''));
+    await userEvent.click(nut!);
+
+    expect(sent.filter((s) => s.type === 'SUBMIT_REVIEW')).toHaveLength(0);
+    expect(sent.filter((s) => s.type === 'SUBMIT_PRACTICE')).toHaveLength(1);
   });
 });

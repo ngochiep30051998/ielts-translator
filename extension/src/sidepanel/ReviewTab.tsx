@@ -8,6 +8,13 @@ import type { ApiError, Rating } from '../shared/types';
 
 const QUEUE_LIMIT = 50;
 
+type Mode = 'scheduled' | 'practice';
+
+/** Số thẻ xen vào trước khi thẻ vừa quên hiện lại. Tương đương "learning step" của Anki,
+ *  nhưng đo bằng số thẻ chứ không bằng phút — panel không có lịch trong ngày. */
+const RELEARN_GAP = 3;
+const PRACTICE_LIMIT = 30;
+
 export function ReviewTab() {
   // Dựng câu hỏi MỘT LẦN lúc nạp hàng đợi, không phải useMemo: useMemo là gợi ý hiệu năng,
   // React được phép vứt cache. Vứt cache ở đây nghĩa là trộn lại đáp án giữa lúc người dùng
@@ -25,13 +32,21 @@ export function ReviewTab() {
   // Mốc bắt đầu tính giờ, đặt lại mỗi khi câu hỏi đổi.
   const startedAt = useRef(Date.now());
   const container = useRef<HTMLDivElement>(null);
+  const [mode, setMode] = useState<Mode>('scheduled');
+  // Thẻ đã gửi một lượt SCHEDULED trong buổi này. Dùng ref chứ không state: giá trị này
+  // không ảnh hưởng render, và đọc nó trong handler phải luôn thấy giá trị mới nhất.
+  const scheduledSent = useRef<Set<number>>(new Set());
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextMode: Mode = 'scheduled') => {
     setLoading(true);
-    const { newWordsPerDay } = await loadSettings();
-    const response = await sendToBackground({
-      type: 'GET_DUE_CARDS', limit: QUEUE_LIMIT, newLimit: newWordsPerDay,
-    });
+    scheduledSent.current = new Set();
+    const response = nextMode === 'practice'
+      ? await sendToBackground({ type: 'GET_PRACTICE_CARDS', limit: PRACTICE_LIMIT })
+      : await sendToBackground({
+          type: 'GET_DUE_CARDS',
+          limit: QUEUE_LIMIT,
+          newLimit: (await loadSettings()).newWordsPerDay,
+        });
     if (response.ok) {
       const cards = response.data;
       setQueueSize(cards.length);
@@ -51,6 +66,7 @@ export function ReviewTab() {
     } else {
       setError(response.error);
     }
+    setMode(nextMode);
     setLoading(false);
   }, []);
 
@@ -68,7 +84,21 @@ export function ReviewTab() {
   async function submit(rating: Rating, cardId: number) {
     setLastRating(rating);
     setSubmitting(true);
-    const response = await sendToBackground({ type: 'SUBMIT_REVIEW', cardId, rating });
+
+    // Mỗi thẻ đóng góp NHIỀU NHẤT MỘT lượt SCHEDULED trong một buổi. Mọi lần hiện lại đều là
+    // PRACTICE.
+    //
+    // Lượt đầu đã kéo lịch về gần — đúng, đó là một lần quên. Nếu lượt thứ hai cũng gửi
+    // SUBMIT_REVIEW, nó tính tiếp từ trạng thái vừa lapse và đẩy interval lên lại, tức là trả
+    // lời đúng ở lần thứ hai xoá mất dấu vết đã quên.
+    const laLuotOnDauTien = mode === 'scheduled' && !scheduledSent.current.has(cardId);
+
+    const response = laLuotOnDauTien
+      ? await sendToBackground({ type: 'SUBMIT_REVIEW', cardId, rating })
+      : await sendToBackground({ type: 'SUBMIT_PRACTICE', cardId, rating });
+
+    if (laLuotOnDauTien) scheduledSent.current.add(cardId);
+
     setSubmitting(false);
     setError(response.ok ? null : response.error);
   }
@@ -79,6 +109,17 @@ export function ReviewTab() {
     setPicked(optionIndex);
     const correct = optionIndex === question.correctIndex;
     await submit(ratingFor(correct, Date.now() - startedAt.current), question.card.id);
+
+    // Trả lời sai thì chèn lại thẻ để hiện lại trong CÙNG buổi, thay vì phải đợi lịch SM-2
+    // ngày mai. Chèn xen RELEARN_GAP thẻ khác ở giữa để không lặp lại ngay tức thì.
+    if (!correct) {
+      setQuestions((qs) => {
+        const at = Math.min(index + 1 + RELEARN_GAP, qs.length);
+        const next = [...qs];
+        next.splice(at, 0, question);
+        return next;
+      });
+    }
   }
 
   function next() {
@@ -126,6 +167,7 @@ export function ReviewTab() {
             : 'Hôm nay không còn thẻ nào đến hạn.'}
         </p>
         <button type="button" onClick={() => void load()}>Tải lại</button>
+        <button type="button" onClick={() => void load('practice')}>Luyện thêm</button>
       </div>
     );
   }
@@ -135,6 +177,13 @@ export function ReviewTab() {
   return (
     // tabIndex để div nhận được phím tắt mà không cần bắt sự kiện toàn cục
     <div className="review-tab" ref={container} tabIndex={-1} onKeyDown={onKeyDown}>
+      {mode === 'practice' && (
+        <div className="practice-banner">
+          <span>Luyện thêm — không ảnh hưởng lịch ôn</span>
+          <button type="button" onClick={() => void load('scheduled')}>Quay lại</button>
+        </div>
+      )}
+
       {/* Thanh tiến độ mang aria-hidden: số đếm ngay bên cạnh đã nói đúng thông tin đó,
           đọc hai lần chỉ làm phiền người dùng trình đọc màn hình. */}
       <div className="progress-row">

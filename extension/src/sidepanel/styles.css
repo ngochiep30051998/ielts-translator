@@ -1113,3 +1113,27 @@ body {
 .seg-hard  { background: color-mix(in srgb, var(--accent) 40%, var(--surface-2)); }
 .seg-good  { background: var(--accent); }
 .seg-easy  { background: var(--ok); }
+
+/* Dải nhắc chế độ luyện thêm — người dùng phải biết lịch không đang chạy. */
+.practice-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12.5px;
+}
+.practice-banner button {
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
