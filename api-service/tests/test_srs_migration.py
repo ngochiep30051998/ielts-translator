@@ -194,3 +194,40 @@ def test_moi_tu_chi_co_mot_bo_moi_nhu(db: Session, owner: NguoiDungTest) -> None
         )
     ).scalar_one()
     assert thong_tin >= 1
+
+
+def test_v8_them_cot_mode_va_backfill_dong_cu(db: Session, owner: NguoiDungTest) -> None:
+    """`DEFAULT 'SCHEDULED'` không phải cho tiện: mọi dòng `review_log` đang có ĐỀU đúng là
+    lượt ôn theo lịch, nên default đó backfill chính xác toàn bộ lịch sử mà không cần câu
+    `UPDATE` nào. Sai chỗ này là thống kê cũ đổi số."""
+    kieu, mac_dinh, cho_null = db.execute(
+        text(
+            "SELECT data_type, column_default, is_nullable FROM information_schema.columns "
+            "WHERE table_name = 'review_log' AND column_name = 'mode'"
+        )
+    ).one()
+
+    assert kieu == "character varying"
+    assert "SCHEDULED" in mac_dinh
+    assert cho_null == "NO"
+
+
+def test_v8_dong_review_log_khong_ghi_mode_nhan_scheduled(
+    db: Session, owner: NguoiDungTest
+) -> None:
+    """Chèn thẳng bằng SQL không nêu `mode` — mô phỏng đúng dòng có từ trước V8."""
+    vocab_id = _tu(db, owner.id, "mitigate")
+    card_id = _the(db, vocab_id)
+    db.execute(
+        text(
+            "INSERT INTO review_log (card_id, rating, prev_interval, new_interval) "
+            "VALUES (:c, 'GOOD', 1, 6)"
+        ),
+        {"c": card_id},
+    )
+    db.commit()
+
+    mode = db.execute(
+        text("SELECT mode FROM review_log WHERE card_id = :c"), {"c": card_id}
+    ).scalar_one()
+    assert mode == "SCHEDULED"

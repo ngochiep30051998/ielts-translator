@@ -14,6 +14,7 @@ from app.srs.models import (
     CardDto,
     CardState,
     Rating,
+    ReviewMode,
     ReviewResponse,
     SrsCard,
     SrsDistractor,
@@ -78,6 +79,7 @@ def review(db: Session, user_id: int, card_id: int, rating: Rating) -> ReviewRes
         rating=rating,
         prev_interval=prev_interval,
         new_interval=nxt.interval_days,
+        mode=ReviewMode.SCHEDULED,
     )
 
     return ReviewResponse(

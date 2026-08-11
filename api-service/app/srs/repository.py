@@ -15,7 +15,7 @@ from datetime import date, datetime
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.srs.models import CardState, Rating, ReviewLog, SrsCard, SrsDistractor
+from app.srs.models import CardState, Rating, ReviewLog, ReviewMode, SrsCard, SrsDistractor
 from app.vocabulary.models import VocabEntry
 
 
@@ -143,14 +143,26 @@ def count_introduced_since(db: Session, user_id: int, since: datetime) -> int:
 
 
 def insert_review_log(
-    db: Session, card_id: int, rating: Rating, prev_interval: int, new_interval: int
+    db: Session,
+    card_id: int,
+    rating: Rating,
+    prev_interval: int,
+    new_interval: int,
+    mode: ReviewMode,
 ) -> None:
+    """`mode` BẮT BUỘC, cố ý không có giá trị mặc định.
+
+    Đặt default `SCHEDULED` cho tiện nghĩa là mọi người gọi sau này mặc nhiên ghi lượt ôn
+    theo lịch mà không hề chọn — và ghi nhầm loại ở đây không làm gì đỏ. Bắt buộc thì mypy
+    ép từng chỗ gọi phải quyết định.
+    """
     db.add(
         ReviewLog(
             card_id=card_id,
             rating=rating.value,
             prev_interval=prev_interval,
             new_interval=new_interval,
+            mode=mode.value,
         )
     )
     db.flush()

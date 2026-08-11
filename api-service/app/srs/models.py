@@ -44,6 +44,16 @@ class Rating(enum.StrEnum):
         return {"AGAIN": 0, "HARD": 1, "GOOD": 2, "EASY": 3}[self.value]
 
 
+class ReviewMode(enum.StrEnum):
+    """Phân biệt hai loại lượt ôn. Ghi nhầm loại KHÔNG làm gì đỏ — nó chỉ lặng lẽ làm sai
+    streak và tỉ lệ nhớ ở tab Thống kê, hoặc phá lịch SM-2."""
+
+    #: Lượt ôn theo lịch — ĐỔI due_date, interval_days, ease_factor, repetitions.
+    SCHEDULED = "SCHEDULED"
+    #: Luyện thêm — KHÔNG đụng gì tới lịch.
+    PRACTICE = "PRACTICE"
+
+
 class SrsCard(Base):
     __tablename__ = "srs_card"
 
@@ -75,6 +85,7 @@ class ReviewLog(Base):
     )
     prev_interval: Mapped[int] = mapped_column(Integer, nullable=False)
     new_interval: Mapped[int] = mapped_column(Integer, nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
 
 
 class SrsDistractor(Base):
@@ -131,6 +142,16 @@ class CardDto(ApiModel):
 
 
 class ReviewRequest(ApiModel):
+    card_id: int
+    rating: Rating
+
+
+class PracticeRequest(ApiModel):
+    """Cùng hình dạng `ReviewRequest` nhưng là kiểu RIÊNG, không tái dùng.
+
+    Hai request đi vào hai endpoint có hậu quả khác hẳn nhau — một cái đổi lịch, một cái
+    không. Dùng chung một kiểu làm chỗ khác biệt đó biến mất khỏi chữ ký hàm."""
+
     card_id: int
     rating: Rating
 
