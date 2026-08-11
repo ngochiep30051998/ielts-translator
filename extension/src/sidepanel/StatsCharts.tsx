@@ -82,7 +82,7 @@ export function DailyBars({ daily }: { daily: DailyPoint[] }) {
 
 export function Heatmap({ daily }: { daily: DailyPoint[] }) {
   const columns = buildHeatmap(daily);
-  const activeDays = daily.filter((d) => d.reviews > 0).length;
+  const activeDaysInWindow = daily.filter((d) => d.reviews > 0).length;
   const busiest = daily.reduce(
     (a, d) => (d.reviews > a.reviews ? d : a),
     { date: '', reviews: 0 },
@@ -91,7 +91,7 @@ export function Heatmap({ daily }: { daily: DailyPoint[] }) {
   // Nhãn nói "91 ngày" chứ không "13 tuần": lưới ra 13 hay 14 cột tuỳ ngày đầu rơi vào thứ
   // mấy, nên "13 tuần" là con số sai vào phần lớn các ngày trong tuần.
   const summary = busiest.reviews > 0
-    ? `Lịch ôn 91 ngày gần nhất: ${activeDays} ngày có ôn, cao nhất ${busiest.reviews} lượt ngày ${formatDayMonth(busiest.date)}`
+    ? `Lịch ôn 91 ngày gần nhất: ${activeDaysInWindow} ngày có ôn, cao nhất ${busiest.reviews} lượt ngày ${formatDayMonth(busiest.date)}`
     : 'Lịch ôn 91 ngày gần nhất: chưa có ngày nào ôn';
 
   return (

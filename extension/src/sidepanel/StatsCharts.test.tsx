@@ -42,6 +42,21 @@ describe('DailyBars', () => {
     expect(screen.getAllByTestId('bar')).toHaveLength(30);
   });
 
+  it('lấy 30 NGÀY GẦN NHẤT (nửa cuối mảng), không phải 30 ngày cũ nhất', () => {
+    // Ca "vẽ đúng 30 cột dù nhận vào 91 ngày" ở trên dùng `reviewsFor: () => 3` hằng số nên
+    // 30 phần tử đầu và 30 phần tử cuối của mảng 91 ngày giống hệt nhau — đổi code thành
+    // `daily.slice(0, BAR_DAYS)` (lấy nhầm 30 ngày CŨ NHẤT) vẫn qua ca đó. Ở đây dùng
+    // `reviewsFor: (i) => i` để hai đầu mảng phân biệt được, rồi đọc `title` của cột đầu
+    // tiên (dạng "dd/mm: N lượt ôn") thay vì đếm số cột.
+    render(<DailyBars daily={daily(91, (i) => i)} />);
+
+    const bars = screen.getAllByTestId('bar');
+    // `daily()` sinh chỉ số 0..90 tăng dần theo ngày (0 = cũ nhất, 90 = hôm nay).
+    // slice(-30) đúng phải lấy chỉ số 61..90, nên cột đầu tiên ứng với i=61 → "61 lượt ôn".
+    // slice(0, 30) (bug) sẽ cho cột đầu tiên ứng với i=0 → "0 lượt ôn".
+    expect(bars[0].title).toMatch(/: 61 lượt ôn$/);
+  });
+
   it('không chia cho 0 khi 30 ngày qua không ôn lượt nào', () => {
     // Ca này KHÔNG bị trạng thái rỗng của StatsTab chặn: người dùng có thể có lượt ôn từ
     // 200 ngày trước (totals.reviews > 0) mà 30 ngày qua trắng trơn. `count/max` khi đó là
