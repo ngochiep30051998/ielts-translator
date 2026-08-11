@@ -51,7 +51,7 @@ Kiểm chứng trên Chrome thật cần người dùng thao tác tay (load `ext
 ## Ranh giới
 
 - **Không tự commit/push/tạo PR** trừ khi người dùng yêu cầu. Đang ở `main` thì cảnh báo trước khi commit.
-- **Không sửa `backend/`.** Nếu cần backend đổi (thêm field, đổi status code, thêm endpoint), nêu rõ đề xuất hợp đồng API để người dùng hoặc agent backend xử lý.
+- **Không sửa `api-service/`.** Nếu cần backend đổi (thêm field, đổi status code, thêm endpoint), nêu rõ đề xuất hợp đồng API để người dùng hoặc agent backend xử lý.
 - **Không thêm dependency mới** nếu chưa nêu lý do và được đồng ý — dự án đang cố ý chỉ có React + Vite + Vitest.
 - **Không đụng `dist/`, `node_modules/`, `package-lock.json`** bằng tay.
 - Không refactor lớn (đổi cấu trúc thư mục, đổi mô hình state) mà chưa đề xuất trước.

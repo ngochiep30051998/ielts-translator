@@ -1,7 +1,7 @@
 # IELTS Translator
 
 Chrome extension dịch hai chiều Việt-Anh chuẩn IELTS band 6.5+, kèm sổ từ vựng.
-Chạy hoàn toàn trên máy cá nhân: extension gọi Spring Boot ở `127.0.0.1:8080`,
+Chạy hoàn toàn trên máy cá nhân: extension gọi FastAPI ở `127.0.0.1:8080`,
 backend gọi Gemini.
 
 ## Chạy lần đầu
@@ -111,72 +111,39 @@ Một loại hỏng vẫn giữ được các loại còn lại.
 **Quiz không đụng tới lịch ôn.** Làm quiz không làm thẻ đến hạn sớm hay muộn đi —
 hai thứ cố ý tách rời để khoảng cách ôn không nhảy vì lý do khó lần ra.
 
-## Chạy backend từ IntelliJ (không qua Docker)
+## Chạy backend ngoài Docker
 
-Chỉ bật Postgres bằng Docker, app chạy thẳng từ IDE:
+Chỉ bật Postgres bằng Docker, app chạy thẳng trên máy:
 
 ```bash
-docker compose up -d db      # KHÔNG bật service app, nó chiếm cổng 8080
+docker compose up -d db      # KHÔNG bật api-service, nó chiếm cổng 8080
+uv run --directory api-service ielts-api --reload
 ```
-
-`.env` ở thư mục gốc được nạp thẳng bởi `application.yml`:
-
-```yaml
-spring:
-  config:
-    import:
-      - "optional:file:../.env[.properties]"   # cwd = backend/
-      - "optional:file:./.env[.properties]"    # cwd = thư mục gốc
-```
-
-Đặt ở `application.yml` chứ **không** phải file profile-specific: profile chỉ bật
-khi dùng đúng một run config cụ thể, mà cách chạy tự nhiên nhất trong IntelliJ là
-bấm mũi tên xanh cạnh hàm `main` — lúc đó IDE sinh một run config tạm không có
-profile nào. Để việc nạp `.env` phụ thuộc profile là tự đặt bẫy.
-
-Hai ứng viên đường dẫn vì working directory khác nhau tuỳ cách chạy: run config
-`Backend local` và `mvn spring-boot:run` chạy trong `backend/`, còn config tạm của
-IntelliJ mặc định `$PROJECT_DIR$` là thư mục gốc. `optional:` để trong container
-(không có `.env`, biến đến từ compose) vẫn chạy bình thường.
-
-`.env` là `KEY=value` nên đọc được như `.properties`; hậu tố `[.properties]` báo
-cho Spring biết định dạng vì tên file không có đuôi quen thuộc.
-
-Run configuration **Backend local** (đã có sẵn trong `.run/`): main class
-`com.hiepnn.ieltstranslator.IeltsTranslatorApplication`, working directory `backend`,
-env `SPRING_PROFILES_ACTIVE=local`. Nếu IntelliJ báo thiếu module, chọn module Maven
-của `backend/pom.xml` trong dropdown (project `.idea` ban đầu chưa import pom này —
-chuột phải `backend/pom.xml` → Add as Maven Project).
 
 Kiểm tra: `curl http://127.0.0.1:8080/api/health` phải trả `geminiConfigured: true`.
 
-### Khi chạy từ IntelliJ, Spring tìm `.env` ở gốc bằng cách nào
+**Không phải setup gì trước.** `uv run` tự dựng venv và cài đúng phiên bản ghi
+trong `uv.lock` (file này được commit, nên hai máy chạy ra cùng một bộ). Lần đầu
+tốn vài giây, những lần sau tức thì. Đừng `pip install` hay activate venv tay —
+đó là cách duy nhất để môi trường lệch nhau.
 
-Hai thứ phụ thuộc **working directory** của run config, và cả hai đều hỏng im lặng
-nếu đặt sai:
+`app/config.py` (pydantic-settings) khai hai ứng viên `.env` — thư mục gốc repo và
+`api-service/` — và cả hai tính từ vị trí file nguồn chứ không phải working
+directory, nên gọi từ đâu cũng trúng. Host và cổng lấy từ `SERVER_ADDRESS` /
+`SERVER_PORT`, không phải gõ tay.
 
-1. Tìm chính `application-local.yml` — Spring chỉ dò `file:./config/` theo mặc
-   định. cwd sai thì file không được nạp, app vẫn khởi động, key rỗng.
-2. Tìm `.env` — `../.env` tính từ cwd.
+| Cờ | Ý nghĩa |
+|---|---|
+| `--reload` | Tự nạp lại khi sửa `.py` trong `app/`. Migration KHÔNG chạy lại mỗi lần reload — nó nằm ở tiến trình cha, trước khi reloader dựng lên |
+| `--port` / `--host` | Đè giá trị `.env` cho một lần chạy |
+| `--skip-migrate` | Bỏ qua migration khi schema đã chắc chắn ở bản mới nhất |
 
-Run config `Backend local` xử lý cả hai:
+Sửa file trong `prompts/` thì **không** tự nạp lại, và đó là chủ ý: prompt loader
+nhớ kết quả parse trong bộ nhớ tiến trình, còn version prompt thì nằm trong khoá
+cache. Phải khởi động lại tay chính là lúc nhớ tăng `version:` ở đầu file.
 
-- `WORKING_DIRECTORY = $PROJECT_DIR$/backend` → `./config/` và `../.env` đều trúng.
-- `--spring.config.additional-location=file:$PROJECT_DIR$/backend/config/` → đường
-  dẫn **tuyệt đối**, nên dù ai đó đổi working directory thì vẫn tìm thấy file config.
-- Trong `application-local.yml`, `spring.config.import` khai hai ứng viên
-  (`../.env` và `./.env`) nên `.env` ở gốc vẫn được nạp khi cwd là thư mục gốc —
-  đúng cái IntelliJ mặc định (`$PROJECT_DIR$`) khi bạn tự bấm mũi tên xanh cạnh
-  hàm `main` thay vì dùng run config có sẵn.
-
-Nếu `geminiConfigured` vẫn trả `false`, bật log để xem Spring nạp những file nào:
-
-```
--Dlogging.level.org.springframework.boot.context.config=TRACE
-```
-
-(dán vào ô VM options của run config). Log sẽ liệt kê từng config data location
-đã thử và cái nào tồn tại.
+Nếu `geminiConfigured` vẫn trả `false`, kiểm tra `.env` có nằm ở thư mục gốc repo
+không và `GEMINI_API_KEY` đã điền chưa — đó là hai nguyên nhân duy nhất.
 
 ## Biến môi trường
 
@@ -194,7 +161,7 @@ không hardcode thông số nào nữa:
 | `DB_HOST` | `localhost` | docker compose set `db` |
 | `SERVER_ADDRESS` | `127.0.0.1` | Trong container phải là `0.0.0.0` |
 | `SERVER_PORT` | `8080` | Cổng backend lắng nghe |
-| `GEMINI_BASE_URL` | endpoint Google | Đổi khi test bằng WireMock |
+| `GEMINI_BASE_URL` | endpoint Google | Đổi khi test |
 | `GEMINI_TIMEOUT_SECONDS` | `15` | Dịch một từ/câu |
 | `GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS` | `30` | Sinh một lô câu hỏi — output dài hơn nên lâu hơn |
 | `GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS` | `20` | Chấm một bài tự viết |
@@ -203,23 +170,35 @@ không hardcode thông số nào nữa:
 | `AUTH_GOOGLE_CLIENT_ID` | (bắt buộc) | OAuth client kiểu **Web application** |
 | `AUTH_GOOGLE_CLIENT_SECRET` | (bắt buộc) | **Chỉ ở backend.** Không bao giờ vào bundle extension |
 | `AUTH_ALLOWED_EMAILS` | (rỗng) | Danh sách email được phép, ngăn cách bằng dấu phẩy. **Rỗng = khoá hết** |
-| `AUTH_BOOTSTRAP_EMAIL` | (bắt buộc) | Chủ sở hữu dữ liệu cũ. Migration V6 gán toàn bộ sổ từ hiện có cho email này |
+| `AUTH_BOOTSTRAP_EMAIL` | (bắt buộc) | Chủ sở hữu dữ liệu cũ. Migration `V6__auth.sql` gán toàn bộ sổ từ hiện có cho email này |
 | `AUTH_SESSION_DAYS` | `60` | Hạn phiên, trượt theo mỗi lần dùng |
 | `AUTH_DAILY_GEMINI_CALLS` | `300` | Trần lượt gọi AI mỗi người mỗi ngày. `0` = tắt |
-| `AUTH_GOOGLE_TOKEN_URL` | endpoint Google | Đổi khi test bằng WireMock |
-| `API_SERVICE_PORT` | `8081` | Cổng publish ra host của `api-service` (bản FastAPI). Khác `APP_PORT` để hai backend chạy song song và đối chiếu được |
-| `DATABASE_URL` | (rỗng) | **Chỉ `api-service`.** Rỗng thì ghép từ `DB_*` như backend Spring. Đặt giá trị khi deploy lên Supabase/Vercel, nơi chỉ có một chuỗi kết nối chứ không có năm mảnh rời |
-| `VERCEL` | (rỗng) | **Không tự đặt.** Vercel tự gán `1` trong mọi function; `api-service` đọc nó để chuyển sang `NullPool` và tắt prepared statement (bắt buộc với Supavisor transaction mode) |
+| `AUTH_GOOGLE_TOKEN_URL` | endpoint Google | Đổi khi test |
+| `DATABASE_URL` | (rỗng) | Rỗng thì ghép từ `DB_*`. Đặt giá trị khi deploy lên Supabase/Vercel, nơi chỉ có một chuỗi kết nối chứ không có năm mảnh rời |
+| `VERCEL` | (rỗng) | **Không tự đặt.** Vercel tự gán `1` trong mọi function; backend đọc nó để chuyển sang `NullPool` và tắt prepared statement (bắt buộc với Supavisor transaction mode) |
 
-Phía extension, `extension/.env` cần **một** biến (xem `extension/.env.example`):
+Phía extension có **ba** file env, và chỉ `.env.example` vào git — hai file kia bị
+`.gitignore` chặn nên máy mới clone về phải tự tạo theo mẫu trong đó:
+
+| File | Nạp bởi | Biến |
+|---|---|---|
+| `extension/.env` | mọi mode | `VITE_GOOGLE_CLIENT_ID` |
+| `extension/.env.dev` | `npm run dev`, `npm run build` | `VITE_BACKEND_URL=http://127.0.0.1:8080` |
+| `extension/.env.prod` | `npm run build:prod` | `VITE_BACKEND_URL=https://<domain-thật>` |
 
 | Biến | Ghi chú |
 |---|---|
 | `VITE_GOOGLE_CLIENT_ID` | Cùng giá trị với `AUTH_GOOGLE_CLIENT_ID`. Client **id** công khai được; `client_secret` thì tuyệt đối không |
+| `VITE_BACKEND_URL` | Sinh ra **cả** `backendUrl` mặc định trong bundle **lẫn** `host_permissions` trong manifest, nên ràng buộc "ba chỗ phải khớp" rút còn một biến |
 
-`backend/src/main/resources/application.yml` không hardcode giá trị nào nữa — mọi
-mục đều là `${BIEN:mặc-định}`, và default trong file chính là cấu hình chạy local.
-JDBC URL được ghép phẳng từ `DB_HOST`/`DB_PORT`/`DB_NAME`, không còn biến `DB_URL`.
+Vite nạp `.env` trước rồi mới tới file theo mode, nên `.env.dev` / `.env.prod` luôn thắng
+`.env`. **Thiếu `.env.prod` thì `build:prod` không báo lỗi** — `VITE_BACKEND_URL` rỗng rơi
+về `http://127.0.0.1:8080` và bạn nhận một bundle production trỏ vào localhost. Kiểm bằng
+lệnh ở cuối `extension/.env.example` trước khi phát hành.
+
+`api-service/app/config.py` không hardcode giá trị nào — mọi mục đều đọc từ env với
+một default, và default trong file chính là cấu hình chạy local. Connection string
+được ghép phẳng từ `DB_HOST`/`DB_PORT`/`DB_NAME`, trừ khi `DATABASE_URL` được đặt.
 
 Hai chỗ dễ vấp:
 
@@ -235,18 +214,24 @@ Hai chỗ dễ vấp:
   dùng thấy "backend không trả lời" rồi lần sau thấy đề tự xuất hiện. **Không có
   test nào bắt được khi hai bên lệch.**
 - **`DB_PORT`/`APP_PORT` chỉ đổi cổng trên host.** Trong mạng nội bộ của compose
-  db luôn là 5432 và app luôn là 8080, nên `DB_URL` của service `app` giữ nguyên
-  `db:5432`. Nếu đổi `APP_PORT`, nhớ sửa cả `backendUrl` trong trang Options của
-  extension và `host_permissions` trong `manifest.config.ts`.
+  db luôn là 5432 và api-service luôn là 8080, nên toạ độ database của service
+  `api-service` giữ nguyên `db:5432`. Nếu đổi `APP_PORT`, nhớ sửa cả `backendUrl`
+  trong trang Options của extension và `host_permissions` trong `manifest.config.ts`.
 
 ## Chạy test
 
 ```bash
-cd backend && mvn test          # cần Docker cho Testcontainers
+cd api-service && uv run pytest              # KHÔNG cần Docker — pgserver bung Postgres 16 sẵn
+cd api-service && uv run mypy app && uv run ruff check .
 cd extension && npm test
+cd extension && npm run build                # type check chỉ ở đây
 ```
+
+Lần chạy `pytest` đầu tiên tốn ~10 giây để `initdb`; đặt `PYTEST_PG_DIR` trỏ vào
+một thư mục cố định để những lần sau tái dùng data directory đó.
 
 ## Chỉnh prompt
 
-Prompt nằm ở `backend/src/main/resources/prompts/*.md`. Sửa xong nhớ tăng
-`version:` ở đầu file — cache sẽ tự hết hiệu lực. Rồi `docker compose up -d --build`.
+Prompt nằm ở `api-service/prompts/*.md`. Sửa xong nhớ tăng `version:` ở đầu file —
+cache sẽ tự hết hiệu lực. Rồi `docker compose up -d --build` (hoặc khởi động lại
+`ielts-api`: `--reload` cố ý không theo dõi `prompts/`).

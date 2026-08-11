@@ -1,17 +1,15 @@
-"""api-service dùng CHUNG `.env` ở thư mục gốc với backend Spring.
+"""`config.py`, `.env.example` và `docker-compose.yml` phải nói cùng một bộ cấu hình.
 
-Đây không phải chuyện tiện tay: hai file `.env` song song là hai bản sao của cùng một bộ
-bí mật, và chúng sẽ lệch nhau — thường là lúc đổi `EXTENSION_ID` hoặc xoay khoá Gemini, và
-triệu chứng là một backend chạy ngon còn backend kia chết vì CORS.
+Trước đây file này đối chiếu `config.py` với `application.yml` của backend Spring. Bản Java
+đã bị xoá, nhưng cái bẫy thì không mất đi — nó chỉ chuyển chỗ:
 
-File test này canh ba thứ:
-
-1. Mọi biến `application.yml` đọc đều được `config.py` khai — thiếu một cái là nó lặng lẽ
-   rơi về mặc định, không có gì đỏ.
-2. Giá trị mặc định của hai bên KHỚP — lệch nghĩa là khi `.env` thiếu biến, hai backend cư
-   xử khác nhau.
-3. Biến api-service khai thêm đều KHÔNG bắt buộc — `.env` đang chạy tốt cho Spring phải
-   chạy được luôn cho api-service, không phải thêm dòng nào.
+1. **Biến khai trong `.env.example` mà `config.py` không đọc** = người dùng đặt giá trị rồi
+   tưởng nó có tác dụng. Không có gì đỏ, không có cảnh báo nào.
+2. **Default trong `docker-compose.yml` lệch default trong `config.py`** = cùng một `.env`
+   thiếu biến đó, chạy Docker ra một hành vi còn chạy `uv run ielts-api` ra hành vi khác.
+   Đây là loại lỗi chỉ lộ ra khi so hai môi trường, tức là gần như không bao giờ.
+3. **Biến `config.py` khai thêm mà bắt buộc** = `.env` đang chạy tốt bỗng làm app chết lúc
+   khởi động.
 """
 
 from __future__ import annotations
@@ -19,27 +17,44 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 
-from app.config import Settings
+from app.config import REPO_ROOT, Settings
 
-APPLICATION_YML = (
-    Path(__file__).resolve().parent.parent.parent
-    / "backend/src/main/resources/application.yml"
-)
+ENV_EXAMPLE = REPO_ROOT / ".env.example"
+COMPOSE_YML = REPO_ROOT / "docker-compose.yml"
 
-_PLACEHOLDER = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::([^}]*))?\}")
+#: `KEY=` ở đầu dòng, kể cả khi bị comment (`# KEY=` là mục "tuỳ chọn" trong .env.example).
+_KHAI_BAO = re.compile(r"^\s*#?\s*([A-Z][A-Z0-9_]*)=", re.MULTILINE)
+
+#: `${BIEN:-mặc-định}` trong compose. Chỉ bắt dạng CÓ mặc định — `${BIEN}` trần nghĩa là
+#: "phải đến từ .env", không có gì để đối chiếu.
+_COMPOSE_DEFAULT = re.compile(r"\$\{([A-Z][A-Z0-9_]*):-([^}]*)\}")
+
+#: Chỉ Docker Compose dùng, tiến trình app không bao giờ đọc: cổng publish ra host. Trong
+#: mạng compose api-service luôn nghe 8080, nên đây không phải cấu hình của app.
+CHI_DANH_CHO_COMPOSE = {"APP_PORT"}
+
+#: Biến `config.py` khai thêm ngoài `.env.example`. Danh sách chốt cứng để thêm biến mới là
+#: phải sửa cả test này — và lúc đó nhớ luôn bảng "Biến môi trường" trong README (ràng buộc #6).
+NGOAI_ENV_EXAMPLE = {
+    # Vercel/Supabase phát một chuỗi kết nối duy nhất thay vì năm mảnh rời.
+    "DATABASE_URL",
+    # Compose set 0.0.0.0 trong container; ngoài container mặc định 127.0.0.1.
+    "SERVER_ADDRESS",
+    # Chỉ đổi khi test.
+    "AUTH_GOOGLE_TOKEN_URL",
+    # Do CHÍNH nền tảng đặt (`VERCEL=1` trong mọi function), không phải thứ người dùng khai.
+    "VERCEL",
+}
 
 
-def _bien_spring() -> dict[str, str | None]:
-    return {
-        m.group(1): m.group(2) for m in _PLACEHOLDER.finditer(APPLICATION_YML.read_text("utf-8"))
-    }
+def _bien_env_example() -> set[str]:
+    return set(_KHAI_BAO.findall(ENV_EXAMPLE.read_text("utf-8")))
 
 
-def _alias_fastapi() -> dict[str, str]:
+def _alias_settings() -> dict[str, str]:
     return {f.alias.upper(): ten for ten, f in Settings.model_fields.items() if f.alias}
 
 
@@ -51,68 +66,63 @@ def env_sach(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     thắng cả `_env_file=None`. Không dọn thì test "giá trị mặc định" thực chất đang đo cấu
     hình của chính bộ test — xanh mà không chứng minh gì.
     """
-    for bien in _alias_fastapi():
+    for bien in _alias_settings():
         monkeypatch.delenv(bien, raising=False)
     # `.env` ở thư mục gốc cũng phải bị bỏ qua; các test dưới truyền `_env_file=None`.
-    assert not any(b in os.environ for b in _alias_fastapi())
+    assert not any(b in os.environ for b in _alias_settings())
     yield
 
 
-def test_moi_bien_spring_doc_deu_duoc_fastapi_khai() -> None:
-    """Thiếu một biến ở đây = api-service bỏ qua cấu hình người dùng đã đặt, im lặng."""
-    thieu = sorted(set(_bien_spring()) - set(_alias_fastapi()))
+def test_moi_bien_trong_env_example_deu_duoc_config_doc() -> None:
+    """Thiếu một biến ở đây = app bỏ qua cấu hình người dùng đã đặt, im lặng."""
+    thieu = sorted(_bien_env_example() - set(_alias_settings()) - CHI_DANH_CHO_COMPOSE)
 
     assert thieu == [], (
-        f"application.yml đọc {thieu} mà config.py không khai. Dùng chung .env nghĩa là "
-        "người dùng đặt biến đó và tưởng nó có tác dụng cho cả hai backend."
+        f".env.example khai {thieu} mà config.py không đọc. Người dùng sẽ đặt biến đó và "
+        "tưởng nó có tác dụng."
     )
 
 
-def test_gia_tri_mac_dinh_khop_ban_java(env_sach: None) -> None:
-    """Mặc định trong file CHÍNH LÀ cấu hình chạy local (ràng buộc #6).
+def test_default_trong_compose_khop_default_trong_config(env_sach: None) -> None:
+    """Lệch một giá trị = chạy Docker và chạy `uv run ielts-api` cư xử khác nhau.
 
-    Lệch một giá trị nghĩa là khi `.env` thiếu biến đó, hai backend chạy bằng hai cấu hình
-    khác nhau — và người dùng không có cách nào biết.
+    Người dùng không có cách nào biết, vì cả hai đều khởi động bình thường.
     """
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    alias = _alias_fastapi()
+    alias = _alias_settings()
 
     lech: list[str] = []
-    for bien, mac_dinh in sorted(_bien_spring().items()):
+    for bien, cua_compose in sorted(set(_COMPOSE_DEFAULT.findall(COMPOSE_YML.read_text("utf-8")))):
         if bien not in alias:
             continue
-        cua_python = str(getattr(settings, alias[bien]))
-        cua_java = "" if mac_dinh is None else mac_dinh
-        if cua_python != cua_java:
-            lech.append(f"{bien}: spring={cua_java!r} fastapi={cua_python!r}")
+        cua_config = str(getattr(settings, alias[bien]))
+        if cua_config != cua_compose:
+            lech.append(f"{bien}: compose={cua_compose!r} config.py={cua_config!r}")
 
     assert lech == [], "\n".join(lech)
 
 
-def test_bien_them_deu_khong_bat_buoc(env_sach: None) -> None:
-    """`config.py` được phép khai thêm biến Spring không có, nhưng chúng PHẢI có mặc định.
+def test_bien_ngoai_env_example_deu_khong_bat_buoc(env_sach: None) -> None:
+    """`config.py` được phép khai thêm biến, nhưng chúng PHẢI có mặc định.
 
-    Nếu không thì `.env` đang chạy tốt cho backend Spring sẽ làm api-service chết lúc khởi
-    động — tức là dùng chung `.env` không còn đúng nữa.
+    Nếu không thì `.env` đang chạy tốt sẽ làm app chết lúc khởi động chỉ vì nâng cấp code.
     """
-    them = sorted(set(_alias_fastapi()) - set(_bien_spring()))
+    them = set(_alias_settings()) - _bien_env_example()
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    alias = _alias_fastapi()
+    alias = _alias_settings()
 
-    for bien in them:
+    for bien in sorted(them):
         # Dựng được Settings rỗng nghĩa là biến này không bắt buộc.
         assert hasattr(settings, alias[bien])
-    # VERCEL do CHÍNH nền tảng đặt (`VERCEL=1` trong mọi function), không phải thứ người
-    # dùng khai trong `.env` — nhưng vẫn phải có mặc định, vì ở local nó luôn vắng.
-    assert them == ["DATABASE_URL", "TZ", "VERCEL"], (
-        f"Có biến mới ngoài dự kiến: {them}. Thêm biến vào api-service thì phải thêm cả vào "
-        "bảng 'Biến môi trường' trong README.md (ràng buộc #6)."
+
+    assert them == NGOAI_ENV_EXAMPLE, (
+        f"Biến ngoài dự kiến: {sorted(them ^ NGOAI_ENV_EXAMPLE)}. Thêm biến vào config.py thì "
+        "phải thêm cả vào bảng 'Biến môi trường' trong README.md (ràng buộc #6)."
     )
 
 
 def test_database_url_rong_thi_ghep_tu_cac_manh_db(env_sach: None) -> None:
-    """Đường dùng chung `.env`: backend Spring ghép JDBC URL từ `DB_HOST`/`DB_PORT`/`DB_NAME`,
-    và api-service phải ra đúng cùng một database."""
+    """Đường chạy local/Docker: connection string ghép phẳng từ `DB_HOST`/`DB_PORT`/`DB_NAME`."""
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]
         DB_HOST="localhost",

@@ -14,8 +14,8 @@ Skill này chạy ở **phiên chính** (phiên có quyền gọi Agent và Send
 | `pm` | Product/Project Manager | Phạm vi, thứ tự ưu tiên, plan trong `docs/superpowers/plans/`, trạng thái theo ledger | Không sửa code, không quyết định kỹ thuật |
 | `senior-ba` | Senior Business Analyst | SRS/BRD, đặc tả testable, xuất lên **Confluence** | Không sửa code |
 | `techlead` | Tech Lead | Quyết định kỹ thuật, **hợp đồng API giữa hai phía**, review, chốt duyệt | Không mở rộng phạm vi, không viết lại việc người khác |
-| `senior-backend` | Senior Backend | Toàn bộ `backend/`, `docker-compose.yml`, `.env.example` | Không sửa `extension/` |
-| `senior-frontend` | Senior Frontend | Toàn bộ `extension/` | Không sửa `backend/` |
+| `senior-backend` | Senior Backend | Toàn bộ `api-service/`, `docker-compose.yml`, `Caddyfile`, `.env.example` | Không sửa `extension/` |
+| `senior-frontend` | Senior Frontend | Toàn bộ `extension/` | Không sửa `api-service/` |
 
 `senior-ba` là agent global (`~/.claude/agents/`), 4 vai còn lại là agent của project (`.claude/agents/`).
 
@@ -46,9 +46,9 @@ Nói rõ với người dùng bạn chọn hướng nào và vì sao, trước k
 
 ## Bước 2 — Quy tắc dispatch
 
-**Một file chỉ có một agent được sửa tại một thời điểm.** Đây là quy tắc cứng. Hai agent cùng sửa một file sẽ ghi đè nhau âm thầm. Ranh giới `backend/` ↔ `extension/` đã tách sạch nên hai vai implement **được phép chạy song song** — mọi trường hợp khác phải chạy tuần tự.
+**Một file chỉ có một agent được sửa tại một thời điểm.** Đây là quy tắc cứng. Hai agent cùng sửa một file sẽ ghi đè nhau âm thầm. Ranh giới `api-service/` ↔ `extension/` đã tách sạch nên hai vai implement **được phép chạy song song** — mọi trường hợp khác phải chạy tuần tự.
 
-**Chốt hợp đồng trước khi implement song song.** Nếu thay đổi chạm `extension/src/shared/types.ts` hoặc DTO backend, để `techlead` viết ra hình dạng cuối cùng (tên field, kiểu, status code, mã lỗi) **trước**, rồi đưa nguyên văn hợp đồng đó vào brief của cả hai bên. Song song mà chưa chốt hợp đồng = hai bản không khớp.
+**Chốt hợp đồng trước khi implement song song.** Nếu thay đổi chạm `extension/src/shared/types.ts` hoặc model backend, để `techlead` viết ra hình dạng cuối cùng (tên field, kiểu, status code, mã lỗi) **trước**, rồi đưa nguyên văn hợp đồng đó vào brief của cả hai bên. Song song mà chưa chốt hợp đồng = hai bản không khớp.
 
 **Brief cho mỗi agent phải tự đứng được.** Agent khởi động lạnh, không thấy hội thoại này. Mỗi brief gồm:
 
@@ -67,8 +67,8 @@ Nói rõ với người dùng bạn chọn hướng nào và vì sao, trước k
 Agent báo "xong" chưa phải là xong. Với mỗi báo cáo có sửa code, kiểm tra **output lệnh thật** có trong báo cáo:
 
 ```bash
-cd backend && mvn test                        # cần Docker cho Testcontainers
-cd extension && npm test && npm run build     # type check chỉ nằm trong `npm run build`
+cd api-service && uv run pytest && uv run mypy app   # không cần Docker; type check chỉ nằm ở mypy
+cd extension && npm test && npm run build           # type check chỉ nằm trong `npm run build`
 ```
 
 Thiếu bằng chứng → `SendMessage` bảo nó chạy và dán output, đừng tự chạy hộ rồi cho qua.
@@ -87,7 +87,7 @@ Sau khi cả hai phía xong, **luôn** cho `techlead` review diff tổng hợp, 
 
 ## Ranh giới của cả team
 
-Không agent nào được **tự commit/push/tạo PR** trừ khi người dùng yêu cầu. Nhánh hiện tại là `main` — cảnh báo trước khi commit.
+Không agent nào được **tự commit/push/tạo PR** trừ khi người dùng yêu cầu. Đang đứng trên nhánh mặc định (`main`) thì cảnh báo trước khi commit.
 
 Không ai chạy `docker compose down -v`: lệnh đó xoá volume `ielts_pgdata`, tức xoá sạch sổ từ vựng. Cần reset DB thì hỏi người dùng và nhắc export CSV trước.
 
@@ -95,9 +95,9 @@ Không ai chạy `docker compose down -v`: lệnh đó xoá volume `ielts_pgdata
 
 1. `techlead` chốt hợp đồng: `VocabEntryDto.note: string | null`, `PATCH /api/vocab/{id}` trả 200/404, mã lỗi `NOT_FOUND`.
 2. Dispatch song song trong một lượt:
-   - `senior-backend`: migration `V3__vocab_note.sql`, entity, DTO, endpoint, `VocabServiceIT` + `VocabControllerIT`. Cấm đụng `extension/`.
-   - `senior-frontend`: `shared/types.ts`, message `UPDATE_VOCAB_NOTE`, service worker, UI trong `VocabTab.tsx`, test. Cấm đụng `backend/`.
+   - `senior-backend`: migration `V8__vocab_note.sql`, model, schema Pydantic, endpoint, `test_vocab_service.py` + `test_vocab_router.py`, và một ca trong `test_multi_user_isolation.py`. Cấm đụng `extension/`.
+   - `senior-frontend`: `shared/types.ts`, message `UPDATE_VOCAB_NOTE`, service worker, UI trong `VocabTab.tsx`, test. Cấm đụng `api-service/`.
    - Cả hai nhận **cùng một đoạn hợp đồng chép nguyên văn**.
-3. Thu báo cáo, kiểm output `mvn test` và `npm test && npm run build`.
+3. Thu báo cáo, kiểm output `uv run pytest && uv run mypy app` và `npm test && npm run build`.
 4. `techlead` review diff hai phía, soi đúng chỗ nối: field có khớp không, `null` xử lý thế nào, 404 hiển thị ra sao.
 5. Tổng hợp và nêu bước người dùng phải tự kiểm trên Chrome.
