@@ -19,7 +19,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.quiz.models import QuizAttempt, QuizItem
-from app.srs.models import ReviewLog, SrsCard
+from app.srs.models import ReviewLog, ReviewMode, SrsCard
 from app.vocabulary.models import VocabEntry
 
 
@@ -42,18 +42,21 @@ def _ngay_dia_phuong() -> ColumnElement[date]:
     return cast(func.timezone(get_settings().tz, ReviewLog.reviewed_at), Date)
 
 
-def dem_luot_on_theo_ngay(db: Session, user_id: int) -> list[tuple[date, int]]:
-    """Số lượt ôn mỗi ngày trên TOÀN BỘ lịch sử, tăng dần theo ngày.
+def dem_luot_on_theo_ngay(db: Session, user_id: int) -> list[tuple[date, int, int]]:
+    """`(ngày, số lượt SCHEDULED, số lượt PRACTICE)` trên TOÀN BỘ lịch sử, tăng dần.
 
-    Một câu này nuôi bốn con số: `daily` (service cắt 91 ngày cuối), `totals.reviews` (tổng),
-    `totals.activeDays` (số dòng) và `streak`. Tách thành hai câu — một cho cửa sổ 91 ngày,
-    một cho streak — là tạo cơ hội cho hai cửa sổ lệch nhau vào lần đầu ai đó sửa hằng số.
-
-    Số dòng trả về bằng số NGÀY đã từng ôn, không phải số lượt: ba năm học đều là ≤1095 dòng.
+    CẢNH BÁO cho người gọi: ngày CHỈ có lượt PRACTICE vẫn nằm trong kết quả, với
+    `scheduled = 0`. Đó là hành vi đúng của hàm này — nhưng `streak` và `totals.activeDays`
+    PHẢI lọc `scheduled > 0`, nếu không chúng bắt đầu tính cả ngày chỉ luyện thêm. Xem
+    docstring của `service.lay_thong_ke`.
     """
     ngay = _ngay_dia_phuong().label("ngay")
     cau = (
-        select(ngay, func.count().label("so_luot"))
+        select(
+            ngay,
+            func.count().filter(ReviewLog.mode == ReviewMode.SCHEDULED.value),
+            func.count().filter(ReviewLog.mode == ReviewMode.PRACTICE.value),
+        )
         .select_from(ReviewLog)
         .join(SrsCard, SrsCard.id == ReviewLog.card_id)
         .join(VocabEntry, VocabEntry.id == SrsCard.vocab_entry_id)
@@ -61,7 +64,7 @@ def dem_luot_on_theo_ngay(db: Session, user_id: int) -> list[tuple[date, int]]:
         .group_by(ngay)
         .order_by(ngay)
     )
-    return [(hang[0], int(hang[1])) for hang in db.execute(cau).all()]
+    return [(hang[0], int(hang[1]), int(hang[2])) for hang in db.execute(cau).all()]
 
 
 def dem_luot_on_theo_rating(db: Session, user_id: int) -> dict[str, int]:
@@ -70,6 +73,9 @@ def dem_luot_on_theo_rating(db: Session, user_id: int) -> dict[str, int]:
     Trả số lượt THÔ, không trả sẵn tỉ lệ nhớ: tỉ lệ là `1 − again/tổng`, một phép chia ở
     client. Trả cả hai là dựng hai nguồn sự thật cho cùng một con số.
 
+    Chỉ đếm lượt theo lịch — tỉ lệ nhớ trộn hai loại hoạt động thì không so sánh được với
+    chính nó tháng trước.
+
     Mức chưa xuất hiện lần nào thì VẮNG khỏi dict — service tự bù 0.
     """
     cau = (
@@ -77,7 +83,10 @@ def dem_luot_on_theo_rating(db: Session, user_id: int) -> dict[str, int]:
         .select_from(ReviewLog)
         .join(SrsCard, SrsCard.id == ReviewLog.card_id)
         .join(VocabEntry, VocabEntry.id == SrsCard.vocab_entry_id)
-        .where(VocabEntry.user_id == user_id)
+        .where(
+            VocabEntry.user_id == user_id,
+            ReviewLog.mode == ReviewMode.SCHEDULED.value,
+        )
         .group_by(ReviewLog.rating)
     )
     return {str(hang[0]): int(hang[1]) for hang in db.execute(cau).all()}

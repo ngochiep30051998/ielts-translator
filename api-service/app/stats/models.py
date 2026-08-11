@@ -18,6 +18,9 @@ class DailyPoint(ApiModel):
 
     date: datetime.date
     reviews: int
+    #: Số lượt luyện thêm trong ngày. Field RIÊNG chứ không cộng vào `reviews`: `reviews`
+    #: giữ nguyên nghĩa cũ (chỉ lượt theo lịch), nên mọi test thống kê cũ phải xanh nguyên.
+    practice: int
 
 
 class StreakDto(ApiModel):

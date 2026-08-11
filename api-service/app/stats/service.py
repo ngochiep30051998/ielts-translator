@@ -30,21 +30,35 @@ def lay_thong_ke(db: Session, user_id: int) -> StatsDto:
     theo_ngay = repo.dem_luot_on_theo_ngay(db, user_id)
     hom_nay = _hom_nay()
 
-    st = tinh_streak([ngay for ngay, _ in theo_ngay], hom_nay)
-    so_luot = dict(theo_ngay)
+    # BẪY: `theo_ngay` chứa CẢ những ngày chỉ có lượt luyện thêm (scheduled = 0). Lấy
+    # thẳng danh sách ngày từ đó là cho streak tính cả ngày chỉ luyện — phá đúng quy tắc
+    # "streak đo kỷ luật theo lịch", mà không ai chạm vào `streak.py`.
+    ngay_co_on_theo_lich = [ngay for ngay, scheduled, _ in theo_ngay if scheduled > 0]
+    st = tinh_streak(ngay_co_on_theo_lich, hom_nay)
+
+    scheduled_theo_ngay = {ngay: scheduled for ngay, scheduled, _ in theo_ngay}
+    practice_theo_ngay = {ngay: practice for ngay, _, practice in theo_ngay}
     theo_rating = repo.dem_luot_on_theo_rating(db, user_id)
     theo_loai = repo.thong_ke_quiz_theo_loai(db, user_id)
 
     return StatsDto(
         streak=StreakDto(current=st.current, longest=st.longest, last_active_date=st.last_active),
         totals=TotalsDto(
-            reviews=sum(dem for _, dem in theo_ngay),
+            reviews=sum(scheduled for _, scheduled, _ in theo_ngay),
             # Dùng lại hàm sẵn có của srs thay vì viết lại `count(*) WHERE repetitions >= 1`:
             # hai định nghĩa cho "đã học" sẽ trôi khỏi nhau.
             learned_words=srs_repo.count_learned(db, user_id),
-            active_days=len(theo_ngay),
+            # Cùng lý do với streak: chỉ đếm ngày có ôn THEO LỊCH.
+            active_days=len(ngay_co_on_theo_lich),
         ),
-        daily=[DailyPoint(date=ngay, reviews=so_luot.get(ngay, 0)) for ngay in _cua_so(hom_nay)],
+        daily=[
+            DailyPoint(
+                date=ngay,
+                reviews=scheduled_theo_ngay.get(ngay, 0),
+                practice=practice_theo_ngay.get(ngay, 0),
+            )
+            for ngay in _cua_so(hom_nay)
+        ],
         recall=RecallDto(
             again=theo_rating.get("AGAIN", 0),
             hard=theo_rating.get("HARD", 0),

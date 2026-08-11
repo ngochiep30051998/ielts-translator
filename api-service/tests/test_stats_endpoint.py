@@ -171,3 +171,70 @@ def test_totals_va_recall_tinh_tren_toan_bo_lich_su(
 
 def test_chua_dang_nhap_tra_401(client: Any) -> None:
     assert client.get("/api/stats").status_code == 401
+
+
+def _seed_luot(db: Session, card_id: int, mode: str, so_luot: int) -> None:
+    for _ in range(so_luot):
+        db.execute(
+            text(
+                "INSERT INTO review_log (card_id, rating, prev_interval, new_interval, mode) "
+                "VALUES (:c, 'GOOD', 1, 6, :m)"
+            ),
+            {"c": card_id, "m": mode},
+        )
+
+
+def test_luot_practice_vao_daily_practice_khong_vao_reviews(
+    client: Any, db: Session, owner: NguoiDungTest
+) -> None:
+    _, card_id = _seed_the(db, owner.id, "mitigate")
+    _seed_luot(db, card_id, "SCHEDULED", 2)
+    _seed_luot(db, card_id, "PRACTICE", 5)
+    db.commit()
+
+    body = client.get("/api/stats", headers=owner.headers).json()
+    hom_nay = body["daily"][-1]
+
+    assert hom_nay["reviews"] == 2
+    assert hom_nay["practice"] == 5
+
+
+def test_luot_practice_khong_vao_totals_va_recall(
+    client: Any, db: Session, owner: NguoiDungTest
+) -> None:
+    """`totals` và `recall` giữ nguyên nghĩa cũ: chỉ đếm lượt ôn theo lịch. Trộn hai loại
+    hoạt động vào tỉ lệ nhớ thì con số không so sánh được với chính nó tháng trước."""
+    _, card_id = _seed_the(db, owner.id, "mitigate")
+    _seed_luot(db, card_id, "SCHEDULED", 2)
+    _seed_luot(db, card_id, "PRACTICE", 5)
+    db.commit()
+
+    body = client.get("/api/stats", headers=owner.headers).json()
+
+    assert body["totals"]["reviews"] == 2
+    assert body["recall"] == {"again": 0, "hard": 0, "good": 2, "easy": 0}
+
+
+def test_ngay_chi_co_practice_khong_giu_streak_va_khong_tinh_active_day(
+    client: Any, db: Session, owner: NguoiDungTest
+) -> None:
+    """BẪY §7.1 — ca quan trọng nhất của task này.
+
+    `dem_luot_on_theo_ngay` một mình nuôi bốn con số. Thêm cột đếm PRACTICE vào câu đó làm
+    GROUP BY bắt đầu trả về cả những ngày CHỈ có lượt luyện; nếu streak và activeDays lấy
+    danh sách ngày từ đó, chúng bắt đầu tính cả ngày chỉ luyện — mà không ai chạm vào
+    `streak.py`. Đã xác minh bằng SQL thật: ngày chỉ có PRACTICE CÓ lọt vào GROUP BY.
+    """
+    _, card_id = _seed_the(db, owner.id, "mitigate")
+    # Hôm nay: chỉ luyện thêm, không ôn theo lịch.
+    _seed_luot(db, card_id, "PRACTICE", 4)
+    db.commit()
+
+    body = client.get("/api/stats", headers=owner.headers).json()
+
+    assert body["streak"]["current"] == 0
+    assert body["streak"]["lastActiveDate"] is None
+    assert body["totals"]["activeDays"] == 0
+    assert body["totals"]["reviews"] == 0
+    # Nhưng công sức vẫn hiện ở biểu đồ.
+    assert body["daily"][-1]["practice"] == 4

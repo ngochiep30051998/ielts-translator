@@ -76,7 +76,7 @@ def test_luot_on_luc_1h_sang_gio_viet_nam_thuoc_ve_ngay_hom_do(
     # nó sẽ rò sang test khác chạy sau.
     db.execute(text("SET LOCAL TIME ZONE 'UTC'"))
 
-    assert repo.dem_luot_on_theo_ngay(db, owner.id) == [(date(2026, 8, 12), 1)]
+    assert repo.dem_luot_on_theo_ngay(db, owner.id) == [(date(2026, 8, 12), 1, 0)]
 
 
 def test_gom_theo_ngay_tra_ve_tang_dan_va_dem_dung(db: Session, owner: NguoiDungTest) -> None:
@@ -87,8 +87,41 @@ def test_gom_theo_ngay_tra_ve_tang_dan_va_dem_dung(db: Session, owner: NguoiDung
     db.commit()
 
     assert repo.dem_luot_on_theo_ngay(db, owner.id) == [
-        (date(2026, 8, 8), 1),
-        (date(2026, 8, 10), 2),
+        (date(2026, 8, 8), 1, 0),
+        (date(2026, 8, 10), 2, 0),
+    ]
+
+
+def test_gom_theo_ngay_tach_hai_loai(db: Session, owner: NguoiDungTest) -> None:
+    card_id = _seed_the(db, owner.id, "mitigate")
+    db.execute(
+        text(
+            "INSERT INTO review_log (card_id, rating, prev_interval, new_interval, mode, "
+            "reviewed_at) VALUES (:c,'GOOD',1,6,'SCHEDULED','2026-08-10 05:00:00+00')"
+        ),
+        {"c": card_id},
+    )
+    db.execute(
+        text(
+            "INSERT INTO review_log (card_id, rating, prev_interval, new_interval, mode, "
+            "reviewed_at) VALUES (:c,'GOOD',6,6,'PRACTICE','2026-08-10 06:00:00+00')"
+        ),
+        {"c": card_id},
+    )
+    db.execute(
+        text(
+            "INSERT INTO review_log (card_id, rating, prev_interval, new_interval, mode, "
+            "reviewed_at) VALUES (:c,'GOOD',6,6,'PRACTICE','2026-08-08 05:00:00+00')"
+        ),
+        {"c": card_id},
+    )
+    db.commit()
+
+    # Ngày 08/8 CHỈ có lượt luyện — nó VẪN xuất hiện với scheduled = 0. Đó là hành vi đúng
+    # của repository; việc loại nó khỏi streak là trách nhiệm của service.
+    assert repo.dem_luot_on_theo_ngay(db, owner.id) == [
+        (date(2026, 8, 8), 0, 1),
+        (date(2026, 8, 10), 1, 1),
     ]
 
 
@@ -198,6 +231,6 @@ def test_loc_theo_user_id_khong_lo_du_lieu_nguoi_khac(db: Session, owner: NguoiD
     )
     db.commit()
 
-    assert repo.dem_luot_on_theo_ngay(db, owner.id) == [(date(2026, 8, 10), 1)]
+    assert repo.dem_luot_on_theo_ngay(db, owner.id) == [(date(2026, 8, 10), 1, 0)]
     assert repo.dem_luot_on_theo_rating(db, owner.id) == {"GOOD": 1}
     assert repo.thong_ke_quiz_theo_loai(db, owner.id) == {"FREE_WRITE": (1, 1, 90.0)}
