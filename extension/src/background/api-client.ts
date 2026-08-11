@@ -91,6 +91,20 @@ export class ApiClient {
     return this.request('/api/srs/review', { method: 'POST', body: JSON.stringify(args) });
   }
 
+  /** Xấp thẻ luyện thêm. Không có `newLimit` — chế độ này không có khái niệm "đến hạn". */
+  async getPracticeCards(limit: number): Promise<CardDto[]> {
+    return this.request(`/api/srs/practice?limit=${limit}`, { method: 'GET' });
+  }
+
+  /** Ghi một lượt luyện thêm. Backend trả 204 nên không có gì để đọc. */
+  async submitPractice(args: { cardId: number; rating: Rating }): Promise<null> {
+    await this.request<null>('/api/srs/practice', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+    return null;
+  }
+
   async srsStats(newLimit: number): Promise<SrsStats> {
     return this.request(`/api/srs/stats?newLimit=${newLimit}`, { method: 'GET' });
   }

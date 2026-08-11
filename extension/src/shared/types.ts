@@ -209,6 +209,11 @@ export interface AuthUser {
 export interface DailyPoint {
   date: string;
   reviews: number;
+  /**
+   * Số lượt luyện thêm trong ngày. Field RIÊNG chứ không cộng vào `reviews`: `reviews` giữ
+   * nguyên nghĩa "lượt ôn theo lịch", và streak chỉ đếm nó.
+   */
+  practice: number;
 }
 
 export interface StreakInfo {

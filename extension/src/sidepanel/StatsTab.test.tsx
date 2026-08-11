@@ -12,7 +12,7 @@ function stats(patch: Partial<StatsDto> = {}): StatsDto {
     daily: Array.from({ length: 91 }, (_, i) => {
       const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (90 - i));
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return { date: iso, reviews: 2 };
+      return { date: iso, reviews: 2, practice: 0 };
     }),
     recall: { again: 20, hard: 20, good: 40, easy: 20 },
     quiz: [

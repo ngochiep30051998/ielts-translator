@@ -8,7 +8,7 @@ function daily(n: number, reviewsFor: (i: number) => number): DailyPoint[] {
   return Array.from({ length: n }, (_, i) => {
     const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (n - 1 - i));
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return { date: iso, reviews: reviewsFor(i) };
+    return { date: iso, reviews: reviewsFor(i), practice: 0 };
   });
 }
 

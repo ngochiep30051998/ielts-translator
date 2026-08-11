@@ -9,7 +9,7 @@ function daily(endDate: string, n: number, reviewsFor: (i: number) => number = (
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate() - i);
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    points.push({ date: iso, reviews: reviewsFor(n - 1 - i) });
+    points.push({ date: iso, reviews: reviewsFor(n - 1 - i), practice: 0 });
   }
   return points;
 }

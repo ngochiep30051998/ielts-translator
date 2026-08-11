@@ -159,6 +159,27 @@ describe('ApiClient', () => {
     expect(result.intervalDays).toBe(1);
   });
 
+  it('getPracticeCards gọi GET /api/srs/practice với limit', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await client.getPracticeCards(30);
+
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/api/srs/practice');
+    expect(calledUrl).toContain('limit=30');
+  });
+
+  it('submitPractice gọi POST /api/srs/practice', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await client.submitPractice({ cardId: 7, rating: 'GOOD' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/srs/practice`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('srsStats gọi đúng đường dẫn kèm newLimit', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ dueCount: 3, newCount: 1, learnedCount: 9 }));
 

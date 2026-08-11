@@ -16,6 +16,8 @@ const api = {
   deleteVocab: vi.fn(),
   getDueCards: vi.fn(),
   submitReview: vi.fn(),
+  getPracticeCards: vi.fn(),
+  submitPractice: vi.fn(),
   srsStats: vi.fn(),
   learningStats: vi.fn(),
   generateQuiz: vi.fn(),
@@ -139,6 +141,18 @@ describe('service worker', () => {
 
       expect(api.submitReview).toHaveBeenCalledWith({ cardId: 7, rating: 'GOOD' });
       expect(response).toMatchObject({ ok: true, data: { intervalDays: 1 } });
+    });
+
+    it('SUBMIT_PRACTICE gọi submitPractice và KHÔNG đụng badge', async () => {
+      await loadServiceWorker();
+      api.submitPractice.mockResolvedValue(null);
+
+      const response = await send({ type: 'SUBMIT_PRACTICE', cardId: 7, rating: 'GOOD' });
+
+      expect(api.submitPractice).toHaveBeenCalledWith({ cardId: 7, rating: 'GOOD' });
+      expect(response).toEqual({ ok: true, data: null });
+      // Luyện thêm KHÔNG đổi lịch, nên số thẻ đến hạn không thể đổi.
+      expect(refreshBadge).not.toHaveBeenCalled();
     });
 
     it('GET_SRS_STATS xuống srsStats kèm newLimit', async () => {

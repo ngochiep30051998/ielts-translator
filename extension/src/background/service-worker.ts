@@ -166,6 +166,12 @@ async function handle(request: ExtensionRequest, senderTabId?: number): Promise<
       void refreshBadge(client);
       return result;
     }
+    case 'GET_PRACTICE_CARDS':
+      return client.getPracticeCards(request.limit);
+    case 'SUBMIT_PRACTICE':
+      // KHÔNG gọi refreshBadge: luyện thêm không đụng lịch, nên số thẻ đến hạn không thể
+      // đổi vì một lượt luyện.
+      return client.submitPractice({ cardId: request.cardId, rating: request.rating });
     case 'GET_SRS_STATS':
       return client.srsStats(request.newLimit);
     case 'GET_STATS':
