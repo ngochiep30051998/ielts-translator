@@ -67,7 +67,10 @@ export function StatRow({ streak, totals }: { streak: StreakInfo; totals: StatsT
 export function DailyBars({ daily }: { daily: DailyPoint[] }) {
   const recentDays = daily.slice(-BAR_DAYS);
   const max = Math.max(0, ...recentDays.map((d) => totalOf(d)));
-  const total = recentDays.reduce((a, d) => a + d.reviews, 0);
+  // Cùng cơ sở với `max` — cả hai đều là "công sức" (ôn + luyện thêm), không riêng `reviews`.
+  // Trộn hai cơ sở khác nhau ở đây từng làm nhãn nói "tổng 2 lượt, cao nhất 10 lượt trong một
+  // ngày" — cao nhất MỘT NGÀY lớn hơn tổng CẢ THÁNG, vô lý với người dùng trình đọc màn hình.
+  const total = recentDays.reduce((sum, d) => sum + totalOf(d), 0);
 
   return (
     <section className="chart">
@@ -75,7 +78,7 @@ export function DailyBars({ daily }: { daily: DailyPoint[] }) {
       <div
         className="bars"
         role="img"
-        aria-label={`Số lượt ôn 30 ngày gần nhất: tổng ${total} lượt, cao nhất ${max} lượt trong một ngày`}
+        aria-label={`Số lượt học 30 ngày gần nhất: tổng ${total} lượt, cao nhất ${max} lượt trong một ngày`}
       >
         {recentDays.map((d) => (
           <div
@@ -105,9 +108,14 @@ export function Heatmap({ daily }: { daily: DailyPoint[] }) {
 
   // Nhãn nói "91 ngày" chứ không "13 tuần": lưới ra 13 hay 14 cột tuỳ ngày đầu rơi vào thứ
   // mấy, nên "13 tuần" là con số sai vào phần lớn các ngày trong tuần.
+  //
+  // "Lịch học" / "có học" chứ không "Lịch ôn" / "có ôn": `activeDaysInWindow` và `busiest` đã
+  // tính cả `practice` (totalOf) từ Task 8, nên một ngày có thể được đếm vào đây dù không ôn
+  // lượt nào theo lịch — chỉ luyện thêm. Gọi ngày đó là "có ôn" là nói sai loại hoạt động, cùng
+  // lớp lỗi với nhãn "Số lượt ôn" của DailyBars ở trên.
   const summary = totalOf(busiest) > 0
-    ? `Lịch ôn 91 ngày gần nhất: ${activeDaysInWindow} ngày có ôn, cao nhất ${totalOf(busiest)} lượt ngày ${formatDayMonth(busiest.date)}`
-    : 'Lịch ôn 91 ngày gần nhất: chưa có ngày nào ôn';
+    ? `Lịch học 91 ngày gần nhất: ${activeDaysInWindow} ngày có học, cao nhất ${totalOf(busiest)} lượt ngày ${formatDayMonth(busiest.date)}`
+    : 'Lịch học 91 ngày gần nhất: chưa có ngày nào học';
 
   return (
     <section className="chart">

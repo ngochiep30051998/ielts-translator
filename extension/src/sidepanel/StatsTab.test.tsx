@@ -52,7 +52,7 @@ it('hiện bốn khối khi có dữ liệu', async () => {
 
   expect(await screen.findByText('ngày liên tiếp')).toBeInTheDocument();
   expect(screen.getByRole('img', { name: /30 ngày gần nhất/ })).toBeInTheDocument();
-  expect(screen.getByRole('img', { name: /Lịch ôn 91 ngày gần nhất/ })).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: /Lịch học 91 ngày gần nhất/ })).toBeInTheDocument();
   expect(screen.getByText('Độ chính xác')).toBeInTheDocument();
 });
 
@@ -68,7 +68,7 @@ it('chưa ôn lượt nào thì mời đi ôn, không vẽ bốn khối rỗng',
   render(<StatsTab />);
 
   expect(await screen.findByText(/Chưa có lượt ôn nào/)).toBeInTheDocument();
-  expect(screen.queryByRole('img', { name: /Lịch ôn/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('img', { name: /Lịch học/ })).not.toBeInTheDocument();
 });
 
 it('lỗi retry được thì hiện nút Thử lại và gọi lại', async () => {

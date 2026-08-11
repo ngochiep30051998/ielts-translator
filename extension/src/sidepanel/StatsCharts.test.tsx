@@ -88,6 +88,21 @@ describe('DailyBars', () => {
     // Ngày sau có 10 lượt so với 2 lượt của ngày trước — cột phải cao hơn hẳn.
     expect(parseFloat(bars[1].style.height)).toBeGreaterThan(parseFloat(bars[0].style.height));
   });
+
+  it('aria-label dùng cùng một cơ sở cho tổng và cao nhất', () => {
+    // Trước đây `max` tính cả luyện thêm còn `total` thì không, nên nhãn nói "tổng 2 lượt,
+    // cao nhất 10 lượt" — cao nhất MỘT NGÀY lại lớn hơn tổng CẢ THÁNG, vô lý. Test này không
+    // bám vào chữ "ôn" hay "học" cụ thể — chỉ chốt bất biến số học: tổng không thể nhỏ hơn max.
+    const days = daily(30, () => 0);
+    days[days.length - 1] = { ...days[days.length - 1], reviews: 2, practice: 8 };
+    render(<DailyBars daily={days} />);
+
+    const img = screen.getByRole('img', { name: /30 ngày gần nhất/ });
+    const label = img.getAttribute('aria-label') ?? '';
+    const total = Number(label.match(/tổng (\d+) lượt/)?.[1]);
+    const max = Number(label.match(/cao nhất (\d+) lượt/)?.[1]);
+    expect(total).toBeGreaterThanOrEqual(max);
+  });
 });
 
 describe('Heatmap', () => {
