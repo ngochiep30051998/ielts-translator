@@ -73,6 +73,21 @@ describe('DailyBars', () => {
       expect(bar.style.height).toBe('2%');
     }
   });
+
+  it('chiều cao cột tính cả lượt luyện thêm', () => {
+    render(
+      <DailyBars
+        daily={[
+          { date: '2026-08-10', reviews: 2, practice: 0 },
+          { date: '2026-08-11', reviews: 2, practice: 8 },
+        ]}
+      />,
+    );
+
+    const bars = screen.getAllByTestId('bar');
+    // Ngày sau có 10 lượt so với 2 lượt của ngày trước — cột phải cao hơn hẳn.
+    expect(parseFloat(bars[1].style.height)).toBeGreaterThan(parseFloat(bars[0].style.height));
+  });
 });
 
 describe('Heatmap', () => {
@@ -82,6 +97,21 @@ describe('Heatmap', () => {
     expect(screen.getByRole('img', { name: /91 ngày gần nhất/ })).toBeInTheDocument();
     // Ô đệm không mang testid, nên con số này đúng bằng số ngày có dữ liệu.
     expect(screen.getAllByTestId('cell')).toHaveLength(91);
+  });
+
+  it('title tách riêng lượt ôn và lượt luyện thêm', () => {
+    render(<Heatmap daily={[{ date: '2026-08-11', reviews: 12, practice: 5 }]} />);
+
+    expect(screen.getByTestId('cell')).toHaveAttribute(
+      'title',
+      '11/08: 12 lượt ôn · 5 lượt luyện thêm',
+    );
+  });
+
+  it('ngày không luyện thêm thì title không nhắc tới nó', () => {
+    render(<Heatmap daily={[{ date: '2026-08-11', reviews: 12, practice: 0 }]} />);
+
+    expect(screen.getByTestId('cell')).toHaveAttribute('title', '11/08: 12 lượt ôn');
   });
 });
 

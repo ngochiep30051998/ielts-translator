@@ -72,7 +72,7 @@ export function Options() {
         </div>
       </fieldset>
 
-      <label htmlFor="newWordsPerDay">Từ mới mỗi ngày</label>
+      <label htmlFor="newWordsPerDay">Từ mới mỗi ngày (0 = không giới hạn)</label>
       <input
         id="newWordsPerDay"
         type="number"

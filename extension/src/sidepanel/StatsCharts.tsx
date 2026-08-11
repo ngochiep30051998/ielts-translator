@@ -21,6 +21,20 @@ function formatDayMonth(iso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Tổng công sức của một ngày. Công sức là công sức — cột và độ đậm ô tính cả hai loại. */
+function totalOf(point: DailyPoint): number {
+  return point.reviews + point.practice;
+}
+
+/**
+ * Nhãn rê chuột. Tách riêng hai con số vì đây là CHỖ DUY NHẤT giải thích được vì sao một
+ * ngày có ô tô đậm mà streak vẫn đứt: hôm đó chỉ luyện thêm, không ôn theo lịch.
+ */
+function cellTitle(point: DailyPoint): string {
+  const base = `${formatDayMonth(point.date)}: ${point.reviews} lượt ôn`;
+  return point.practice > 0 ? `${base} · ${point.practice} lượt luyện thêm` : base;
+}
+
 /**
  * Tỉ lệ phần trăm, hoặc `—` khi mẫu số bằng 0.
  *
@@ -52,7 +66,7 @@ export function StatRow({ streak, totals }: { streak: StreakInfo; totals: StatsT
 
 export function DailyBars({ daily }: { daily: DailyPoint[] }) {
   const recentDays = daily.slice(-BAR_DAYS);
-  const max = Math.max(0, ...recentDays.map((d) => d.reviews));
+  const max = Math.max(0, ...recentDays.map((d) => totalOf(d)));
   const total = recentDays.reduce((a, d) => a + d.reviews, 0);
 
   return (
@@ -71,8 +85,8 @@ export function DailyBars({ daily }: { daily: DailyPoint[] }) {
             // max = 0 khi 30 ngày qua không ôn lượt nào. Chia ở đây cho ra NaN, và
             // `height: NaN%` là cột biến mất — cột lùn và cột không có là hai thông tin
             // khác nhau, nên sàn 2% được áp cho mọi trường hợp.
-            style={{ height: `${max > 0 ? Math.max(2, (d.reviews / max) * 100) : 2}%` }}
-            title={`${formatDayMonth(d.date)}: ${d.reviews} lượt ôn`}
+            style={{ height: `${max > 0 ? Math.max(2, (totalOf(d) / max) * 100) : 2}%` }}
+            title={cellTitle(d)}
           />
         ))}
       </div>
@@ -81,17 +95,18 @@ export function DailyBars({ daily }: { daily: DailyPoint[] }) {
 }
 
 export function Heatmap({ daily }: { daily: DailyPoint[] }) {
-  const columns = buildHeatmap(daily);
-  const activeDaysInWindow = daily.filter((d) => d.reviews > 0).length;
+  const columns = buildHeatmap(daily.map((d) => ({ ...d, reviews: totalOf(d) })));
+  const titleByDate = new Map(daily.map((d) => [d.date, cellTitle(d)]));
+  const activeDaysInWindow = daily.filter((d) => totalOf(d) > 0).length;
   const busiest = daily.reduce(
-    (a, d) => (d.reviews > a.reviews ? d : a),
-    { date: '', reviews: 0 },
+    (a, d) => (totalOf(d) > totalOf(a) ? d : a),
+    { date: '', reviews: 0, practice: 0 },
   );
 
   // Nhãn nói "91 ngày" chứ không "13 tuần": lưới ra 13 hay 14 cột tuỳ ngày đầu rơi vào thứ
   // mấy, nên "13 tuần" là con số sai vào phần lớn các ngày trong tuần.
-  const summary = busiest.reviews > 0
-    ? `Lịch ôn 91 ngày gần nhất: ${activeDaysInWindow} ngày có ôn, cao nhất ${busiest.reviews} lượt ngày ${formatDayMonth(busiest.date)}`
+  const summary = totalOf(busiest) > 0
+    ? `Lịch ôn 91 ngày gần nhất: ${activeDaysInWindow} ngày có ôn, cao nhất ${totalOf(busiest)} lượt ngày ${formatDayMonth(busiest.date)}`
     : 'Lịch ôn 91 ngày gần nhất: chưa có ngày nào ôn';
 
   return (
@@ -114,7 +129,7 @@ export function Heatmap({ daily }: { daily: DailyPoint[] }) {
                       className={`cell lv${cell.level}`}
                       key={j}
                       data-testid="cell"
-                      title={`${formatDayMonth(cell.date)}: ${cell.reviews} lượt ôn`}
+                      title={titleByDate.get(cell.date) ?? ''}
                     />
                   ),
               )}
