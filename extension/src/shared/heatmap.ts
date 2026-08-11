@@ -34,8 +34,8 @@ export function levelFor(reviews: number): Level {
  * không test nào đỏ trừ test viết riêng cho nó.
  */
 export function parseDay(iso: string): Date {
-  const [nam, thang, ngay] = iso.split('-').map(Number);
-  return new Date(nam, thang - 1, ngay);
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }
 
 /** 0 = T2 … 6 = CN. `getDay()` trả 0 cho Chủ nhật nên phải xoay. */
@@ -55,13 +55,13 @@ function weekdayIndex(day: Date): number {
 export function buildHeatmap(daily: DailyPoint[]): Column[] {
   if (daily.length === 0) return [];
 
-  const o: (Cell | null)[] = Array<Cell | null>(weekdayIndex(parseDay(daily[0].date))).fill(null);
-  for (const diem of daily) {
-    o.push({ date: diem.date, reviews: diem.reviews, level: levelFor(diem.reviews) });
+  const cells: (Cell | null)[] = Array<Cell | null>(weekdayIndex(parseDay(daily[0].date))).fill(null);
+  for (const point of daily) {
+    cells.push({ date: point.date, reviews: point.reviews, level: levelFor(point.reviews) });
   }
-  while (o.length % 7 !== 0) o.push(null);
+  while (cells.length % 7 !== 0) cells.push(null);
 
-  const cot: Column[] = [];
-  for (let i = 0; i < o.length; i += 7) cot.push(o.slice(i, i + 7));
-  return cot;
+  const columns: Column[] = [];
+  for (let i = 0; i < cells.length; i += 7) columns.push(cells.slice(i, i + 7));
+  return columns;
 }
