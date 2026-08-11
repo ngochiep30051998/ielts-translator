@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.stats import repository as repo
-from tests.conftest import NguoiDungTest
+from tests.conftest import SECOND_EMAIL, NguoiDungTest, tao_nguoi_dung
 
 
 def _seed_the(db: Session, user_id: int, term: str) -> int:
@@ -63,6 +63,18 @@ def test_luot_on_luc_1h_sang_gio_viet_nam_thuoc_ve_ngay_hom_do(
     card_id = _seed_the(db, owner.id, "mitigate")
     _seed_luot_on(db, card_id, "GOOD", "2026-08-11 18:00:00+00")
     db.commit()
+
+    # Ghim timezone phiên về UTC — KHÁC settings.tz — trước khi truy vấn.
+    #
+    # Không có dòng này thì ca test vô dụng: pgserver dựng Postgres kế thừa timezone của OS
+    # máy chạy test, mà máy dev của dự án để giờ Việt Nam, tức trùng luôn settings.tz. Cast
+    # trần khi đó cho CÙNG kết quả với cast tường minh, nên đổi `_ngay_dia_phuong()` thành
+    # cast trần vẫn thấy 5/5 xanh.
+    #
+    # SET LOCAL chứ không SET: nó chỉ sống trong transaction hiện tại và tự hết hiệu lực khi
+    # commit/rollback. `SET` trần bám vào connection, mà connection được pool tái dùng, nên
+    # nó sẽ rò sang test khác chạy sau.
+    db.execute(text("SET LOCAL TIME ZONE 'UTC'"))
 
     assert repo.dem_luot_on_theo_ngay(db, owner.id) == [(date(2026, 8, 12), 1)]
 
@@ -124,3 +136,68 @@ def test_ba_cau_deu_tra_rong_cho_nguoi_chua_lam_gi(db: Session, owner: NguoiDung
     assert repo.dem_luot_on_theo_ngay(db, owner.id) == []
     assert repo.dem_luot_on_theo_rating(db, owner.id) == {}
     assert repo.thong_ke_quiz_theo_loai(db, owner.id) == {}
+
+
+def test_loc_theo_user_id_khong_lo_du_lieu_nguoi_khac(db: Session, owner: NguoiDungTest) -> None:
+    """Không bảng nào trong ba câu (`review_log`, `srs_card`, `quiz_item`, `quiz_attempt`) có
+    cột `user_id` — chủ sở hữu chỉ nằm ở `vocab_entry.user_id` (ràng buộc #13 CLAUDE.md).
+    Xoá mệnh đề `WHERE user_id` khỏi bất kỳ hàm nào trong ba hàm cũng phải làm ca này đỏ.
+
+    Dữ liệu của owner và của người khác CỐ Ý trùng ngày, trùng rating, trùng loại quiz — để
+    nếu thiếu `WHERE user_id`, hai người bị GOM CHUNG vào đúng một ô (đếm tăng lên, điểm
+    trung bình đổi) thay vì chỉ đơn giản thêm một dòng lạ dễ nhận ra.
+    """
+    other = tao_nguoi_dung(db, SECOND_EMAIL)
+
+    card_owner = _seed_the(db, owner.id, "mitigate")
+    _seed_luot_on(db, card_owner, "GOOD", "2026-08-10 05:00:00+00")
+    vocab_owner = int(
+        db.execute(
+            text("SELECT vocab_entry_id FROM srs_card WHERE id = :c"), {"c": card_owner}
+        ).scalar_one()
+    )
+    item_owner = int(
+        db.execute(
+            text(
+                "INSERT INTO quiz_item (vocab_entry_id, type, payload, prompt_version) "
+                "VALUES (:v, 'FREE_WRITE', '{}'::jsonb, 1) RETURNING id"
+            ),
+            {"v": vocab_owner},
+        ).scalar_one()
+    )
+    db.execute(
+        text(
+            "INSERT INTO quiz_attempt (quiz_item_id, user_answer, correct, score) "
+            "VALUES (:i, 'câu trả lời của owner', true, 90)"
+        ),
+        {"i": item_owner},
+    )
+
+    card_other = _seed_the(db, other.id, "mitigate")
+    _seed_luot_on(db, card_other, "GOOD", "2026-08-10 06:00:00+00")
+    vocab_other = int(
+        db.execute(
+            text("SELECT vocab_entry_id FROM srs_card WHERE id = :c"), {"c": card_other}
+        ).scalar_one()
+    )
+    item_other = int(
+        db.execute(
+            text(
+                "INSERT INTO quiz_item (vocab_entry_id, type, payload, prompt_version) "
+                "VALUES (:v, 'FREE_WRITE', '{}'::jsonb, 1) RETURNING id"
+            ),
+            {"v": vocab_other},
+        ).scalar_one()
+    )
+    db.execute(
+        text(
+            "INSERT INTO quiz_attempt (quiz_item_id, user_answer, correct, score) "
+            "VALUES (:i, 'câu trả lời của người khác', true, 50)"
+        ),
+        {"i": item_other},
+    )
+    db.commit()
+
+    assert repo.dem_luot_on_theo_ngay(db, owner.id) == [(date(2026, 8, 10), 1)]
+    assert repo.dem_luot_on_theo_rating(db, owner.id) == {"GOOD": 1}
+    assert repo.thong_ke_quiz_theo_loai(db, owner.id) == {"FREE_WRITE": (1, 1, 90.0)}

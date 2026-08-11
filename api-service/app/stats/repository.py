@@ -26,9 +26,18 @@ from app.vocabulary.models import VocabEntry
 def _ngay_dia_phuong() -> ColumnElement[date]:
     """`(reviewed_at AT TIME ZONE :tz)::date` với `:tz = settings.tz`.
 
-    TUYỆT ĐỐI không dùng `cast(ReviewLog.reviewed_at, Date)` trần: `reviewed_at` là TIMESTAMPTZ
-    nên cast trần quy về UTC. Lượt ôn 01:00 sáng giờ Việt Nam bị đẩy về ngày hôm trước, streak
-    đứt sai, và không có exception nào — xem `test_stats_repository.py`.
+    TUYỆT ĐỐI không dùng `cast(ReviewLog.reviewed_at, Date)` trần. `reviewed_at` là TIMESTAMPTZ,
+    và Postgres cast trần một TIMESTAMPTZ sang `date` bằng cách quy về timezone của PHIÊN kết
+    nối hiện tại — KHÔNG PHẢI UTC cố định như trực giác hay lầm tưởng. Timezone phiên là thứ
+    không kiểm soát được: UTC trên Vercel, giá trị biến `TZ` trên Docker, timezone của máy host
+    lúc `initdb` trong test bằng `pgserver`. Khi timezone phiên tình cờ trùng `settings.tz` (ví
+    dụ máy dev để giờ Việt Nam), cast trần và cast tường minh cho CÙNG kết quả — bug vẫn nằm đó
+    nhưng không lộ ra. Chỉ định tường minh bằng `func.timezone(settings.tz, ...)` là cách DUY
+    NHẤT đảm bảo kết quả nhất quán bất kể phiên đang chạy ở đâu. Lượt ôn 01:00 sáng giờ Việt Nam
+    bị đẩy về ngày hôm trước khi cast trần rơi vào phiên UTC, streak đứt sai, và không có
+    exception nào — xem ca `test_luot_on_luc_1h_sang_gio_viet_nam_thuoc_ve_ngay_hom_do` trong
+    `test_stats_repository.py` (ca đó tự ép session về UTC bằng `SET LOCAL TIME ZONE 'UTC'` để
+    luôn phân biệt được, bất kể máy chạy test đặt giờ gì).
     """
     return cast(func.timezone(get_settings().tz, ReviewLog.reviewed_at), Date)
 
