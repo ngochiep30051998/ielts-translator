@@ -175,6 +175,36 @@ def test_on_the_cua_nguoi_khac_tra_404_va_lich_khong_doi(
     assert sau == truoc
 
 
+def test_hang_luyen_chi_chua_the_cua_minh(client: Any, hai_nguoi: HaiNguoi) -> None:
+    ra = client.get("/api/srs/practice", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    assert [c["meaningVi"] for c in ra.json()] == ["giảm nhẹ (của A)"]
+
+    rb = client.get("/api/srs/practice", headers=hai_nguoi.b.headers)
+    assert rb.status_code == 200
+    assert [c["meaningVi"] for c in rb.json()] == ["giảm nhẹ (của B)"]
+
+
+def test_luyen_the_cua_nguoi_khac_tra_404_va_khong_ghi_log(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """Kiểm cả status LẪN dữ liệu: trả 404 mà vẫn ghi log là ca tệ nhất và im lặng nhất —
+    số liệu thống kê của A sẽ nhích lên vì một thao tác đã bị từ chối."""
+    the_b = _the_cua(db, hai_nguoi.vocab_b)
+
+    resp = client.post(
+        "/api/srs/practice",
+        headers=hai_nguoi.a.headers,
+        json={"cardId": the_b, "rating": "GOOD"},
+    )
+    assert resp.status_code == 404
+
+    con_lai = db.execute(
+        text("SELECT count(*) FROM review_log WHERE card_id = :c"), {"c": the_b}
+    ).scalar_one()
+    assert con_lai == 0
+
+
 # ── quiz ──────────────────────────────────────────────────────────────────────
 
 
