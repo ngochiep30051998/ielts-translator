@@ -105,6 +105,39 @@ def test_hang_luyen_loai_the_new(client: Any, db: Session, owner: NguoiDungTest)
     assert [c["term"] for c in ra.json()] == ["mitigate"]
 
 
+def test_hang_luyen_gom_the_vua_quen(client: Any, db: Session, owner: NguoiDungTest) -> None:
+    """Thẻ RELEARNING (vừa bấm "Lại") phải có mặt trong hàng luyện.
+
+    Trạng thái đúng như `next_schedule()` sinh ra cho rating AGAIN: `repetitions = 0`,
+    `state = RELEARNING`, `interval_days = 1`, `lapses = 1`. Thẻ này đã học rồi — nó chỉ vừa
+    bị quên — nên lọc theo `repetitions >= 1` loại nhầm đúng tập thẻ mà tính năng luyện thêm
+    sinh ra để phục vụ.
+    """
+    vocab_id = int(
+        db.execute(
+            text(
+                "INSERT INTO vocab_entry (term, lemma, lang, pos, meaning_vi, user_id) "
+                "VALUES ('forgotten','forgotten','en','verb','vừa quên',:u) RETURNING id"
+            ),
+            {"u": owner.id},
+        ).scalar_one()
+    )
+    db.execute(
+        text(
+            "INSERT INTO srs_card (vocab_entry_id, due_date, state, repetitions, "
+            "interval_days, lapses, ease_factor) "
+            "VALUES (:v, CURRENT_DATE + 1, 'RELEARNING', 0, 1, 1, 2.5)"
+        ),
+        {"v": vocab_id},
+    )
+    db.commit()
+
+    ra = client.get("/api/srs/practice", headers=owner.headers)
+
+    assert ra.status_code == 200
+    assert [c["term"] for c in ra.json()] == ["forgotten"]
+
+
 def test_hang_luyen_van_chua_the_dang_den_han(
     client: Any, db: Session, owner: NguoiDungTest
 ) -> None:

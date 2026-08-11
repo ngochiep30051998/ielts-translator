@@ -39,7 +39,6 @@ export function ReviewTab() {
 
   const load = useCallback(async (nextMode: Mode = 'scheduled') => {
     setLoading(true);
-    scheduledSent.current = new Set();
     const response = nextMode === 'practice'
       ? await sendToBackground({ type: 'GET_PRACTICE_CARDS', limit: PRACTICE_LIMIT })
       : await sendToBackground({
@@ -63,10 +62,15 @@ export function ReviewTab() {
       setIndex(0);
       setPicked(null);
       setError(null);
+      // `questions`, `mode` và `scheduledSent` phải đổi CÙNG NHAU, chỉ khi nạp THÀNH CÔNG.
+      // Nạp lỗi (vd bấm "Quay lại" mà GET_DUE_CARDS rớt mạng) phải giữ nguyên cả ba — đổi
+      // `mode` một mình trong khi xấp thẻ vẫn là xấp cũ làm `submit()` tính sai thẻ đang ôn
+      // là thẻ lịch, bắn nhầm SUBMIT_REVIEW cho thẻ luyện.
+      setMode(nextMode);
+      scheduledSent.current = new Set();
     } else {
       setError(response.error);
     }
-    setMode(nextMode);
     setLoading(false);
   }, []);
 
@@ -162,15 +166,26 @@ export function ReviewTab() {
 
   if (!question) {
     const blocked = queueSize > 0 && questions.length === 0;
+    const isPractice = mode === 'practice';
     return (
       <div className="empty">
         <p>
           {blocked
             ? 'Chưa tạo được câu hỏi — mồi nhử đang được sinh, thử lại sau ít phút.'
-            : 'Hôm nay không còn thẻ nào đến hạn.'}
+            : isPractice
+              // Chế độ luyện không có "hạn" — chữ "đến hạn" ở đây là ngôn ngữ của chế độ
+              // theo lịch, dùng nhầm sẽ khiến người dùng tưởng mình đang ôn theo lịch.
+              ? 'Không còn từ nào để luyện thêm lúc này.'
+              : 'Hôm nay không còn thẻ nào đến hạn.'}
         </p>
-        <button type="button" onClick={() => void load()}>Tải lại</button>
-        <button type="button" onClick={() => void load('practice')}>Luyện thêm</button>
+        {/* Nạp lại ĐÚNG chế độ hiện tại — `load(mode)` chứ không phải `load()` mặc định
+            'scheduled', nếu không nút này âm thầm đưa người dùng ra khỏi chế độ luyện. */}
+        <button type="button" onClick={() => void load(mode)}>Tải lại</button>
+        {isPractice ? (
+          <button type="button" onClick={() => void load('scheduled')}>Quay lại</button>
+        ) : (
+          <button type="button" onClick={() => void load('practice')}>Luyện thêm</button>
+        )}
       </div>
     );
   }

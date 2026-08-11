@@ -178,8 +178,13 @@ def find_practice_cards(
 ) -> list[tuple[SrsCard, VocabEntry]]:
     """Hàng luyện thêm: mọi từ đã học ít nhất một lượt, xáo ngẫu nhiên.
 
-    `repetitions >= 1` loại thẻ NEW — lượt đầu đời của một thẻ phải đi đường có lịch, nếu
-    không nó mắc kẹt ở trạng thái NEW vĩnh viễn.
+    `state != NEW` loại thẻ chưa ôn lần nào — lượt đầu đời của một thẻ phải đi đường có
+    lịch, nếu không nó mắc kẹt ở trạng thái NEW vĩnh viễn.
+
+    Cố ý KHÔNG dùng `repetitions >= 1`: bấm "Lại" đặt `repetitions = 0` và `state =
+    RELEARNING` (`scheduler.next_schedule`), nên điều kiện đó loại nhầm đúng những thẻ người
+    dùng vừa quên — tập thẻ mà tính năng luyện thêm sinh ra để phục vụ. `state` là cột đúng
+    cho phép thử "đã học hay chưa", giống `find_due_cards` / `find_new_cards`.
 
     KHÔNG loại thẻ đang đến hạn. Luật "mọi từ đã học" giải thích được bằng một câu, còn "mọi
     từ đã học trừ những từ đến hạn hôm nay" thì không — và luyện một thẻ đang đến hạn không
@@ -188,7 +193,7 @@ def find_practice_cards(
     stmt = (
         select(SrsCard, VocabEntry)
         .join(VocabEntry, SrsCard.vocab_entry_id == VocabEntry.id)
-        .where(VocabEntry.user_id == user_id, SrsCard.repetitions >= 1)
+        .where(VocabEntry.user_id == user_id, SrsCard.state != CardState.NEW.value)
         .order_by(func.random())
         .limit(limit)
     )

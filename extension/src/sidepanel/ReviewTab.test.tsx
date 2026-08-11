@@ -341,4 +341,69 @@ describe('ReviewTab', () => {
 
     expect(sent.filter((s) => s.type === 'SUBMIT_REVIEW')).toHaveLength(2);
   });
+
+  it('Quay lại thất bại thì vẫn ở chế độ luyện, trả lời không gửi SUBMIT_REVIEW', async () => {
+    // Kịch bản C1: đang ở chế độ luyện → bấm Quay lại → GET_DUE_CARDS lỗi mạng. Nếu `mode`
+    // đổi thành 'scheduled' trong khi xấp thẻ vẫn là thẻ luyện (và scheduledSent bị xoá
+    // theo), lượt trả lời sau đó sẽ bị tính là "lượt đầu tiên theo lịch" và bắn SUBMIT_REVIEW
+    // cho một thẻ luyện — đẩy lịch SM-2 của nó dù bối cảnh là luyện thêm.
+    const sent: { type: string; cardId?: number }[] = [];
+    let dueCalls = 0;
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (request: { type: string; cardId?: number }) => {
+        sent.push({ type: request.type, cardId: request.cardId });
+        if (request.type === 'GET_DUE_CARDS') {
+          dueCalls += 1;
+          // Lượt nạp đầu tiên (lúc mở panel) thành công với hàng đợi rỗng để hiện nút
+          // "Luyện thêm". Lượt thứ hai — do bấm "Quay lại" — hỏng vì mạng.
+          return dueCalls === 1
+            ? { ok: true, data: [] }
+            : { ok: false, error: { code: 'GEMINI_UNAVAILABLE', message: 'Mất mạng', retryable: true } };
+        }
+        if (request.type === 'GET_PRACTICE_CARDS') return { ok: true, data: [card(9, 'resilient')] };
+        return { ok: true, data: null };
+      },
+    );
+
+    render(<ReviewTab />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+    await screen.findByText(/không ảnh hưởng lịch ôn/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Quay lại' }));
+
+    // Quay lại hỏng — panel vẫn phải ở chế độ luyện với ĐÚNG xấp thẻ luyện cũ.
+    expect(await screen.findByText(/không ảnh hưởng lịch ôn/)).toBeInTheDocument();
+
+    const nut = (await screen.findAllByRole('button')).find((b) => /^\d/.test(b.textContent ?? ''));
+    await userEvent.click(nut!);
+
+    expect(sent.filter((s) => s.type === 'SUBMIT_REVIEW')).toHaveLength(0);
+  });
+
+  it('xấp luyện rỗng hiện thông báo riêng cho chế độ luyện kèm nút Quay lại', async () => {
+    mockWithLog([], []);
+    render(<ReviewTab />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+
+    // KHÔNG được đứng yên (triệu chứng 1 của I2) và KHÔNG được lặp lại chữ "đến hạn" —
+    // đó là ngôn ngữ của chế độ theo lịch, sai bối cảnh khi đang luyện thêm.
+    expect(await screen.findByText(/luyện thêm/i)).toBeInTheDocument();
+    expect(screen.queryByText(/đến hạn/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quay lại' })).toBeInTheDocument();
+  });
+
+  it('nút Tải lại ở chế độ luyện nạp lại đúng chế độ luyện, không tụt về theo lịch', async () => {
+    const sent = mockWithLog([], []);
+    render(<ReviewTab />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Tải lại' }));
+
+    const goiSau = sent.filter((s) => s.type === 'GET_DUE_CARDS' || s.type === 'GET_PRACTICE_CARDS');
+    expect(goiSau.map((s) => s.type)).toEqual([
+      'GET_DUE_CARDS', 'GET_PRACTICE_CARDS', 'GET_PRACTICE_CARDS',
+    ]);
+  });
 });
