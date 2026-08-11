@@ -185,6 +185,36 @@ describe('ReviewTab', () => {
     expect(screen.queryByRole('button', { name: /^tiếp$/i })).not.toBeInTheDocument();
   });
 
+  it('SUBMIT_REVIEW lỗi thì Thử lại vẫn gửi SUBMIT_REVIEW, không tụt sang SUBMIT_PRACTICE', async () => {
+    // Đánh dấu "đã gửi lượt theo lịch" TRƯỚC KHI biết nó có tới nơi không sẽ làm lượt Thử
+    // lại đi nhầm sang nhánh SUBMIT_PRACTICE — lịch SM-2 của thẻ đó im lặng không bao giờ
+    // được cập nhật trong buổi ấy, dù người dùng đã bấm Thử lại thành công.
+    const sent: { type: string; cardId?: number }[] = [];
+    let reviewAttempts = 0;
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (request: { type: string; cardId?: number }) => {
+        sent.push({ type: request.type, cardId: request.cardId });
+        if (request.type === 'GET_DUE_CARDS') return { ok: true, data: [card(1, 'mitigate')] };
+        if (request.type === 'SUBMIT_REVIEW') {
+          reviewAttempts += 1;
+          // Lần gửi đầu hỏng vì mạng, lần thứ hai (qua nút Thử lại) mới thành công.
+          return reviewAttempts === 1
+            ? { ok: false, error: { code: 'INTERNAL', message: 'Backend chết', retryable: true } }
+            : OK_REVIEW;
+        }
+        return { ok: true, data: null };
+      },
+    );
+
+    render(<ReviewTab />);
+    const correct = (await screen.findAllByRole('button')).find((b) => isCorrectFor('mitigate', b))!;
+    await userEvent.click(correct);
+    await userEvent.click(await screen.findByRole('button', { name: /thử lại/i }));
+
+    expect(sent.filter((s) => s.type === 'SUBMIT_REVIEW')).toHaveLength(2);
+    expect(sent.filter((s) => s.type === 'SUBMIT_PRACTICE')).toHaveLength(0);
+  });
+
   it('hàng đợi rỗng hiện empty state', async () => {
     mockQueue([]);
 

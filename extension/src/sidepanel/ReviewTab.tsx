@@ -97,7 +97,10 @@ export function ReviewTab() {
       ? await sendToBackground({ type: 'SUBMIT_REVIEW', cardId, rating })
       : await sendToBackground({ type: 'SUBMIT_PRACTICE', cardId, rating });
 
-    if (laLuotOnDauTien) scheduledSent.current.add(cardId);
+    // Chỉ đánh dấu khi lượt SCHEDULED THẬT SỰ tới nơi. Đánh dấu vô điều kiện làm nút "Thử
+    // lại" gửi SUBMIT_PRACTICE thay vì gửi lại SUBMIT_REVIEW — lịch SM-2 của thẻ đó im lặng
+    // không bao giờ được cập nhật trong buổi ấy.
+    if (laLuotOnDauTien && response.ok) scheduledSent.current.add(cardId);
 
     setSubmitting(false);
     setError(response.ok ? null : response.error);
