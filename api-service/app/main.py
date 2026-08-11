@@ -23,6 +23,7 @@ from app.config import get_settings
 from app.health.router import router as health_router
 from app.quiz.router import router as quiz_router
 from app.srs.router import router as srs_router
+from app.stats.router import router as stats_router
 from app.translation.router import router as translation_router
 from app.vocabulary.router import router as vocabulary_router
 
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(vocabulary_router)
     app.include_router(srs_router)
     app.include_router(quiz_router)
+    app.include_router(stats_router)
     return app
 
 
