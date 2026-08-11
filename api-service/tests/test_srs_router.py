@@ -155,15 +155,19 @@ def test_new_limit_doc_dung_ten_query_camel_case(
 
     Nếu backend chỉ nhận `new_limit` thì extension gửi `newLimit` sẽ rơi về mặc định — không
     lỗi, không test nào đỏ, chỉ là hạn mức từ mới của người dùng bị bỏ qua.
+
+    Khối chứng minh camelCase là `newLimit=2`: bỏ qua tham số thì mặc định 30 cho ra 3 thẻ
+    chứ không phải 2. Khối `newLimit=0` giờ chốt ngữ nghĩa MỚI — `0` nghĩa là không giới hạn,
+    không phải "cấm học từ mới" như trước.
     """
     for i in range(3):
         _seed(db, owner.id, f"tu-moi-{i}", state="NEW")
 
-    khong_cho_tu_moi = client.get(
+    khong_gioi_han = client.get(
         "/api/srs/due", params={"newLimit": 0}, headers=owner.headers
     )
-    assert khong_cho_tu_moi.status_code == 200
-    assert khong_cho_tu_moi.json() == []
+    assert khong_gioi_han.status_code == 200
+    assert len(khong_gioi_han.json()) == 3
 
     cho_hai = client.get("/api/srs/due", params={"newLimit": 2}, headers=owner.headers)
     assert len(cho_hai.json()) == 2
