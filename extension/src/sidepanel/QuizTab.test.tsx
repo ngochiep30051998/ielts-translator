@@ -87,13 +87,13 @@ function sentOf(type: string): Sent[] {
     .filter((request) => request.type === type);
 }
 
-/** Nút lựa chọn hiện dạng "3. nội dung" — cắt số thứ tự để so đúng nội dung. */
+/** Nút lựa chọn mở đầu bằng số thứ tự — cắt đi để so đúng nội dung. */
 function optionText(button: HTMLElement): string {
-  return (button.textContent ?? '').replace(/^\d+\.\s*/, '');
+  return (button.textContent ?? '').replace(/^\d+\s*/, '');
 }
 
 function optionButtons(): HTMLElement[] {
-  return screen.getAllByRole('button', { name: /^\d\./ });
+  return screen.getAllByRole('button', { name: /^\d/ });
 }
 
 /** Bỏ tick mọi loại trừ loại muốn giữ, rồi bấm Tạo đề. */
@@ -189,7 +189,7 @@ describe('QuizTab', () => {
       });
       render(<QuizTab />);
       await generateOnly('Chọn cụm từ');
-      await screen.findAllByRole('button', { name: /^\d\./ });
+      await screen.findAllByRole('button', { name: /^\d/ });
     }
 
     it('bốn lựa chọn hiện ĐÚNG thứ tự backend gửi xuống', async () => {
@@ -232,7 +232,7 @@ describe('QuizTab', () => {
       });
       render(<QuizTab />);
       await generateOnly('Chọn cụm từ');
-      await screen.findAllByRole('button', { name: /^\d\./ });
+      await screen.findAllByRole('button', { name: /^\d/ });
 
       await userEvent.click(optionButtons()[1]);
 
@@ -467,7 +467,7 @@ describe('QuizTab', () => {
       });
       render(<QuizTab />);
       await generateOnly('Chọn cụm từ');
-      await screen.findAllByRole('button', { name: /^\d\./ });
+      await screen.findAllByRole('button', { name: /^\d/ });
 
       await userEvent.click(optionButtons()[0]);
       await userEvent.click(await screen.findByRole('button', { name: /xem kết quả/i }));

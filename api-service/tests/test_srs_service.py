@@ -11,6 +11,7 @@ thẻ còn thiếu, nhưng ở tầng này không có ai chạy chúng, nên kh�
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Any
 
 import pytest
 from fastapi import BackgroundTasks
@@ -142,6 +143,55 @@ def test_so_tu_moi_da_hoc_hom_nay_bi_tru_khoi_han_muc_con_lai(
     _card(db, owner.id, "waiting", CardState.NEW, date.today(), 0)
 
     assert _due(db, owner.id, 50, 1) == []
+
+
+def test_new_limit_bang_0_la_khong_gioi_han(
+    client: Any, db: Session, owner: NguoiDungTest
+) -> None:
+    """`0` là cách người dùng tắt hẳn hạn mức từ ô "Từ mới mỗi ngày" ở Options.
+
+    Trước thay đổi này, `0` nghĩa là "không được học từ mới nào" — đúng nghĩa đen nhưng vô
+    dụng, vì không ai đặt hạn mức 0 để tự cấm mình học."""
+    for i in range(7):
+        _card(db, owner.id, f"word{i}", CardState.NEW, date.today(), 0)
+
+    ra = client.get("/api/srs/due?limit=50&newLimit=0", headers=owner.headers)
+
+    assert ra.status_code == 200
+    assert len(ra.json()) == 7
+
+
+def test_new_limit_duong_van_chan_dung(client: Any, db: Session, owner: NguoiDungTest) -> None:
+    for i in range(7):
+        _card(db, owner.id, f"word{i}", CardState.NEW, date.today(), 0)
+
+    ra = client.get("/api/srs/due?limit=50&newLimit=3", headers=owner.headers)
+
+    assert len(ra.json()) == 3
+
+
+def test_luot_practice_khong_tinh_vao_han_muc_tu_moi(
+    client: Any, db: Session, owner: NguoiDungTest
+) -> None:
+    """`count_introduced_since` nhận diện lượt đầu đời bằng `prev_interval == 0`. Dòng
+    PRACTICE không được lọt vào phép đếm đó, nếu không luyện thêm sẽ ăn mất hạn mức từ mới
+    của ngày hôm sau."""
+    card = _card(db, owner.id, "mitigate", CardState.REVIEW, date.today(), 2)
+    db.execute(
+        text(
+            "INSERT INTO review_log (card_id, rating, prev_interval, new_interval, mode) "
+            "VALUES (:c, 'GOOD', 0, 0, 'PRACTICE')"
+        ),
+        {"c": card.id},
+    )
+    for i in range(3):
+        _card(db, owner.id, f"word{i}", CardState.NEW, date.today(), 0)
+
+    ra = client.get("/api/srs/due?limit=50&newLimit=3", headers=owner.headers)
+
+    # 3 thẻ mới + 1 thẻ đã học nếu nó đến hạn; điều đang kiểm là hạn mức từ mới KHÔNG bị
+    # dòng PRACTICE ăn mất, tức vẫn đủ 3 thẻ NEW.
+    assert sum(1 for c in ra.json() if c["state"] == "NEW") == 3
 
 
 # ── review ────────────────────────────────────────────────────────────────────

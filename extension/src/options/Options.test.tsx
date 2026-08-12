@@ -81,6 +81,12 @@ describe('Options', () => {
     expect(await screen.findByText('Backend chưa chạy')).toBeInTheDocument();
   });
 
+  it('nhãn từ mới mỗi ngày nói rõ 0 là không giới hạn', async () => {
+    render(<Options />);
+
+    expect(await screen.findByLabelText(/Từ mới mỗi ngày \(0 = không giới hạn\)/)).toBeInTheDocument();
+  });
+
   it('cảnh báo khi backend chạy nhưng chưa cấu hình Gemini API key', async () => {
     (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true, data: { status: 'UP', dbConnected: true, geminiConfigured: false },

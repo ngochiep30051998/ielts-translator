@@ -159,6 +159,28 @@ describe('ApiClient', () => {
     expect(result.intervalDays).toBe(1);
   });
 
+  it('getPracticeCards gọi GET /api/srs/practice với limit', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await client.getPracticeCards(30);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/srs/practice?limit=30`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('submitPractice gọi POST /api/srs/practice', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await client.submitPractice({ cardId: 7, rating: 'GOOD' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/srs/practice`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('srsStats gọi đúng đường dẫn kèm newLimit', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ dueCount: 3, newCount: 1, learnedCount: 9 }));
 
@@ -169,6 +191,23 @@ describe('ApiClient', () => {
       expect.objectContaining({ method: 'GET' }),
     );
     expect(stats.dueCount).toBe(3);
+  });
+
+  it('learningStats gọi GET /api/stats', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({
+      streak: { current: 0, longest: 0, lastActiveDate: null },
+      totals: { reviews: 0, learnedWords: 0, activeDays: 0 },
+      daily: [],
+      recall: { again: 0, hard: 0, good: 0, easy: 0 },
+      quiz: [],
+    }));
+
+    await client.learningStats();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/stats`,
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   it('review thẻ không tồn tại ném NOT_FOUND, không retry được', async () => {

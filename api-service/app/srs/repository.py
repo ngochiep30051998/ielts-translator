@@ -15,7 +15,7 @@ from datetime import date, datetime
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.srs.models import CardState, Rating, ReviewLog, SrsCard, SrsDistractor
+from app.srs.models import CardState, Rating, ReviewLog, ReviewMode, SrsCard, SrsDistractor
 from app.vocabulary.models import VocabEntry
 
 
@@ -127,6 +127,10 @@ def count_introduced_since(db: Session, user_id: int, since: datetime) -> int:
     `prev_interval = 0` nhận diện chính xác lượt review đầu đời của một thẻ: thẻ mới có
     `interval_days = 0`, còn bấm Lại luôn đặt interval về 1 nên mọi lượt sau đó đều có
     `prev_interval >= 1`. Nhờ vậy không cần bảng đếm riêng.
+
+    Lọc `mode = SCHEDULED` là bắt buộc: hàng luyện chỉ chứa thẻ `repetitions >= 1` nên hôm
+    nay không dòng PRACTICE nào có `prev_interval = 0` — nhưng bất biến đó phụ thuộc vào
+    định nghĩa hàng luyện, thứ có thể đổi. Một mệnh đề WHERE làm nó không phụ thuộc nữa.
     """
     return _count(
         db,
@@ -138,22 +142,62 @@ def count_introduced_since(db: Session, user_id: int, since: datetime) -> int:
             VocabEntry.user_id == user_id,
             ReviewLog.reviewed_at >= since,
             ReviewLog.prev_interval == 0,
+            ReviewLog.mode == ReviewMode.SCHEDULED.value,
         ),
     )
 
 
 def insert_review_log(
-    db: Session, card_id: int, rating: Rating, prev_interval: int, new_interval: int
+    db: Session,
+    card_id: int,
+    rating: Rating,
+    prev_interval: int,
+    new_interval: int,
+    mode: ReviewMode,
 ) -> None:
+    """`mode` BẮT BUỘC, cố ý không có giá trị mặc định.
+
+    Đặt default `SCHEDULED` cho tiện nghĩa là mọi người gọi sau này mặc nhiên ghi lượt ôn
+    theo lịch mà không hề chọn — và ghi nhầm loại ở đây không làm gì đỏ. Bắt buộc thì mypy
+    ép từng chỗ gọi phải quyết định.
+    """
     db.add(
         ReviewLog(
             card_id=card_id,
             rating=rating.value,
             prev_interval=prev_interval,
             new_interval=new_interval,
+            mode=mode.value,
         )
     )
     db.flush()
+
+
+def find_practice_cards(
+    db: Session, user_id: int, limit: int
+) -> list[tuple[SrsCard, VocabEntry]]:
+    """Hàng luyện thêm: mọi từ đã học ít nhất một lượt, xáo ngẫu nhiên.
+
+    `state != NEW` loại thẻ chưa ôn lần nào — lượt đầu đời của một thẻ phải đi đường có
+    lịch, nếu không nó mắc kẹt ở trạng thái NEW vĩnh viễn.
+
+    Cố ý KHÔNG dùng `repetitions >= 1`: bấm "Lại" đặt `repetitions = 0` và `state =
+    RELEARNING` (`scheduler.next_schedule`), nên điều kiện đó loại nhầm đúng những thẻ người
+    dùng vừa quên — tập thẻ mà tính năng luyện thêm sinh ra để phục vụ. `state` là cột đúng
+    cho phép thử "đã học hay chưa", giống `find_due_cards` / `find_new_cards`.
+
+    KHÔNG loại thẻ đang đến hạn. Luật "mọi từ đã học" giải thích được bằng một câu, còn "mọi
+    từ đã học trừ những từ đến hạn hôm nay" thì không — và luyện một thẻ đang đến hạn không
+    làm nó biến mất khỏi hàng ôn thật, đúng như nó phải thế.
+    """
+    stmt = (
+        select(SrsCard, VocabEntry)
+        .join(VocabEntry, SrsCard.vocab_entry_id == VocabEntry.id)
+        .where(VocabEntry.user_id == user_id, SrsCard.state != CardState.NEW.value)
+        .order_by(func.random())
+        .limit(limit)
+    )
+    return [(row[0], row[1]) for row in db.execute(stmt).all()]
 
 
 def find_distractor_by_vocab(db: Session, vocab_entry_id: int) -> SrsDistractor | None:

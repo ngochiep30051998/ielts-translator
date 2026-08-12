@@ -1,6 +1,6 @@
 import type {
   AnswerResult, ApiError, AuthUser, CardDto, PageResponse, QuizExplanation, QuizItemDto,
-  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, TranslateResult,
+  QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, StatsDto, TranslateResult,
   VocabEntryDto,
 } from './types';
 
@@ -66,9 +66,35 @@ export interface SubmitReviewRequest {
   rating: Rating;
 }
 
+/** Xấp thẻ luyện thêm — mọi từ đã học, xáo ngẫu nhiên. Không có khái niệm "đến hạn". */
+export interface GetPracticeCardsRequest {
+  type: 'GET_PRACTICE_CARDS';
+  limit: number;
+}
+
+/**
+ * Một lượt luyện thêm. KHÔNG đổi lịch SM-2 — đó là toàn bộ điểm khác biệt với
+ * `SUBMIT_REVIEW`. Gửi nhầm cái này cho một lượt ôn thật thì lịch đứng yên mãi mãi.
+ */
+export interface SubmitPracticeRequest {
+  type: 'SUBMIT_PRACTICE';
+  cardId: number;
+  rating: Rating;
+}
+
 export interface GetSrsStatsRequest {
   type: 'GET_SRS_STATS';
   newLimit: number;
+}
+
+/**
+ * Thống kê tiến độ học. Không tham số: cửa sổ thời gian là hằng số phía server.
+ *
+ * Tên `GET_STATS` chứ không `GET_LEARNING_STATS` để ngắn, nhưng ĐỪNG nhầm với
+ * `GET_SRS_STATS` — cái kia trả số thẻ đến hạn cho badge, cái này trả biểu đồ.
+ */
+export interface GetStatsRequest {
+  type: 'GET_STATS';
 }
 
 export interface GenerateQuizRequest {
@@ -137,7 +163,10 @@ export type ExtensionRequest =
   | HealthRequest
   | GetDueCardsRequest
   | SubmitReviewRequest
+  | GetPracticeCardsRequest
+  | SubmitPracticeRequest
   | GetSrsStatsRequest
+  | GetStatsRequest
   | GenerateQuizRequest
   | AnswerQuizRequest
   | ExplainQuizRequest
@@ -158,7 +187,10 @@ export interface ResponseMap {
   CHECK_HEALTH: { status: string; dbConnected: boolean; geminiConfigured: boolean };
   GET_DUE_CARDS: CardDto[];
   SUBMIT_REVIEW: ReviewResponse;
+  GET_PRACTICE_CARDS: CardDto[];
+  SUBMIT_PRACTICE: null;
   GET_SRS_STATS: SrsStats;
+  GET_STATS: StatsDto;
   GENERATE_QUIZ: QuizItemDto[];
   ANSWER_QUIZ: AnswerResult;
   EXPLAIN_QUIZ: QuizExplanation;

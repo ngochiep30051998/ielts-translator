@@ -175,6 +175,36 @@ def test_on_the_cua_nguoi_khac_tra_404_va_lich_khong_doi(
     assert sau == truoc
 
 
+def test_hang_luyen_chi_chua_the_cua_minh(client: Any, hai_nguoi: HaiNguoi) -> None:
+    ra = client.get("/api/srs/practice", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    assert [c["meaningVi"] for c in ra.json()] == ["giảm nhẹ (của A)"]
+
+    rb = client.get("/api/srs/practice", headers=hai_nguoi.b.headers)
+    assert rb.status_code == 200
+    assert [c["meaningVi"] for c in rb.json()] == ["giảm nhẹ (của B)"]
+
+
+def test_luyen_the_cua_nguoi_khac_tra_404_va_khong_ghi_log(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """Kiểm cả status LẪN dữ liệu: trả 404 mà vẫn ghi log là ca tệ nhất và im lặng nhất —
+    số liệu thống kê của A sẽ nhích lên vì một thao tác đã bị từ chối."""
+    the_b = _the_cua(db, hai_nguoi.vocab_b)
+
+    resp = client.post(
+        "/api/srs/practice",
+        headers=hai_nguoi.a.headers,
+        json={"cardId": the_b, "rating": "GOOD"},
+    )
+    assert resp.status_code == 404
+
+    con_lai = db.execute(
+        text("SELECT count(*) FROM review_log WHERE card_id = :c"), {"c": the_b}
+    ).scalar_one()
+    assert con_lai == 0
+
+
 # ── quiz ──────────────────────────────────────────────────────────────────────
 
 
@@ -260,3 +290,55 @@ def test_lookup_cache_co_y_dung_chung(
     assert rb.json()["cached"] is True
     # Đúng MỘT lượt gọi Gemini cho hai người dùng.
     assert len(gemini.requests) == 1
+
+
+# ── stats ─────────────────────────────────────────────────────────────────────
+
+
+def test_stats_khong_dem_luot_on_va_quiz_cua_nguoi_khac(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """Không bảng nào trong ba câu tổng hợp có cột `user_id` — chúng phải join về
+    `vocab_entry` mới lọc được. Quên một mệnh đề join là mọi con số của A cộng cả phần của B,
+    và không có gì đỏ.
+
+    `learnedWords` là ca dễ lọt nhất: cả hai người đều có đúng một thẻ `repetitions = 3` (do
+    fixture `hai_nguoi` dựng), nên thiếu bộ lọc sẽ ra 2 thay vì 1 — một con số trông vẫn rất
+    hợp lý.
+    """
+    the_b = _the_cua(db, hai_nguoi.vocab_b)
+    for _ in range(3):
+        db.execute(
+            text(
+                "INSERT INTO review_log (card_id, rating, prev_interval, new_interval) "
+                "VALUES (:c, 'GOOD', 0, 1)"
+            ),
+            {"c": the_b},
+        )
+    item_b = _seed_free_write(db, hai_nguoi.vocab_b)
+    db.execute(
+        text(
+            "INSERT INTO quiz_attempt (quiz_item_id, user_answer, correct, score) "
+            "VALUES (:i, 'câu của B', true, 90)"
+        ),
+        {"i": item_b},
+    )
+    db.commit()
+
+    ra = client.get("/api/stats", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    a = ra.json()
+    assert a["totals"]["reviews"] == 0
+    assert a["totals"]["activeDays"] == 0
+    assert a["totals"]["learnedWords"] == 1
+    assert a["streak"]["current"] == 0
+    assert a["streak"]["lastActiveDate"] is None
+    assert a["recall"] == {"again": 0, "hard": 0, "good": 0, "easy": 0}
+    assert all(hang["attempts"] == 0 for hang in a["quiz"])
+    assert sum(diem["reviews"] for diem in a["daily"]) == 0
+
+    b = client.get("/api/stats", headers=hai_nguoi.b.headers).json()
+    assert b["totals"]["reviews"] == 3
+    assert b["totals"]["learnedWords"] == 1
+    assert b["recall"]["good"] == 3
+    assert sum(hang["attempts"] for hang in b["quiz"]) == 1

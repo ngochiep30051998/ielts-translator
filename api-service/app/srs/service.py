@@ -14,6 +14,7 @@ from app.srs.models import (
     CardDto,
     CardState,
     Rating,
+    ReviewMode,
     ReviewResponse,
     SrsCard,
     SrsDistractor,
@@ -34,7 +35,7 @@ def due(
     """
     queue = repo.find_due_cards(db, user_id, date.today(), limit)
 
-    room = min(limit - len(queue), _remaining_new_today(db, user_id, new_limit))
+    room = _new_room(db, user_id, new_limit, limit - len(queue))
     if room > 0:
         queue = queue + repo.find_new_cards(db, user_id, room)
 
@@ -47,7 +48,7 @@ def due(
 def stats(db: Session, user_id: int, new_limit: int) -> SrsStatsDto:
     due_now = repo.count_due(db, user_id, date.today())
     new_total = repo.count_by_state(db, user_id, CardState.NEW)
-    new_allowed = min(new_total, _remaining_new_today(db, user_id, new_limit))
+    new_allowed = _new_room(db, user_id, new_limit, new_total)
     return SrsStatsDto(
         due_count=due_now + new_allowed,
         new_count=new_total,
@@ -78,12 +79,47 @@ def review(db: Session, user_id: int, card_id: int, rating: Rating) -> ReviewRes
         rating=rating,
         prev_interval=prev_interval,
         new_interval=nxt.interval_days,
+        mode=ReviewMode.SCHEDULED,
     )
 
     return ReviewResponse(
         next_due_date=nxt.due_date,
         interval_days=nxt.interval_days,
         ease_factor=nxt.ease_factor,
+    )
+
+
+def practice_queue(
+    db: Session, user_id: int, limit: int, tasks: BackgroundTasks
+) -> list[CardDto]:
+    """Xấp thẻ luyện thêm. Dùng lại đúng đường bù mồi nhử của `due()` — bỏ qua sẽ làm chế độ
+    luyện im lặng không dùng được với từ chưa sinh mồi."""
+    queue = repo.find_practice_cards(db, user_id, limit)
+    by_vocab_id = _load_fresh_distractors(db, queue)
+    _request_missing(tasks, db, queue, by_vocab_id)
+    return [_to_dto(card, entry, by_vocab_id) for card, entry in queue]
+
+
+def practice(db: Session, user_id: int, card_id: int, rating: Rating) -> None:
+    """Ghi một lượt luyện thêm. KHÔNG đụng lịch.
+
+    Điều quan trọng nhất của hàm này là thứ nó KHÔNG làm: không gọi `next_schedule`, không
+    gán lại `card.*`. Đó là toàn bộ điểm khác biệt với `review()`. Thêm một dòng chạm `card`
+    ở đây là làm hỏng đúng thứ chế độ luyện thêm sinh ra để bảo vệ — ôn một thẻ 5 lần trong
+    ngày sẽ đẩy interval 1 → 6 → 15 → 37 → 92 ngày.
+    """
+    card = repo.find_owned_card(db, card_id, user_id)
+    if card is None:
+        raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy thẻ id={card_id}")
+
+    repo.insert_review_log(
+        db,
+        card_id=card.id,
+        rating=rating,
+        # Không phải số giả: lịch thật sự không đổi nên hai con số thật sự bằng nhau.
+        prev_interval=card.interval_days,
+        new_interval=card.interval_days,
+        mode=ReviewMode.PRACTICE,
     )
 
 
@@ -121,18 +157,31 @@ def _request_missing(
             requested += 1
 
 
-def _remaining_new_today(db: Session, user_id: int, new_limit: int) -> int:
-    """Hạn mức từ mới còn lại của hôm nay, không bao giờ âm.
+def _introduced_today(db: Session, user_id: int) -> int:
+    """Số thẻ MỚI đã được đưa vào học kể từ nửa đêm hôm nay.
 
-    Mốc nửa đêm tính theo giờ HỆ THỐNG (`astimezone()` gắn offset local vào), đúng như
-    `LocalDate.now().atStartOfDay(ZoneId.systemDefault())` bên Java — và cùng lý do biến TZ
-    được truyền vào container: ngày phải đổi lúc nửa đêm giờ Việt Nam. Gửi một mốc thời gian
-    KHÔNG có offset xuống Postgres thì nó tự diễn giải theo timezone của session, lệch mất
-    vài giờ mà không có gì báo.
+    Mốc nửa đêm tính theo giờ HỆ THỐNG (`astimezone()` gắn offset local vào) — cùng lý do
+    biến TZ được truyền vào container: ngày phải đổi lúc nửa đêm giờ Việt Nam. Gửi một mốc
+    thời gian KHÔNG có offset xuống Postgres thì nó tự diễn giải theo timezone của session,
+    lệch mất vài giờ mà không có gì báo.
     """
     start_of_day = datetime.combine(date.today(), time.min).astimezone()
-    introduced = repo.count_introduced_since(db, user_id, start_of_day)
-    return max(0, new_limit - introduced)
+    return repo.count_introduced_since(db, user_id, start_of_day)
+
+
+def _new_room(db: Session, user_id: int, new_limit: int, cap: int) -> int:
+    """Số thẻ MỚI còn được nhận hôm nay, đã kẹp trong `cap`.
+
+    `new_limit = 0` nghĩa là KHÔNG giới hạn — đó là cách người dùng tắt hẳn hạn mức từ ô
+    "Từ mới mỗi ngày" ở Options. Trước đây `0` nghĩa đen là "cấm học từ mới", một hành vi
+    không ai muốn và không ai dùng.
+
+    Gom hai chỗ tính vào một hàm để luật "0 là không giới hạn" chỉ tồn tại ở đúng một chỗ;
+    `due()` và `stats()` trước đây tự ghép `min()` theo hai cách hơi khác nhau.
+    """
+    if new_limit <= 0:
+        return max(0, cap)
+    return max(0, min(cap, new_limit - _introduced_today(db, user_id)))
 
 
 def _to_dto(card: SrsCard, entry: VocabEntry, by_vocab_id: dict[int, SrsDistractor]) -> CardDto:

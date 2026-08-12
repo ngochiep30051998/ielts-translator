@@ -8,6 +8,13 @@ import type { ApiError, Rating } from '../shared/types';
 
 const QUEUE_LIMIT = 50;
 
+type Mode = 'scheduled' | 'practice';
+
+/** Số thẻ xen vào trước khi thẻ vừa quên hiện lại. Tương đương "learning step" của Anki,
+ *  nhưng đo bằng số thẻ chứ không bằng phút — panel không có lịch trong ngày. */
+const RELEARN_GAP = 3;
+const PRACTICE_LIMIT = 30;
+
 export function ReviewTab() {
   // Dựng câu hỏi MỘT LẦN lúc nạp hàng đợi, không phải useMemo: useMemo là gợi ý hiệu năng,
   // React được phép vứt cache. Vứt cache ở đây nghĩa là trộn lại đáp án giữa lúc người dùng
@@ -25,13 +32,20 @@ export function ReviewTab() {
   // Mốc bắt đầu tính giờ, đặt lại mỗi khi câu hỏi đổi.
   const startedAt = useRef(Date.now());
   const container = useRef<HTMLDivElement>(null);
+  const [mode, setMode] = useState<Mode>('scheduled');
+  // Thẻ đã gửi một lượt SCHEDULED trong buổi này. Dùng ref chứ không state: giá trị này
+  // không ảnh hưởng render, và đọc nó trong handler phải luôn thấy giá trị mới nhất.
+  const scheduledSent = useRef<Set<number>>(new Set());
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextMode: Mode = 'scheduled') => {
     setLoading(true);
-    const { newWordsPerDay } = await loadSettings();
-    const response = await sendToBackground({
-      type: 'GET_DUE_CARDS', limit: QUEUE_LIMIT, newLimit: newWordsPerDay,
-    });
+    const response = nextMode === 'practice'
+      ? await sendToBackground({ type: 'GET_PRACTICE_CARDS', limit: PRACTICE_LIMIT })
+      : await sendToBackground({
+          type: 'GET_DUE_CARDS',
+          limit: QUEUE_LIMIT,
+          newLimit: (await loadSettings()).newWordsPerDay,
+        });
     if (response.ok) {
       const cards = response.data;
       setQueueSize(cards.length);
@@ -48,6 +62,12 @@ export function ReviewTab() {
       setIndex(0);
       setPicked(null);
       setError(null);
+      // `questions`, `mode` và `scheduledSent` phải đổi CÙNG NHAU, chỉ khi nạp THÀNH CÔNG.
+      // Nạp lỗi (vd bấm "Quay lại" mà GET_DUE_CARDS rớt mạng) phải giữ nguyên cả ba — đổi
+      // `mode` một mình trong khi xấp thẻ vẫn là xấp cũ làm `submit()` tính sai thẻ đang ôn
+      // là thẻ lịch, bắn nhầm SUBMIT_REVIEW cho thẻ luyện.
+      setMode(nextMode);
+      scheduledSent.current = new Set();
     } else {
       setError(response.error);
     }
@@ -68,7 +88,24 @@ export function ReviewTab() {
   async function submit(rating: Rating, cardId: number) {
     setLastRating(rating);
     setSubmitting(true);
-    const response = await sendToBackground({ type: 'SUBMIT_REVIEW', cardId, rating });
+
+    // Mỗi thẻ đóng góp NHIỀU NHẤT MỘT lượt SCHEDULED trong một buổi. Mọi lần hiện lại đều là
+    // PRACTICE.
+    //
+    // Lượt đầu đã kéo lịch về gần — đúng, đó là một lần quên. Nếu lượt thứ hai cũng gửi
+    // SUBMIT_REVIEW, nó tính tiếp từ trạng thái vừa lapse và đẩy interval lên lại, tức là trả
+    // lời đúng ở lần thứ hai xoá mất dấu vết đã quên.
+    const laLuotOnDauTien = mode === 'scheduled' && !scheduledSent.current.has(cardId);
+
+    const response = laLuotOnDauTien
+      ? await sendToBackground({ type: 'SUBMIT_REVIEW', cardId, rating })
+      : await sendToBackground({ type: 'SUBMIT_PRACTICE', cardId, rating });
+
+    // Chỉ đánh dấu khi lượt SCHEDULED THẬT SỰ tới nơi. Đánh dấu vô điều kiện làm nút "Thử
+    // lại" gửi SUBMIT_PRACTICE thay vì gửi lại SUBMIT_REVIEW — lịch SM-2 của thẻ đó im lặng
+    // không bao giờ được cập nhật trong buổi ấy.
+    if (laLuotOnDauTien && response.ok) scheduledSent.current.add(cardId);
+
     setSubmitting(false);
     setError(response.ok ? null : response.error);
   }
@@ -79,6 +116,17 @@ export function ReviewTab() {
     setPicked(optionIndex);
     const correct = optionIndex === question.correctIndex;
     await submit(ratingFor(correct, Date.now() - startedAt.current), question.card.id);
+
+    // Trả lời sai thì chèn lại thẻ để hiện lại trong CÙNG buổi, thay vì phải đợi lịch SM-2
+    // ngày mai. Chèn xen RELEARN_GAP thẻ khác ở giữa để không lặp lại ngay tức thì.
+    if (!correct) {
+      setQuestions((qs) => {
+        const at = Math.min(index + 1 + RELEARN_GAP, qs.length);
+        const next = [...qs];
+        next.splice(at, 0, question);
+        return next;
+      });
+    }
   }
 
   function next() {
@@ -118,14 +166,26 @@ export function ReviewTab() {
 
   if (!question) {
     const blocked = queueSize > 0 && questions.length === 0;
+    const isPractice = mode === 'practice';
     return (
       <div className="empty">
         <p>
           {blocked
             ? 'Chưa tạo được câu hỏi — mồi nhử đang được sinh, thử lại sau ít phút.'
-            : 'Hôm nay không còn thẻ nào đến hạn.'}
+            : isPractice
+              // Chế độ luyện không có "hạn" — chữ "đến hạn" ở đây là ngôn ngữ của chế độ
+              // theo lịch, dùng nhầm sẽ khiến người dùng tưởng mình đang ôn theo lịch.
+              ? 'Không còn từ nào để luyện thêm lúc này.'
+              : 'Hôm nay không còn thẻ nào đến hạn.'}
         </p>
-        <button type="button" onClick={() => void load()}>Tải lại</button>
+        {/* Nạp lại ĐÚNG chế độ hiện tại — `load(mode)` chứ không phải `load()` mặc định
+            'scheduled', nếu không nút này âm thầm đưa người dùng ra khỏi chế độ luyện. */}
+        <button type="button" onClick={() => void load(mode)}>Tải lại</button>
+        {isPractice ? (
+          <button type="button" onClick={() => void load('scheduled')}>Quay lại</button>
+        ) : (
+          <button type="button" onClick={() => void load('practice')}>Luyện thêm</button>
+        )}
       </div>
     );
   }
@@ -135,7 +195,24 @@ export function ReviewTab() {
   return (
     // tabIndex để div nhận được phím tắt mà không cần bắt sự kiện toàn cục
     <div className="review-tab" ref={container} tabIndex={-1} onKeyDown={onKeyDown}>
-      <p className="status">{index + 1}/{questions.length}</p>
+      {mode === 'practice' && (
+        <div className="practice-banner">
+          <span>Luyện thêm — không ảnh hưởng lịch ôn</span>
+          <button type="button" onClick={() => void load('scheduled')}>Quay lại</button>
+        </div>
+      )}
+
+      {/* Thanh tiến độ mang aria-hidden: số đếm ngay bên cạnh đã nói đúng thông tin đó,
+          đọc hai lần chỉ làm phiền người dùng trình đọc màn hình. */}
+      <div className="progress-row">
+        <div className="progress-track" aria-hidden="true">
+          <div
+            className="progress-fill"
+            style={{ width: `${((index + 1) / questions.length) * 100}%` }}
+          />
+        </div>
+        <p className="status">{index + 1}/{questions.length}</p>
+      </div>
 
       {error && lastRating && (
         <p className="status bad" role="alert">
@@ -173,23 +250,50 @@ export function ReviewTab() {
       </div>
 
       <div className="review-options">
-        {question.options.map((option, i) => (
-          <button
-            key={option}
-            type="button"
-            disabled={picked !== null}
-            className={optionClass(i, picked, question.correctIndex)}
-            onClick={() => void choose(i)}
-          >
-            {i + 1}. {option}
-          </button>
-        ))}
+        {question.options.map((option, i) => {
+          const state = optionState(i, picked, question.correctIndex);
+          return (
+            <button
+              key={option}
+              type="button"
+              disabled={picked !== null}
+              className={state ? `review-option ${state}` : 'review-option'}
+              onClick={() => void choose(i)}
+            >
+              {/* Số thứ tự CHÍNH LÀ phím tắt của ô này — vẽ như một phím để người dùng
+                  thấy có đường tắt, thay vì giấu nó trong câu trả lời. */}
+              <span className="option-key">{i + 1}</span>
+              <span className="option-text">{option}</span>
+              {state && (
+                <>
+                  {/* Dấu để mắt bắt được trạng thái mà không cần phân biệt đỏ với xanh lá,
+                      kèm chữ cho trình đọc màn hình vì màu không nói được gì với nó. */}
+                  <span className="option-mark" aria-hidden="true">
+                    {state === 'correct' ? '✓' : '✗'}
+                  </span>
+                  <span className="sr-only">
+                    {state === 'correct' ? 'Đáp án đúng' : 'Bạn chọn ô này, sai'}
+                  </span>
+                </>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {picked === null && (
+        <p className="review-hint">
+          Bấm <kbd>1</kbd>–<kbd>{question.options.length}</kbd> để chọn nhanh
+        </p>
+      )}
 
       {picked !== null && (
         <>
           <div className="review-back">
-            <p className="vi">{card.term} — {card.meaningVi}</p>
+            {/* Hai dòng chứ không nối bằng gạch ngang: đây là hai trường dữ liệu khác
+                nhau, xếp chồng thì mắt tách được ngay mà không phải đọc qua dấu nối. */}
+            <p className="review-back-term">{card.term}</p>
+            <p className="vi">{card.meaningVi}</p>
             {card.pos && <span className="meta">{card.pos}</span>}
             {card.cefr && <span className="meta">{card.cefr}</span>}
             {card.bandLevel && (
@@ -210,9 +314,13 @@ export function ReviewTab() {
 }
 
 /** Chỉ tô màu sau khi đã chọn: đáp án đúng luôn xanh, ô chọn sai thì đỏ. */
-function optionClass(index: number, picked: number | null, correctIndex: number): string {
-  if (picked === null) return 'review-option';
-  if (index === correctIndex) return 'review-option correct';
-  if (index === picked) return 'review-option wrong';
-  return 'review-option';
+function optionState(
+  index: number,
+  picked: number | null,
+  correctIndex: number,
+): 'correct' | 'wrong' | null {
+  if (picked === null) return null;
+  if (index === correctIndex) return 'correct';
+  if (index === picked) return 'wrong';
+  return null;
 }

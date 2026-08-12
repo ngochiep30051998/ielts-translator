@@ -204,3 +204,61 @@ export interface AuthUser {
   displayName: string | null;
   pictureUrl: string | null;
 }
+
+/** Một ô ngày trong `daily`. `reviews: 0` là "ngày đó không ôn", không phải thiếu dữ liệu. */
+export interface DailyPoint {
+  date: string;
+  reviews: number;
+  /**
+   * Số lượt luyện thêm trong ngày. Field RIÊNG chứ không cộng vào `reviews`: `reviews` giữ
+   * nguyên nghĩa "lượt ôn theo lịch", và streak chỉ đếm nó.
+   */
+  practice: number;
+}
+
+export interface StreakInfo {
+  current: number;
+  longest: number;
+  lastActiveDate: string | null;
+}
+
+export interface StatsTotals {
+  reviews: number;
+  learnedWords: number;
+  activeDays: number;
+}
+
+/** Số lượt THÔ theo 4 mức tự chấm. Tỉ lệ nhớ = `1 − again/tổng`, tính ở chỗ hiển thị. */
+export interface RecallBreakdown {
+  again: number;
+  hard: number;
+  good: number;
+  easy: number;
+}
+
+/**
+ * `avgScore` là null với FILL_BLANK và COLLOCATION_CHOICE — hai loại đó chấm 100 hoặc 0 nên
+ * điểm trung bình không mang thông tin gì mới. null nghĩa là "loại này không có khái niệm
+ * điểm", KHÔNG phải "chưa có dữ liệu".
+ */
+export interface QuizTypeStats {
+  type: QuizType;
+  attempts: number;
+  correct: number;
+  avgScore: number | null;
+}
+
+/**
+ * Gương của StatsDto phía backend.
+ *
+ * Hai bất biến mà UI dựa vào: `daily` LUÔN đúng 91 phần tử liên tục kết thúc ở hôm nay (theo
+ * múi giờ của server, không phải của trình duyệt), và `quiz` LUÔN đủ 3 phần tử theo thứ tự
+ * FILL_BLANK, COLLOCATION_CHOICE, FREE_WRITE.
+ */
+export interface StatsDto {
+  streak: StreakInfo;
+  totals: StatsTotals;
+  daily: DailyPoint[];
+  recall: RecallBreakdown;
+  quiz: QuizTypeStats[];
+}

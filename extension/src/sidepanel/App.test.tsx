@@ -161,12 +161,12 @@ describe('App', () => {
       expect(await screen.findByRole('tab', { name: 'Dịch' })).toBeInTheDocument();
     });
 
-    it('đăng nhập rồi thì hiện email và đủ bốn tab', async () => {
+    it('đăng nhập rồi thì hiện email và đủ năm tab', async () => {
       mockBackend(null);
       render(<App />);
 
       expect(await screen.findByText('hiep@test.local')).toBeInTheDocument();
-      expect(screen.getAllByRole('tab')).toHaveLength(4);
+      expect(screen.getAllByRole('tab')).toHaveLength(5);
     });
 
     it('không lấy được trạng thái cũng coi như chưa đăng nhập, không treo màn trắng', async () => {
@@ -219,5 +219,15 @@ describe('App', () => {
       // FORBIDDEN là trạng thái vĩnh viễn — bấm lại mười lần vẫn thế.
       expect(alert).not.toHaveTextContent('thử lại');
     });
+  });
+
+  it('có tab Thống kê và bấm vào thì chuyển sang đó', async () => {
+    mockBackend(null);
+    render(<App />);
+
+    const tab = await screen.findByRole('tab', { name: 'Thống kê' });
+    await userEvent.click(tab);
+
+    expect(tab).toHaveAttribute('aria-selected', 'true');
   });
 });

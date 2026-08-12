@@ -16,7 +16,10 @@ const api = {
   deleteVocab: vi.fn(),
   getDueCards: vi.fn(),
   submitReview: vi.fn(),
+  getPracticeCards: vi.fn(),
+  submitPractice: vi.fn(),
   srsStats: vi.fn(),
+  learningStats: vi.fn(),
   generateQuiz: vi.fn(),
   answerQuiz: vi.fn(),
   explainQuiz: vi.fn(),
@@ -140,12 +143,43 @@ describe('service worker', () => {
       expect(response).toMatchObject({ ok: true, data: { intervalDays: 1 } });
     });
 
+    it('SUBMIT_PRACTICE gọi submitPractice và KHÔNG đụng badge', async () => {
+      await loadServiceWorker();
+      api.submitPractice.mockResolvedValue(null);
+
+      const response = await send({ type: 'SUBMIT_PRACTICE', cardId: 7, rating: 'GOOD' });
+
+      expect(api.submitPractice).toHaveBeenCalledWith({ cardId: 7, rating: 'GOOD' });
+      expect(response).toEqual({ ok: true, data: null });
+      // Luyện thêm KHÔNG đổi lịch, nên số thẻ đến hạn không thể đổi.
+      expect(refreshBadge).not.toHaveBeenCalled();
+    });
+
     it('GET_SRS_STATS xuống srsStats kèm newLimit', async () => {
       await loadServiceWorker();
 
       await send({ type: 'GET_SRS_STATS', newLimit: 30 });
 
       expect(api.srsStats).toHaveBeenCalledWith(30);
+    });
+
+    it('GET_STATS gọi learningStats và KHÔNG đụng badge', async () => {
+      const STATS = {
+        streak: { current: 1, longest: 1, lastActiveDate: '2026-08-11' },
+        totals: { reviews: 1, learnedWords: 1, activeDays: 1 },
+        daily: [],
+        recall: { again: 0, hard: 0, good: 1, easy: 0 },
+        quiz: [],
+      };
+      api.learningStats.mockResolvedValue(STATS);
+      await loadServiceWorker();
+
+      const response = await send({ type: 'GET_STATS' });
+
+      expect(api.learningStats).toHaveBeenCalled();
+      expect(response).toEqual({ ok: true, data: STATS });
+      // Thống kê là màn CHỈ ĐỌC: số thẻ đến hạn không thể đổi vì một lượt xem biểu đồ.
+      expect(refreshBadge).not.toHaveBeenCalled();
     });
 
     it('lỗi từ ApiClient trả về dạng { ok: false, error }', async () => {

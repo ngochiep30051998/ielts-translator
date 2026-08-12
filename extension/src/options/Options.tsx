@@ -38,7 +38,7 @@ export function Options() {
 
   return (
     <main className="options">
-      <h1>IELTS Translator — Cài đặt</h1>
+      <h1>Cài đặt IELTS Translator</h1>
 
       <label htmlFor="backendUrl">Địa chỉ backend</label>
       <input
@@ -72,7 +72,7 @@ export function Options() {
         </div>
       </fieldset>
 
-      <label htmlFor="newWordsPerDay">Từ mới mỗi ngày</label>
+      <label htmlFor="newWordsPerDay">Từ mới mỗi ngày (0 = không giới hạn)</label>
       <input
         id="newWordsPerDay"
         type="number"
