@@ -15,11 +15,15 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, computed_field
+from pydantic import AliasChoices, Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 API_SERVICE_ROOT = Path(__file__).resolve().parent.parent
+
+#: Múi giờ mặc định. Là hằng số vì cả `Field(default=...)` lẫn nhánh bỏ qua giá trị rác của
+#: nền tảng (xem `_bo_qua_tz_cua_nen_tang`) đều phải rơi về đúng một giá trị.
+TZ_MAC_DINH = "Asia/Ho_Chi_Minh"
 
 
 class Settings(BaseSettings):
@@ -95,7 +99,27 @@ class Settings(BaseSettings):
     # Lịch ôn tính "hôm nay" theo giờ hệ thống. Không có biến này thì container chạy UTC và
     # ngày ôn đổi lúc 07:00 sáng giờ VN thay vì nửa đêm — hạn mức từ mới/ngày và due_date
     # lệch theo.
-    tz: str = Field(default="Asia/Ho_Chi_Minh", alias="TZ")
+    #
+    # HAI tên, thứ tự có ý nghĩa. `TZ` là tên chuẩn POSIX nên Docker cần đúng nó (compose
+    # truyền vào để chỉnh cả đồng hồ container), nhưng trên Vercel chính vì thế mà nó là tên
+    # BỊ GIỮ CHỖ: dashboard từ chối tạo biến `TZ`, còn AWS Lambda bên dưới thì tự đặt sẵn
+    # `TZ=:UTC`. `APP_TZ` là lối thoát duy nhất ở đó, nên nó phải đứng trước.
+    tz: str = Field(default=TZ_MAC_DINH, validation_alias=AliasChoices("APP_TZ", "TZ"))
+
+    @field_validator("tz")
+    @classmethod
+    def _bo_qua_tz_cua_nen_tang(cls, gia_tri: str) -> str:
+        """Giá trị bắt đầu bằng `:` là của Lambda, không phải của người dùng.
+
+        `:UTC` là dạng POSIX ("đọc file zoneinfo tên UTC"), không phải key IANA — `ZoneInfo`
+        ném `ZoneInfoNotFoundError` và `/api/stats` trả 500.
+
+        Cố ý KHÔNG cắt dấu `:` để lấy `UTC`: chuỗi đó hợp lệ nên app sẽ chạy tiếp mà "hôm nay"
+        lệch 7 tiếng so với giờ VN — heatmap trỏ sai ô và streak đứt sai ngày trong 7 giờ mỗi
+        ngày, không có lỗi nào bật lên. Quay về mặc định là hành vi hỏng-thì-thấy-ngay.
+        """
+        sach = gia_tri.strip()
+        return TZ_MAC_DINH if not sach or sach.startswith(":") else sach
 
     @computed_field  # type: ignore[prop-decorator]
     @property

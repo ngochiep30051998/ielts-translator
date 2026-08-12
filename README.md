@@ -166,7 +166,8 @@ không hardcode thông số nào nữa:
 | `GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS` | `30` | Sinh một lô câu hỏi — output dài hơn nên lâu hơn |
 | `GEMINI_QUIZ_GRADE_TIMEOUT_SECONDS` | `20` | Chấm một bài tự viết |
 | `GEMINI_RETRY_BACKOFF_MS` | `1000` | |
-| `TZ` | `Asia/Ho_Chi_Minh` | Quyết định "hôm nay" của lịch ôn. Container mặc định UTC → thiếu biến này thì ngày ôn đổi lúc 07:00 thay vì nửa đêm |
+| `TZ` | `Asia/Ho_Chi_Minh` | Quyết định "hôm nay" của lịch ôn. Container mặc định UTC → thiếu biến này thì ngày ôn đổi lúc 07:00 thay vì nửa đêm. **Không dùng được trên Vercel** — xem `APP_TZ` |
+| `APP_TZ` | (rỗng) | Tên thứ hai của `TZ`, ưu tiên cao hơn. Chỉ cần trên Vercel: ở đó `TZ` là tên bị nền tảng giữ chỗ (dashboard từ chối tạo) còn Lambda bên dưới tự đặt `TZ=:UTC`, nên không có `APP_TZ` thì lịch ôn im lặng quay về mặc định |
 | `AUTH_GOOGLE_CLIENT_ID` | (bắt buộc) | OAuth client kiểu **Web application** |
 | `AUTH_GOOGLE_CLIENT_SECRET` | (bắt buộc) | **Chỉ ở backend.** Không bao giờ vào bundle extension |
 | `AUTH_ALLOWED_EMAILS` | (rỗng) | Danh sách email được phép, ngăn cách bằng dấu phẩy. **Rỗng = khoá hết** |

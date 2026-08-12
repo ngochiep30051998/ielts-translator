@@ -110,7 +110,7 @@ lẫn `requirements.txt`.
 | `AUTH_ALLOWED_EMAILS` | như `.env` — **rỗng = khoá hết**, cố ý |
 | `AUTH_SESSION_DAYS` | `60` |
 | `AUTH_DAILY_GEMINI_CALLS` | `300` |
-| `TZ` | `Asia/Ho_Chi_Minh` — quyết định "hôm nay" của lịch ôn |
+| `APP_TZ` | `Asia/Ho_Chi_Minh` — quyết định "hôm nay" của lịch ôn. **`APP_TZ` chứ không phải `TZ`**, xem dưới |
 | `GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS` | **`25`** — xem dưới |
 
 Hai thứ **không** cần đặt: `DB_HOST`/`DB_PORT`/… (đã có `DATABASE_URL`) và `VERCEL` (nền
@@ -119,7 +119,26 @@ tảng tự gán).
 `AUTH_BOOTSTRAP_EMAIL` cũng không cần — nó chỉ dùng lúc chạy migration, mà migration thì đã
 áp ở bước 1.3.
 
-### 2.3 Vì sao phải hạ timeout sinh quiz xuống 25
+### 2.3 Vì sao là `APP_TZ` chứ không phải `TZ`
+
+Thử đặt `TZ` trên dashboard sẽ bị từ chối: *"The name of your Environment Variable is
+reserved"* — kể cả khi project chưa có biến nào tên đó. `TZ` là biến chuẩn POSIX nên nền tảng
+giữ lại cho mình: AWS Lambda bên dưới **tự đặt** `TZ=:UTC`, dạng POSIX có dấu hai chấm đầu chứ
+không phải key IANA.
+
+Hậu quả nếu backend đọc thẳng biến đó: `ZoneInfo(":UTC")` ném `ZoneInfoNotFoundError` và
+`GET /api/stats` trả 500, trong khi mọi endpoint khác vẫn chạy — nên triệu chứng trông giống
+lỗi của riêng tính năng thống kê chứ không giống lỗi cấu hình.
+
+Vì vậy `config.py` nhận **hai** tên cho cùng một mục, ưu tiên `APP_TZ` (`AliasChoices`), và bỏ
+qua mọi giá trị bắt đầu bằng `:` để quay về mặc định `Asia/Ho_Chi_Minh`. Không đặt `APP_TZ`
+thì vẫn chạy đúng giờ VN — chỉ mất khả năng đổi múi giờ. Đường Docker không đổi gì: compose
+vẫn truyền `TZ`.
+
+Gói `tzdata` nằm trong `requirements.txt` vì cùng một sự cố: `zoneinfo` đọc file hệ thống ở
+/usr/share/zoneinfo và image serverless không đảm bảo có sẵn.
+
+### 2.4 Vì sao phải hạ timeout sinh quiz xuống 25
 
 `vercel.json` khai `maxDuration: 60` — đó là **trần của gói Hobby**, không nâng được.
 
@@ -134,7 +153,7 @@ cho Docker vì ở đó không có `maxDuration`.
 `tests/test_deploy_readiness.py::test_max_duration_khai_tuong_minh_va_du_cho_mot_timeout_dung_duoc`
 canh quan hệ này — sửa `MAX_ATTEMPTS` hay `maxDuration` mà quên chỗ kia thì test đỏ.
 
-### 2.4 Deploy
+### 2.5 Deploy
 
 ```bash
 uv run --directory api-service --with vercel-cli vercel --prod
@@ -142,7 +161,7 @@ uv run --directory api-service --with vercel-cli vercel --prod
 
 hoặc nối GitHub repo trong dashboard.
 
-### 2.5 Kiểm
+### 2.6 Kiểm
 
 ```bash
 curl https://<project>.vercel.app/api/health

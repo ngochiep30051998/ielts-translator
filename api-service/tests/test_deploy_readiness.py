@@ -147,6 +147,24 @@ def test_requirements_txt_phu_du_phu_thuoc_runtime() -> None:
     assert thua == set(), f"requirements.txt có {sorted(thua)} mà pyproject.toml không khai."
 
 
+def test_tzdata_nam_trong_phu_thuoc_runtime() -> None:
+    """`zoneinfo` không tự mang dữ liệu múi giờ — nó đọc file hệ thống.
+
+    Máy dev và image Docker đều có sẵn /usr/share/zoneinfo nên gỡ gói này ra thì mọi test ở
+    đây vẫn xanh; chỗ duy nhất nó vắng mặt là image serverless, và triệu chứng là
+    `ModuleNotFoundError: No module named 'tzdata'` nằm trong log dashboard chứ không ở đâu
+    khác. Đó là lý do ràng buộc này phải là một assertion tường minh, không phải một dòng
+    comment trong `pyproject.toml`.
+    """
+    pyproject = tomllib.loads((GOC / "pyproject.toml").read_text("utf-8"))
+    runtime = {_ten_goi(d) for d in pyproject["project"]["dependencies"]}
+
+    assert "tzdata" in runtime, (
+        "Thiếu tzdata thì ZoneInfo(settings.tz) ném ZoneInfoNotFoundError trên Vercel — "
+        "/api/stats trả 500 dù chạy local hoàn toàn bình thường."
+    )
+
+
 # ── đóng gói cho Vercel ───────────────────────────────────────────────────────
 
 

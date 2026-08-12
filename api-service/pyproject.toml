@@ -14,11 +14,18 @@ dependencies = [
     "sqlalchemy>=2.0",          # truy cập DB, thay JPA/Hibernate
     "psycopg[binary]>=3.2",     # driver — xem ghi chú (a) dưới đây
     "httpx>=0.27",              # gọi Gemini và Google, thay RestClient
+    "tzdata>=2024.2",           # dữ liệu múi giờ — xem ghi chú (b) dưới đây
 ]
 
 # (a) psycopg v3 chứ không asyncpg: asyncpg mặc định dùng prepared statement, mà Supavisor
 #     ở transaction mode (chế độ dành cho serverless) không hỗ trợ. Triệu chứng là lỗi rời
 #     rạc dưới tải — loại khó lần nhất.
+#
+# (b) tzdata: `zoneinfo` của stdlib KHÔNG mang theo dữ liệu múi giờ, nó đọc file hệ thống ở
+#     /usr/share/zoneinfo và chỉ fallback sang gói này khi không thấy. Máy dev và image Docker
+#     đều có sẵn file đó nên thiếu gói này chạy local vẫn ngon; image serverless của Vercel thì
+#     không đảm bảo — triệu chứng đã gặp thật là `/api/stats` trả 500 kèm
+#     `ModuleNotFoundError: No module named 'tzdata'` trong log dashboard.
 
 # Tên lệnh ngắn cho CLI. `uv run ielts-api --reload` thay cho
 # `.venv/bin/python -m app --reload`.

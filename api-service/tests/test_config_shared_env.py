@@ -19,6 +19,8 @@ import re
 from collections.abc import Iterator
 
 import pytest
+from pydantic import AliasChoices
+from pydantic.fields import FieldInfo
 
 from app.config import REPO_ROOT, Settings
 
@@ -47,6 +49,10 @@ NGOAI_ENV_EXAMPLE = {
     "AUTH_GOOGLE_TOKEN_URL",
     # Do CHÍNH nền tảng đặt (`VERCEL=1` trong mọi function), không phải thứ người dùng khai.
     "VERCEL",
+    # Tên thứ hai của `TZ`, chỉ dùng trên Vercel: dashboard ở đó từ chối biến tên `TZ` (tên bị
+    # giữ chỗ) trong khi Lambda bên dưới tự đặt `TZ=:UTC`. Không đưa vào `.env.example` vì
+    # đường Docker/local vẫn khai `TZ` như cũ — hai tên trong file mẫu chỉ gây phân vân.
+    "APP_TZ",
 }
 
 
@@ -54,8 +60,28 @@ def _bien_env_example() -> set[str]:
     return set(_KHAI_BAO.findall(ENV_EXAMPLE.read_text("utf-8")))
 
 
+def _bi_danh(f: FieldInfo) -> list[str]:
+    """Mọi tên biến môi trường mà một field chấp nhận.
+
+    Không chỉ `f.alias`: một field có thể nhận NHIỀU tên qua `AliasChoices` (`tz` nhận cả
+    `APP_TZ` lẫn `TZ`). Chỉ đọc `f.alias` thì các tên còn lại vô hình với mọi test dưới đây —
+    tức là chốt chặn "config.py và .env.example nói cùng một bộ biến" thủng đúng ở chỗ vừa
+    thêm biến mới.
+    """
+    va = f.validation_alias
+    if isinstance(va, AliasChoices):
+        return [chon for chon in va.choices if isinstance(chon, str)]
+    if isinstance(va, str):
+        return [va]
+    return [f.alias] if f.alias else []
+
+
 def _alias_settings() -> dict[str, str]:
-    return {f.alias.upper(): ten for ten, f in Settings.model_fields.items() if f.alias}
+    return {
+        bi_danh.upper(): ten
+        for ten, f in Settings.model_fields.items()
+        for bi_danh in _bi_danh(f)
+    }
 
 
 @pytest.fixture

@@ -112,6 +112,7 @@ Bốn tổ hợp direction × mode sinh ra **bốn hình dạng payload JSON kh�
 - **`DB_PORT`/`APP_PORT` chỉ đổi cổng publish trên host.** Trong mạng compose db luôn 5432, api-service luôn 8080.
 - **`--reload` không nạp lại `prompts/`.** `PromptLoader` nhớ kết quả parse trong bộ nhớ tiến trình. Sửa prompt thì khởi động lại tay.
 - **`reload_dirs` cố ý chỉ trỏ `app/`.** Không giới hạn thì watcher soi cả `.venv` (hàng chục nghìn file) và trên macOS chạm trần số file mở được.
+- **Trên Vercel múi giờ đặt bằng `APP_TZ`, không phải `TZ`.** `TZ` là tên bị nền tảng giữ chỗ — dashboard từ chối tạo ("The name of your Environment Variable is reserved") trong khi Lambda bên dưới tự đặt `TZ=:UTC` (dạng POSIX, không phải key IANA). `config.py` nhận cả hai tên qua `AliasChoices("APP_TZ", "TZ")` và bỏ qua mọi giá trị bắt đầu bằng `:`. Đừng "sửa gọn" thành cắt dấu `:` lấy `UTC`: chuỗi đó hợp lệ nên lịch ôn lệch 7 tiếng mà không lỗi gì. `tzdata` nằm trong dependency runtime vì cùng lý do — `zoneinfo` đọc file hệ thống, image serverless không đảm bảo có.
 - **`VERCEL=1` do Vercel tự gán, đừng tự đặt.** `api-service` đọc nó để chuyển sang `NullPool` và tắt prepared statement — bắt buộc với Supavisor transaction mode.
 
 ## Ranh giới làm việc

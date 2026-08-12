@@ -140,6 +140,7 @@ body {
 /* ---------- Nút phụ: có mặt nhưng không mời gọi ---------- */
 .empty button,
 .vocab-toolbar button,
+.vocab-pager button,
 .login-button,
 .review-next,
 .quiz-submit,
@@ -159,6 +160,7 @@ body {
 }
 .empty button:hover:not(:disabled),
 .vocab-toolbar button:hover:not(:disabled),
+.vocab-pager button:hover:not(:disabled),
 .login-button:hover:not(:disabled),
 .review-next:hover:not(:disabled),
 .quiz-submit:hover:not(:disabled),
@@ -170,6 +172,7 @@ body {
 }
 .empty button:active:not(:disabled),
 .vocab-toolbar button:active:not(:disabled),
+.vocab-pager button:active:not(:disabled),
 .login-button:active:not(:disabled),
 .review-next:active:not(:disabled),
 .quiz-submit:active:not(:disabled),
@@ -177,6 +180,7 @@ body {
 
 .empty button:focus-visible,
 .vocab-toolbar button:focus-visible,
+.vocab-pager button:focus-visible,
 .login-button:focus-visible,
 .review-next:focus-visible,
 .quiz-submit:focus-visible,
@@ -185,6 +189,7 @@ body {
 
 .empty button:disabled,
 .vocab-toolbar button:disabled,
+.vocab-pager button:disabled,
 .login-button:disabled,
 .review-next:disabled,
 .quiz-submit:disabled,
@@ -476,6 +481,45 @@ body {
    ============================================================ */
 .vocab-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
 .vocab-toolbar input { flex: 1; min-width: 0; }
+
+/* Dãy tối đa 7 ô số + 2 mũi tên. Mọi ô rộng bằng nhau và KHÔNG co giãn: để chiều rộng chạy
+   theo nội dung thì dãy nhấp nhổm mỗi lần đổi trang ("1" hẹp hơn "40"), và ô một chữ số
+   thành mục tiêu bấm quá nhỏ. `justify-content: center` giữ dãy cân giữa khi thừa chỗ. */
+.vocab-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Dãy rộng nhất (7 ô số + 2 mũi tên, không có dấu …) là 9×32 + 8×4 = 320px, cần panel
+     rộng ~352px. Chrome cho kéo side panel hẹp hơn thế, nên `wrap` là lưới chặn: hẹp quá
+     thì dãy xuống hai dòng, thay vì tràn ngang và đẩy cả tab lệch. */
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+.vocab-pager button {
+  flex: 0 0 auto;
+  min-width: 32px;
+  padding: 7px 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Trang đang xem: đảo màu để nổi hẳn khỏi các ô còn lại, không chỉ dựa vào sắc độ nhạt.
+   Cần cả nhánh :hover — `.vocab-pager button:hover:not(:disabled)` ở khối nút phụ phía trên
+   có specificity cao hơn, không chặn lại thì rê chuột qua là ô hiện tại mất màu. */
+.vocab-pager button[aria-current="page"],
+.vocab-pager button[aria-current="page"]:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 650;
+}
+.vocab-pager-gap {
+  flex: 0 0 auto;
+  padding: 0 1px;
+  color: var(--text-3);
+  font-size: 13px;
+  user-select: none;
+}
 
 .vocab-list { margin: 0; padding: 0; list-style: none; }
 .vocab-item {
