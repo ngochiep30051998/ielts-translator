@@ -87,6 +87,26 @@ describe('Options', () => {
     expect(await screen.findByLabelText(/Từ mới mỗi ngày \(0 = không giới hạn\)/)).toBeInTheDocument();
   });
 
+  it('có ba lựa chọn giao diện, mặc định theo hệ điều hành', async () => {
+    render(<Options />);
+
+    expect(await screen.findByRole('radio', { name: /Theo hệ thống/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^Sáng$/i })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: /^Tối$/i })).not.toBeChecked();
+  });
+
+  it('chọn giao diện là lưu và áp ngay, không cần bấm Lưu', async () => {
+    render(<Options />);
+    await screen.findByRole('radio', { name: /Theo hệ thống/i });
+
+    await userEvent.click(screen.getByRole('radio', { name: /^Tối$/i }));
+
+    // Áp ngay lên thẻ gốc…
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
+    // …và đã nằm trong storage mà không phải bấm Lưu.
+    expect((await loadSettings()).theme).toBe('dark');
+  });
+
   it('cảnh báo khi backend chạy nhưng chưa cấu hình Gemini API key', async () => {
     (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true, data: { status: 'UP', dbConnected: true, geminiConfigured: false },

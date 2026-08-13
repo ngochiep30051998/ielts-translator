@@ -82,6 +82,18 @@ bài ôn tạm mượn nghĩa của các từ khác trong hàng đợi, bộ th�
 Số từ **mới** mỗi ngày mặc định giới hạn 30, đổi trong Options. Thẻ đã đến hạn
 không bị giới hạn — đến hạn bao nhiêu hiện bấy nhiêu.
 
+## Giao diện sáng/tối
+
+Options có ba lựa chọn: **Theo hệ thống** (mặc định), **Sáng**, **Tối**. Chọn là đổi ngay,
+không phải bấm Lưu, và áp cho cả side panel, trang Options lẫn bubble dịch trên trang web.
+
+Lựa chọn được lưu trong `chrome.storage.local`; `shared/theme.ts` phân giải nó ra
+`light`/`dark` rồi gắn `<html data-theme="…">`. **CSS không tự hỏi `prefers-color-scheme`
+nữa** — nhờ vậy bộ token tối chỉ tồn tại ở đúng một chỗ (`:root[data-theme="dark"]` trong
+`sidepanel/styles.css`). Bubble là ngoại lệ về cách áp: nó sống trong Shadow DOM trên
+trang của người khác nên nhận chế độ qua `setBubbleTheme` và tự đặt lên host của mình,
+không được đụng vào `<html>` của trang đó.
+
 ## Quiz
 
 Mở side panel → tab **Quiz**. Chọn **số câu** (mặc định 10) và tick loại muốn làm,

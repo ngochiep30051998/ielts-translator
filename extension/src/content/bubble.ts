@@ -1,6 +1,21 @@
 import { BUBBLE_CSS } from './bubble.css';
+import type { ResolvedTheme } from '../shared/theme';
 
 export const BUBBLE_HOST_ID = 'ielts-translator-bubble-host';
+
+/** Chế độ màu của bubble. Bubble được dựng lại mỗi lần hiện, nên biến này là nơi duy nhất
+ *  nhớ được lựa chọn giữa hai lần dựng. Mặc định sáng cho tới khi `content/index.ts` đọc
+ *  xong cài đặt. */
+let bubbleTheme: ResolvedTheme = 'light';
+
+/** Đặt chế độ màu cho bubble. Cập nhật luôn bubble ĐANG hiện — người dùng đổi giao diện ở
+ *  trang Options trong lúc một bubble còn trên màn hình thì nó phải đổi theo ngay, chứ
+ *  không nằm sai màu tới lần dịch sau. */
+export function setBubbleTheme(theme: ResolvedTheme): void {
+  bubbleTheme = theme;
+  const host = document.getElementById(BUBBLE_HOST_ID);
+  if (host) host.dataset.theme = theme;
+}
 
 export interface BubbleHandlers {
   onSpeak(): void;
@@ -40,6 +55,7 @@ function mountShadow(): ShadowRoot {
   hideBubble();
   const host = document.createElement('div');
   host.id = BUBBLE_HOST_ID;
+  host.dataset.theme = bubbleTheme;
   document.body.appendChild(host);
 
   const root = host.attachShadow({ mode: 'open' });

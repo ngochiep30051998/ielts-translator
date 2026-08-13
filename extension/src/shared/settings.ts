@@ -1,4 +1,5 @@
 import { normaliseBackendUrl } from './backend-url';
+import type { Theme } from './theme';
 
 export type TriggerMode = 'auto' | 'hotkey';
 
@@ -8,6 +9,8 @@ export interface Settings {
   voiceName: string | null;
   /** Số thẻ MỚI tối đa được đưa vào hàng đợi ôn mỗi ngày. */
   newWordsPerDay: number;
+  /** Chế độ màu. `'system'` để giao diện đi theo hệ điều hành. */
+  theme: Theme;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -17,9 +20,11 @@ export const DEFAULT_SETTINGS: Settings = {
   triggerMode: 'auto',
   voiceName: null,
   newWordsPerDay: 30,
+  theme: 'system',
 };
 
 const STORAGE_KEY = 'settings';
+const THEMES: readonly Theme[] = ['system', 'light', 'dark'];
 const MAX_NEW_WORDS_PER_DAY = 200;
 
 /** Giá trị lạ (NaN, chuỗi, undefined) quay về mặc định thay vì lọt xuống backend. */
@@ -37,6 +42,9 @@ function normalise(raw: Partial<Settings>): Settings {
     triggerMode: merged.triggerMode === 'hotkey' ? 'hotkey' : 'auto',
     voiceName: merged.voiceName ?? null,
     newWordsPerDay: normaliseNewWordsPerDay(merged.newWordsPerDay),
+    // Cài đặt lưu từ bản chưa có tính năng này không mang field `theme`, nên phải chịu
+    // được giá trị thiếu lẫn giá trị lạ — cả hai đều lui về `'system'`.
+    theme: THEMES.includes(merged.theme) ? merged.theme : 'system',
   };
 }
 

@@ -2,8 +2,9 @@ import { extractContextSentence } from './selection';
 import { validateSelection } from '../shared/text';
 import {
   showLoadingBubble, showResultBubble, showNoticeBubble, showErrorBubble, showIconBubble,
-  hideBubble, BUBBLE_HOST_ID,
+  hideBubble, setBubbleTheme, BUBBLE_HOST_ID,
 } from './bubble';
+import { watchThemeChoice } from '../shared/theme-boot';
 import { sendToBackground } from '../shared/messages';
 import { shortMeaning } from '../shared/summary';
 import { loadSettings } from '../shared/settings';
@@ -167,3 +168,7 @@ document.addEventListener('mousedown', (event) => {
 chrome.runtime.onMessage.addListener((message: { type?: string }) => {
   if (message?.type === 'HOTKEY_TRANSLATE') void translateCurrentSelection();
 });
+
+// Bubble theo chế độ màu người dùng chọn trong Options. `watchThemeChoice` chỉ báo chế độ
+// qua callback — nó KHÔNG chạm `<html>`, vì ở đây `<html>` là của trang người khác.
+void watchThemeChoice(setBubbleTheme);

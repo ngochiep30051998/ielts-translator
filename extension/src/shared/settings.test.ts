@@ -75,4 +75,20 @@ describe('settings', () => {
     const settings = await saveSettings({ newWordsPerDay: Number.NaN });
     expect(settings.newWordsPerDay).toBe(30);
   });
+
+  it('mặc định để giao diện đi theo hệ điều hành', () => {
+    expect(DEFAULT_SETTINGS.theme).toBe('system');
+  });
+
+  it('lưu được cả ba lựa chọn giao diện', async () => {
+    expect((await saveSettings({ theme: 'dark' })).theme).toBe('dark');
+    expect((await saveSettings({ theme: 'light' })).theme).toBe('light');
+    expect((await saveSettings({ theme: 'system' })).theme).toBe('system');
+  });
+
+  it('giá trị giao diện lạ quay về theo hệ điều hành', async () => {
+    // Cài đặt cũ lưu trước khi có tính năng này, hoặc storage bị sửa tay.
+    const settings = await saveSettings({ theme: 'xanh lá' as never });
+    expect(settings.theme).toBe('system');
+  });
 });

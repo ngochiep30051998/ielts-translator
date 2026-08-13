@@ -4,6 +4,22 @@ import { vi } from 'vitest';
 // chrome.storage.local giả lập bằng Map, đủ cho mọi test Phase 1
 const store = new Map<string, unknown>();
 
+type StorageListener = (
+  changes: Record<string, { newValue?: unknown; oldValue?: unknown }>,
+  areaName: string,
+) => void;
+
+/** Listener của `chrome.storage.onChanged`. Test bắn sự kiện qua `emitStorageChange`. */
+const storageListeners = new Set<StorageListener>();
+
+/** Giả lập một lượt storage đổi — dùng để test đồng bộ cài đặt giữa các surface. */
+export function emitStorageChange(
+  changes: Record<string, { newValue?: unknown; oldValue?: unknown }>,
+  areaName = 'local',
+): void {
+  storageListeners.forEach((cb) => cb(changes, areaName));
+}
+
 /**
  * Gán THẲNG vào globalThis chứ không dùng vi.stubGlobal.
  *
@@ -28,6 +44,12 @@ Object.assign(globalThis, { chrome: {
         for (const key of Array.isArray(keys) ? keys : [keys]) store.delete(key);
       },
       clear: async () => store.clear(),
+    },
+    // Đồng bộ theme giữa Options và side panel đang mở đi qua sự kiện này. Test tự bắn
+    // bằng cách gọi các listener đã đăng ký.
+    onChanged: {
+      addListener: (cb: StorageListener) => storageListeners.add(cb),
+      removeListener: (cb: StorageListener) => storageListeners.delete(cb),
     },
   },
   runtime: {

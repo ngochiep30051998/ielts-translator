@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  showLoadingBubble, showResultBubble, showErrorBubble, showIconBubble, hideBubble, BUBBLE_HOST_ID,
+  showLoadingBubble, showResultBubble, showErrorBubble, showIconBubble, hideBubble,
+  setBubbleTheme, BUBBLE_HOST_ID,
 } from './bubble';
 
 const rect = { left: 100, top: 200, bottom: 220, width: 80, height: 20 } as DOMRect;
@@ -122,5 +123,32 @@ describe('bubble', () => {
     showResultBubble(rect, 'tái tạo', handlers());
 
     expect(document.body.textContent).not.toContain('tái tạo');
+  });
+});
+
+describe('giao diện sáng/tối của bubble', () => {
+  const host = () => document.getElementById(BUBBLE_HOST_ID)!;
+
+  it('bubble mới dựng mang đúng chế độ đang đặt', () => {
+    setBubbleTheme('dark');
+
+    showLoadingBubble(rect);
+
+    expect(host().dataset.theme).toBe('dark');
+  });
+
+  it('đổi chế độ khi bubble đang hiện thì đổi luôn, không đợi lần sau', () => {
+    setBubbleTheme('light');
+    showLoadingBubble(rect);
+
+    setBubbleTheme('dark');
+
+    expect(host().dataset.theme).toBe('dark');
+  });
+
+  it('không nổ khi đổi chế độ lúc chưa có bubble nào', () => {
+    hideBubble();
+
+    expect(() => setBubbleTheme('dark')).not.toThrow();
   });
 });

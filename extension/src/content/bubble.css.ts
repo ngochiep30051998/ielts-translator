@@ -86,23 +86,25 @@ svg { display: block; pointer-events: none; }
 /* trạng thái vừa lưu */
 .bubble.saved .text { color: #067647; }
 
-@media (prefers-color-scheme: dark) {
-  .bubble {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(28, 31, 38, 0.92);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px -8px rgba(0, 0, 0, .55);
-    color: #e9ecf1;
-  }
-  .sep { background: rgba(255, 255, 255, 0.14); }
-  button { color: #a3abb9; }
-  button:hover { background: rgba(255, 255, 255, 0.09); color: #e9ecf1; }
-  button[data-action="save"] { color: #b3aefb; }
-  button[data-action="retry"] { color: #ff9c92; }
-  .bubble.icon-only button { color: #b3aefb; }
-  .dots i { background: #79818f; }
-  .loading .text { color: #a3abb9; }
-  .bubble.error { border-color: rgba(255, 156, 146, .3); background: rgba(58, 31, 28, .95); }
-  .bubble.error .text { color: #ff9c92; }
-  .bubble.saved .text { color: #6ee7a8; }
+/* Chế độ tối. Bám vào data-theme trên host chứ không hỏi prefers-color-scheme: người dùng
+   chọn được Sáng/Tối/Theo hệ thống trong Options, và content/index.ts phân giải lựa chọn
+   đó rồi đặt lên host. (Không dùng dấu nháy ngược trong file này — cả CSS nằm trong một
+   template literal, một dấu lạc chỗ là đứt chuỗi.) */
+:host([data-theme="dark"]) .bubble {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(28, 31, 38, 0.92);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px -8px rgba(0, 0, 0, .55);
+  color: #e9ecf1;
 }
+:host([data-theme="dark"]) .sep { background: rgba(255, 255, 255, 0.14); }
+:host([data-theme="dark"]) button { color: #a3abb9; }
+:host([data-theme="dark"]) button:hover { background: rgba(255, 255, 255, 0.09); color: #e9ecf1; }
+:host([data-theme="dark"]) button[data-action="save"] { color: #b3aefb; }
+:host([data-theme="dark"]) button[data-action="retry"] { color: #ff9c92; }
+:host([data-theme="dark"]) .bubble.icon-only button { color: #b3aefb; }
+:host([data-theme="dark"]) .dots i { background: #79818f; }
+:host([data-theme="dark"]) .loading .text { color: #a3abb9; }
+:host([data-theme="dark"]) .bubble.error { border-color: rgba(255, 156, 146, .3); background: rgba(58, 31, 28, .95); }
+:host([data-theme="dark"]) .bubble.error .text { color: #ff9c92; }
+:host([data-theme="dark"]) .bubble.saved .text { color: #6ee7a8; }
 `;

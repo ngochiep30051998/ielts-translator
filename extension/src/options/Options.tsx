@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '../shared/settings';
 import { sendToBackground } from '../shared/messages';
+import { applyTheme, type Theme } from '../shared/theme';
 
 type Status = { text: string; kind: 'ok' | 'bad' } | null;
+
+const THEME_CHOICES: readonly { value: Theme; label: string }[] = [
+  { value: 'system', label: 'Theo hệ thống' },
+  { value: 'light', label: 'Sáng' },
+  { value: 'dark', label: 'Tối' },
+];
 
 export function Options() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -20,6 +27,17 @@ export function Options() {
   async function save() {
     setSettings(await saveSettings(settings));
     setSaveStatus('Đã lưu cài đặt');
+  }
+
+  /** Giao diện áp và lưu NGAY, khác các ô còn lại vốn chờ nút Lưu.
+   *
+   * Không có gì để soát trước khi lưu, và cái người dùng muốn biết — "màu này có hợp mắt
+   * không" — chỉ trả lời được bằng cách đổi thật. Bắt họ bấm Lưu để xem thử rồi bấm lại để
+   * đổi ý là biến một lựa chọn cảm tính thành việc điền biểu mẫu. */
+  async function pickTheme(theme: Theme) {
+    setSettings((current) => ({ ...current, theme }));
+    applyTheme(theme);
+    await saveSettings({ theme });
   }
 
   async function checkHealth() {
@@ -69,6 +87,23 @@ export function Options() {
             />
             Chỉ khi bấm Alt+T
           </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Giao diện</legend>
+        <div className="segmented">
+          {THEME_CHOICES.map(({ value, label }) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="theme"
+                checked={settings.theme === value}
+                onChange={() => void pickTheme(value)}
+              />
+              {label}
+            </label>
+          ))}
         </div>
       </fieldset>
 

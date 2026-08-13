@@ -3,11 +3,18 @@
    Tự đổi theo chế độ sáng/tối của hệ điều hành.
    ============================================================ */
 :root {
-  color-scheme: light dark;
+  /* Chỉ là trạng thái trong tích tắc trước khi JS đọc xong cài đặt: `applyTheme` ghi đè
+     bằng inline style. Để `light` cho khớp với bộ token ngay bên dưới — `light dark` sẽ
+     khiến thanh cuộn tối trong khi nền vẫn sáng. */
+  color-scheme: light;
 
   --bg: #ffffff;
   --surface: #f6f7f9;
   --surface-2: #eef0f4;
+  /* Nền của card nổi trên mặt phẳng nền. KHÔNG gộp được với --surface: ở chế độ sáng card
+     phải TRẮNG hơn nền để nổi lên, còn ở chế độ tối lại phải SÁNG hơn nền — hai hướng
+     ngược nhau, nên đây là token riêng chứ không phải --surface đổi tên. */
+  --card: #ffffff;
   --text: #14161a;
   --text-2: #5b6270;
   --text-3: #8b93a1;
@@ -33,6 +40,9 @@
   --ring-ok: 0 0 0 3px rgba(6, 118, 71, 0.18);
   --ring-danger: 0 0 0 3px rgba(180, 35, 24, 0.18);
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  /* Bậc hai của thang đổ bóng — chỉ dùng cho trạng thái hover, để card nhấc lên một
+     chút thay vì chỉ đổi màu viền. */
+  --shadow-2: 0 2px 6px rgba(16, 24, 40, 0.09);
 
   /* Thang bo góc — ĐÚNG BA MỨC. Mọi chỗ dùng token, không viết số rời:
      control 8px (nút, input, ô lựa chọn), card 12px (khối nội dung), pill cho chip. */
@@ -43,31 +53,36 @@
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15171c;
-    --surface: #1c1f26;
-    --surface-2: #242833;
-    --text: #e9ecf1;
-    --text-2: #a3abb9;
-    --text-3: #79818f;
-    --border: rgba(255, 255, 255, 0.1);
-    --border-2: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.17);
-    --accent: #8b85f5;
-    --accent-soft: #262552;
-    --accent-text: #b3aefb;
-    --on-accent: #14132a;
-    --danger: #ff9c92;
-    --danger-soft: #3a1f1c;
-    --ok: #6ee7a8;
-    --ok-soft: #10291f;
+/* Bộ token tối — ĐÚNG MỘT chỗ.
+   Không dùng `@media (prefers-color-scheme: dark)` ở đây: người dùng chọn được Sáng/Tối/Theo
+   hệ thống trong Options, và `shared/theme.ts` phân giải lựa chọn đó ra rồi gắn
+   `<html data-theme="…">`. Nếu giữ cả media query lẫn selector này thì bộ token phải viết
+   hai lần và một lần sửa màu quên nửa kia là hai chế độ lệch nhau âm thầm. */
+:root[data-theme="dark"] {
+  --bg: #15171c;
+  --surface: #1c1f26;
+  --surface-2: #242833;
+  --card: #1e222a;
+  --text: #e9ecf1;
+  --text-2: #a3abb9;
+  --text-3: #79818f;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-2: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.17);
+  --accent: #8b85f5;
+  --accent-soft: #262552;
+  --accent-text: #b3aefb;
+  --on-accent: #14132a;
+  --danger: #ff9c92;
+  --danger-soft: #3a1f1c;
+  --ok: #6ee7a8;
+  --ok-soft: #10291f;
 
-    --ring: 0 0 0 3px rgba(139, 133, 245, 0.3);
-    --ring-ok: 0 0 0 3px rgba(110, 231, 168, 0.2);
-    --ring-danger: 0 0 0 3px rgba(255, 156, 146, 0.2);
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  }
+  --ring: 0 0 0 3px rgba(139, 133, 245, 0.3);
+  --ring-ok: 0 0 0 3px rgba(110, 231, 168, 0.2);
+  --ring-danger: 0 0 0 3px rgba(255, 156, 146, 0.2);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 * { box-sizing: border-box; }
@@ -344,6 +359,9 @@ body {
   white-space: nowrap;
 }
 .band {
+  /* tabular-nums: "6.5" và "7.0" rộng bằng nhau nên cột chip không nhấp nhổm theo từng
+     hàng. Chỉ số hai chữ số một dấu thập phân nên khác biệt rất dễ thấy nếu không khoá. */
+  font-variant-numeric: tabular-nums;
   padding: 2.5px 8px;
   border: 1px solid transparent;
   border-radius: var(--r-pill);
@@ -479,8 +497,12 @@ body {
 /* ============================================================
    Tab sổ từ
    ============================================================ */
-.vocab-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+.vocab-toolbar { display: flex; gap: 8px; }
 .vocab-toolbar input { flex: 1; min-width: 0; }
+
+/* Dòng đếm nằm giữa ô tìm kiếm và danh sách. Khoảng cách trên rộng hơn dưới để nó đọc là
+   nhãn CỦA danh sách bên dưới, chứ không trôi lửng giữa hai khối. */
+.vocab-tab > .status { margin: 13px 0 7px; }
 
 /* Dãy tối đa 7 ô số + 2 mũi tên. Mọi ô rộng bằng nhau và KHÔNG co giãn: để chiều rộng chạy
    theo nội dung thì dãy nhấp nhổm mỗi lần đổi trang ("1" hẹp hơn "40"), và ô một chữ số
@@ -526,18 +548,28 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 11px 12px;
-  border: 1px solid var(--border-2);
+  padding: 12px 13px;
+  /* --border chứ không --border-2: card đứng trên nền gần cùng màu, viền mờ làm mép card
+     tan vào nền và cả danh sách nhìn thành một mảng xám. */
+  border: 1px solid var(--border);
   border-radius: var(--r-card);
-  background: var(--surface);
-  transition: border-color 0.14s var(--ease);
+  background: var(--card);
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
 }
-.vocab-item + .vocab-item { margin-top: 7px; }
-.vocab-item:hover { border-color: var(--border-strong); }
+.vocab-item + .vocab-item { margin-top: 8px; }
+.vocab-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-2); }
 .vocab-item > div { flex: 1; min-width: 0; }
-.vocab-item strong { font-size: 14.5px; font-weight: 600; }
-.vocab-item .meta { margin-left: 5px; color: var(--text-3); font-size: 12px; }
-.vocab-item .vi { display: block; margin-top: 2px; color: var(--text-2); font-size: 13px; }
+/* Từ tiếng Anh là thứ mắt tìm khi lướt danh sách — nó phải thắng nghĩa tiếng Việt rõ ràng
+   về cả cỡ chữ lẫn độ đậm, không chỉ hơn nửa điểm như trước (14.5 so với 13). */
+.vocab-item strong { font-size: 15px; font-weight: 600; letter-spacing: -0.011em; }
+.vocab-item .meta { margin-left: 6px; color: var(--text-3); font-size: 11.5px; font-weight: 400; }
+.vocab-item .vi { display: block; margin-top: 3px; color: var(--text-2); font-size: 13.5px; }
+
+/* Nút xoá: có mặt nhưng không mời gọi. Ẩn tới khi trỏ vào card hoặc nút nhận focus bàn
+   phím — sáu dấu ✕ thường trực là sáu lời mời phá dữ liệu ngay trong tầm mắt.
+   `opacity` chứ không `display:none`: nút vẫn nằm trong thứ tự Tab và vẫn được trình đọc
+   màn hình đọc, chỉ là mắt không bị nó kéo đi. */
 .vocab-item button {
   flex-shrink: 0;
   width: 26px;
@@ -549,11 +581,20 @@ body {
   font: inherit;
   cursor: pointer;
   line-height: 1;
-  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+  opacity: 0;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease),
+    opacity 0.14s var(--ease);
 }
+.vocab-item:hover button,
+.vocab-item button:focus-visible { opacity: 1; }
 .vocab-item:hover button { border-color: var(--border); }
 .vocab-item button:hover { background: var(--danger-soft); color: var(--danger); }
 .vocab-item button:focus-visible { outline: none; box-shadow: var(--ring-danger); border-color: var(--danger); }
+
+/* Không có hover (màn cảm ứng) thì nút phải hiện sẵn, nếu không sẽ không có cách nào xoá. */
+@media (hover: none) {
+  .vocab-item button { opacity: 1; }
+}
 
 /* ============================================================
    Ô lựa chọn trắc nghiệm — dùng chung cho tab Ôn tập và tab Quiz
