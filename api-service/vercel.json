@@ -1,5 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["sin1"],
-  "buildCommand": "bash scripts/migrate-on-deploy.sh"
+  "regions": [
+    "sin1"
+  ],
+  "buildCommand": "bash scripts/build-web-and-migrate.sh"
 }

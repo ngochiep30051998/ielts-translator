@@ -11,7 +11,7 @@ lẽ cho người này đọc dữ liệu người kia.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pytest
@@ -51,11 +51,20 @@ def _seed_tu(db: Session, user_id: int, term: str, nghia: str) -> int:
     return vocab_id
 
 
-@pytest.fixture
-def hai_nguoi(db: Session, owner: NguoiDungTest) -> HaiNguoi:
-    b = tao_nguoi_dung(db, SECOND_EMAIL)
+@pytest.fixture(params=["bearer", "cookie"], ids=["bearer", "cookie"])
+def hai_nguoi(request: pytest.FixtureRequest, db: Session, owner: NguoiDungTest) -> HaiNguoi:
+    """Toàn bộ file này chạy HAI lần: một lần qua header Bearer (extension), một lần qua
+    cookie phiên (web app).
+
+    Cookie là một đường xác thực mới cho MỌI endpoint chạm dữ liệu học. Ràng buộc #13 nói
+    endpoint chưa có mặt ở đây là endpoint chưa được chứng minh an toàn; lập luận đó áp
+    dụng y nguyên cho một cách mang danh tính mới. Hai đường hội tụ ở `resolve_user_id` nên
+    "chắc là giống nhau" — nhưng "chắc là" chính là thứ file này tồn tại để không phải nói.
+    """
+    che_do = str(request.param)
+    b = replace(tao_nguoi_dung(db, SECOND_EMAIL), che_do=che_do)
     return HaiNguoi(
-        a=owner,
+        a=replace(owner, che_do=che_do),
         b=b,
         vocab_a=_seed_tu(db, owner.id, "mitigate", "giảm nhẹ (của A)"),
         vocab_b=_seed_tu(db, b.id, "mitigate", "giảm nhẹ (của B)"),

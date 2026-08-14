@@ -1,10 +1,13 @@
 node_modules/
 dist/
+# SPA đã build, do `scripts/build-web-and-migrate.sh` sinh ra rồi FastAPI phục vụ.
+# Artifact build, không phải mã nguồn — commit nó vào là mỗi lần build lại một diff khổng lồ.
+api-service/static/
 .env
 target/
 .DS_Store
 .idea/
-extension/key.pem
+apps/extension/key.pem
 
 # api-service (Python)
 .venv/
@@ -17,3 +20,9 @@ __pycache__/
 .vercel/
 .vercel
 .env*
+# ...NHƯNG file mẫu thì phải vào git, nếu không máy mới clone về không có gì để chép ra.
+#
+# `.env.example` ở gốc repo và ở `extension/` sống sót qua luật `.env*` ở trên chỉ vì chúng
+# được git theo dõi TỪ TRƯỚC khi luật đó ra đời. Đổi đường dẫn (extension/ -> apps/extension/)
+# là mất luôn đặc quyền đó, và file biến mất khỏi repo mà không có cảnh báo nào.
+!.env.example

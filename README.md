@@ -187,6 +187,9 @@ không hardcode thông số nào nữa:
 | `AUTH_SESSION_DAYS` | `60` | Hạn phiên, trượt theo mỗi lần dùng |
 | `AUTH_DAILY_GEMINI_CALLS` | `300` | Trần lượt gọi AI mỗi người mỗi ngày. `0` = tắt |
 | `AUTH_GOOGLE_TOKEN_URL` | endpoint Google | Đổi khi test |
+| `AUTH_GOOGLE_AUTH_URL` | endpoint Google | Authorization endpoint của luồng web. Đổi khi test |
+| `WEB_BASE_URL` | `http://127.0.0.1:8080` | Origin công khai của web app. Backend dựng `redirect_uri` của luồng đăng nhập web từ đây (**không** từ header `Host`). Phải đăng ký `<WEB_BASE_URL>/api/auth/google/callback` trong Google Cloud Console. Preview deployment của Vercel đổi domain mỗi lần nên đăng nhập web chỉ chạy trên domain production |
+| `AUTH_COOKIE_SECURE` | `auto` | `auto` \| `true` \| `false`. `auto` = bật, trừ khi `WEB_BASE_URL` là loopback. Quyết định luôn **tên** cookie: tiền tố `__Host-` cấm cookie không-Secure |
 | `DATABASE_URL` | (rỗng) | Rỗng thì ghép từ `DB_*`. Đặt giá trị khi deploy lên Supabase/Vercel, nơi chỉ có một chuỗi kết nối chứ không có năm mảnh rời |
 | `VERCEL` | (rỗng) | **Không tự đặt.** Vercel tự gán `1` trong mọi function; backend đọc nó để chuyển sang `NullPool` và tắt prepared statement (bắt buộc với Supavisor transaction mode) |
 
@@ -195,14 +198,58 @@ Phía extension có **ba** file env, và chỉ `.env.example` vào git — hai f
 
 | File | Nạp bởi | Biến |
 |---|---|---|
-| `extension/.env` | mọi mode | `VITE_GOOGLE_CLIENT_ID` |
-| `extension/.env.dev` | `npm run dev`, `npm run build` | `VITE_BACKEND_URL=http://127.0.0.1:8080` |
-| `extension/.env.prod` | `npm run build:prod` | `VITE_BACKEND_URL=https://<domain-thật>` |
+| `apps/extension/.env` | mọi mode | `VITE_GOOGLE_CLIENT_ID` |
+| `apps/extension/.env.dev` | `npm run dev`, `npm run build` | `VITE_BACKEND_URL=http://127.0.0.1:8080` |
+| `apps/extension/.env.prod` | `npm run build:prod` | `VITE_BACKEND_URL=https://<domain-thật>` |
 
 | Biến | Ghi chú |
 |---|---|
 | `VITE_GOOGLE_CLIENT_ID` | Cùng giá trị với `AUTH_GOOGLE_CLIENT_ID`. Client **id** công khai được; `client_secret` thì tuyệt đối không |
 | `VITE_BACKEND_URL` | Sinh ra **cả** `backendUrl` mặc định trong bundle **lẫn** `host_permissions` trong manifest, nên ràng buộc "ba chỗ phải khớp" rút còn một biến |
+
+### Web app — PWA
+
+Cài được vào màn hình chính và nhận text chia sẻ từ app khác:
+
+| Thứ | Ở đâu |
+|---|---|
+| `manifest.webmanifest` | `apps/web/public/` — `display: standalone`, icon 192 + 512 (`purpose: "any maskable"`) |
+| Service worker | `apps/web/public/sw.js` — viết tay, **không thêm dependency** (Workbox là một dependency mới) |
+| Share Target | `share_target` trong manifest → route `/share` → `apps/web/src/share-target.ts` |
+| Icon | `npm -w ielts-translator-web run icons` — dùng chung `scripts/make-icons.mjs` với extension |
+
+**Offline chỉ-đọc.** `GET /api/vocab` và `GET /api/stats` dùng stale-while-revalidate; mọi
+`/api/*` còn lại là network-only. Cố ý: dịch, ôn và quiz đều đổi trạng thái hoặc tốn quota
+Gemini, phục vụ chúng từ cache là nói dối người dùng.
+
+Cache `/api/*` **bị xoá khi đăng xuất** — nó dùng chung theo origin chứ không theo người
+dùng, nên bỏ bước đó là trên máy dùng chung người sau thấy sổ từ của người trước.
+
+Service worker **chỉ đăng ký ở bản production**. Ở dev nó cache asset của Vite rồi đánh nhau
+với HMR: sửa code mà màn hình không đổi.
+
+**Share Target chỉ có trên Android.** Safari bỏ qua `share_target` một cách im lặng; trên
+iOS vẫn cài được vào màn hình chính và vẫn dán tay được.
+
+### Web app (`apps/web/.env`)
+
+Chỉ **một** file, và cả ba biến đều có thể để trống — bản production không cần biết địa chỉ
+backend, vì nó chạy **cùng origin** với backend. Mẫu ở `apps/web/.env.example`.
+
+| Biến | Mặc định | Vào bundle? | Ghi chú |
+|---|---|---|---|
+| `VITE_DEV_PORT` | `5174` | không | Cổng Vite dev server. Không phải 5173 để khỏi tranh cổng với project Vite khác. `strictPort` bật — sai cổng thì báo lỗi chứ không lặng lẽ nhảy sang cổng khác, vì cổng nằm trong redirect URI đã đăng ký với Google |
+| `VITE_DEV_BACKEND` | `http://127.0.0.1:8080` | không | Đích proxy `/api/*` lúc dev. Nhờ proxy mà trình duyệt vẫn thấy API cùng origin với trang, nên cookie phiên chạy y như production |
+| `VITE_API_BASE_URL` | (rỗng) | **có** | **Để trống.** Rỗng = đường dẫn tương đối `/api/...`, và lúc dev thì `VITE_DEV_BACKEND` lo phần proxy. Đặt sang origin khác sẽ hỏng ở **hai tầng**: CORS chặn preflight ngay (mọi request mang header `X-IELTS-Web`), và kể cả khi mở CORS thì cookie `SameSite=Lax` vẫn không được gửi nên mọi thứ trả 401. App in `console.error` nói rõ cả hai |
+
+Muốn chạy web khác origin với backend thì phải sửa **hai** chỗ phía backend, cả hai hiện
+chưa có: mở CORS kèm `allow_credentials=True` (`app/main.py`), và đổi cookie phiên sang
+`SameSite=None; Secure` (`app/auth/cookies.py`).
+
+**Đăng nhập lúc dev:** mặc định `WEB_BASE_URL=http://127.0.0.1:8080`, nên Google sẽ trả
+người dùng về cổng 8080 chứ không về dev server. Muốn thử luồng đăng nhập ở `npm run dev`
+thì đặt `WEB_BASE_URL=http://localhost:5174` trong `.env` gốc **và** đăng ký
+`http://localhost:5174/api/auth/google/callback` trong Google Cloud Console.
 
 Vite nạp `.env` trước rồi mới tới file theo mode, nên `.env.dev` / `.env.prod` luôn thắng
 `.env`. **Thiếu `.env.prod` thì `build:prod` không báo lỗi** — `VITE_BACKEND_URL` rỗng rơi

@@ -1,0 +1,1227 @@
+/* ============================================================
+   Design tokens — dùng chung cho side panel và options page.
+   Tự đổi theo chế độ sáng/tối của hệ điều hành.
+   ============================================================ */
+:root {
+  /* Chỉ là trạng thái trong tích tắc trước khi JS đọc xong cài đặt: `applyTheme` ghi đè
+     bằng inline style. Để `light` cho khớp với bộ token ngay bên dưới — `light dark` sẽ
+     khiến thanh cuộn tối trong khi nền vẫn sáng. */
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --surface: #f6f7f9;
+  --surface-2: #eef0f4;
+  /* Nền của card nổi trên mặt phẳng nền. KHÔNG gộp được với --surface: ở chế độ sáng card
+     phải TRẮNG hơn nền để nổi lên, còn ở chế độ tối lại phải SÁNG hơn nền — hai hướng
+     ngược nhau, nên đây là token riêng chứ không phải --surface đổi tên. */
+  --card: #ffffff;
+  --text: #14161a;
+  --text-2: #5b6270;
+  --text-3: #8b93a1;
+  --border: rgba(20, 22, 26, 0.1);
+  --border-2: rgba(20, 22, 26, 0.06);
+  /* Viền của control (nút, ô nhập, ô lựa chọn) — đậm hơn viền phân cách để control
+     nhìn ra là bấm/gõ được. Dùng --border cho đường kẻ, --border-strong cho control. */
+  --border-strong: rgba(20, 22, 26, 0.18);
+  --accent: #4f46e5;
+  --accent-soft: #eef0fe;
+  --accent-text: #4338ca;
+  /* Màu chữ ĐẶT TRÊN nền --accent. Không hardcode #fff: dark mode accent là tím nhạt
+     (#8b85f5), chữ trắng trên đó chỉ đạt 3.1:1 — trượt WCAG AA. */
+  --on-accent: #ffffff;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --ok: #067647;
+  --ok-soft: #ecfdf3;
+
+  /* Quầng focus. Mọi control có nền/viền riêng dùng quầng này thay cho outline mặc
+     định — outline hình chữ nhật cắt qua góc bo nhìn gãy. */
+  --ring: 0 0 0 3px rgba(79, 70, 229, 0.22);
+  --ring-ok: 0 0 0 3px rgba(6, 118, 71, 0.18);
+  --ring-danger: 0 0 0 3px rgba(180, 35, 24, 0.18);
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  /* Bậc hai của thang đổ bóng — chỉ dùng cho trạng thái hover, để card nhấc lên một
+     chút thay vì chỉ đổi màu viền. */
+  --shadow-2: 0 2px 6px rgba(16, 24, 40, 0.09);
+
+  /* Thang bo góc — ĐÚNG BA MỨC. Mọi chỗ dùng token, không viết số rời:
+     control 8px (nút, input, ô lựa chọn), card 12px (khối nội dung), pill cho chip. */
+  --r-control: 8px;
+  --r-card: 12px;
+  --r-pill: 999px;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Bộ token tối — ĐÚNG MỘT chỗ.
+   Không dùng `@media (prefers-color-scheme: dark)` ở đây: người dùng chọn được Sáng/Tối/Theo
+   hệ thống trong Options, và `shared/theme.ts` phân giải lựa chọn đó ra rồi gắn
+   `<html data-theme="…">`. Nếu giữ cả media query lẫn selector này thì bộ token phải viết
+   hai lần và một lần sửa màu quên nửa kia là hai chế độ lệch nhau âm thầm. */
+:root[data-theme="dark"] {
+  --bg: #15171c;
+  --surface: #1c1f26;
+  --surface-2: #242833;
+  --card: #1e222a;
+  --text: #e9ecf1;
+  --text-2: #a3abb9;
+  --text-3: #79818f;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-2: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.17);
+  --accent: #8b85f5;
+  --accent-soft: #262552;
+  --accent-text: #b3aefb;
+  --on-accent: #14132a;
+  --danger: #ff9c92;
+  --danger-soft: #3a1f1c;
+  --ok: #6ee7a8;
+  --ok-soft: #10291f;
+
+  --ring: 0 0 0 3px rgba(139, 133, 245, 0.3);
+  --ring-ok: 0 0 0 3px rgba(110, 231, 168, 0.2);
+  --ring-danger: 0 0 0 3px rgba(255, 156, 146, 0.2);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Nền cho phím tắt và mọi ô lựa chọn: chỉ hiện khi điều hướng bằng bàn phím. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Chữ chỉ dành cho trình đọc màn hình — dùng để nói ra trạng thái mà mắt đọc qua màu. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Control dùng chung — nút, ô nhập, ô tick
+   Khai báo TRƯỚC các khối theo tab để khối sau ghi đè được.
+   ============================================================ */
+
+/* ---------- Nút chính: hành động duy nhất được mong đợi của màn hình ---------- */
+.actions button,
+.translate-input-foot button,
+.quiz-setup > button,
+.options-actions button {
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 560;
+  cursor: pointer;
+  transition: filter 0.14s var(--ease), transform 0.08s var(--ease);
+}
+.actions button:hover:not(:disabled),
+.translate-input-foot button:hover:not(:disabled),
+.quiz-setup > button:hover:not(:disabled),
+.options-actions button:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Lún xuống 1px khi giữ chuột — phản hồi vật lý cho biết cú bấm đã ăn. */
+.actions button:active:not(:disabled),
+.translate-input-foot button:active:not(:disabled),
+.quiz-setup > button:active:not(:disabled),
+.options-actions button:active:not(:disabled) { transform: translateY(1px); }
+
+.actions button:focus-visible,
+.translate-input-foot button:focus-visible,
+.quiz-setup > button:focus-visible,
+.options-actions button:focus-visible { outline: none; box-shadow: var(--ring); }
+
+.actions button:disabled,
+.translate-input-foot button:disabled,
+.quiz-setup > button:disabled,
+.options-actions button:disabled { opacity: 0.45; cursor: default; }
+
+/* ---------- Nút phụ: có mặt nhưng không mời gọi ---------- */
+.empty button,
+.vocab-toolbar button,
+.vocab-pager button,
+.login-button,
+.review-next,
+.quiz-submit,
+.quiz-next,
+.options-actions button + button {
+  padding: 9px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), border-color 0.14s var(--ease),
+    transform 0.08s var(--ease);
+}
+.empty button:hover:not(:disabled),
+.vocab-toolbar button:hover:not(:disabled),
+.vocab-pager button:hover:not(:disabled),
+.login-button:hover:not(:disabled),
+.review-next:hover:not(:disabled),
+.quiz-submit:hover:not(:disabled),
+.quiz-next:hover:not(:disabled),
+.options-actions button + button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  filter: none;
+}
+.empty button:active:not(:disabled),
+.vocab-toolbar button:active:not(:disabled),
+.vocab-pager button:active:not(:disabled),
+.login-button:active:not(:disabled),
+.review-next:active:not(:disabled),
+.quiz-submit:active:not(:disabled),
+.quiz-next:active:not(:disabled) { transform: translateY(1px); }
+
+.empty button:focus-visible,
+.vocab-toolbar button:focus-visible,
+.vocab-pager button:focus-visible,
+.login-button:focus-visible,
+.review-next:focus-visible,
+.quiz-submit:focus-visible,
+.quiz-next:focus-visible,
+.options-actions button + button:focus-visible { outline: none; box-shadow: var(--ring); }
+
+.empty button:disabled,
+.vocab-toolbar button:disabled,
+.vocab-pager button:disabled,
+.login-button:disabled,
+.review-next:disabled,
+.quiz-submit:disabled,
+.quiz-next:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------- Ô nhập ---------- */
+.vocab-toolbar input,
+.quiz-setup input[type="number"],
+.quiz-card input[type="text"],
+.quiz-card textarea,
+.translate-input textarea,
+.options input[type="url"],
+.options input[type="text"],
+.options input[type="number"] {
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+}
+.vocab-toolbar input::placeholder,
+.quiz-card input::placeholder,
+.quiz-card textarea::placeholder,
+.translate-input textarea::placeholder,
+.options input::placeholder {
+  /* --text-3 chứ không nhạt hơn: placeholder mờ quá là lỗi contrast, không phải phong cách. */
+  color: var(--text-3);
+}
+.vocab-toolbar input:hover,
+.quiz-setup input[type="number"]:hover,
+.quiz-card input[type="text"]:hover,
+.quiz-card textarea:hover,
+.translate-input textarea:hover,
+.options input:hover { border-color: var(--text-3); }
+
+.vocab-toolbar input:focus,
+.quiz-setup input[type="number"]:focus,
+.quiz-card input[type="text"]:focus,
+.quiz-card textarea:focus,
+.translate-input textarea:focus,
+.options input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.quiz-setup input[type="number"]:disabled,
+.quiz-card input[type="text"]:disabled,
+.quiz-card textarea:disabled { opacity: 0.55; cursor: default; }
+
+/* ---------- Ô tick vuông ---------- */
+/* Vẽ tay chứ không để mặc định trình duyệt: ô tick mặc định không nhận màu nhấn của
+   panel và mỗi hệ điều hành vẽ một kiểu. Vẫn là <input type="checkbox"> thật nên nhãn,
+   phím Space và trình đọc màn hình giữ nguyên. */
+.quiz-type input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  appearance: none;
+  display: grid;
+  place-content: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg);
+  cursor: pointer;
+  transition: background 0.14s var(--ease), border-color 0.14s var(--ease);
+}
+.quiz-type input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.quiz-type input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.quiz-type input[type="checkbox"]:disabled { cursor: default; opacity: 0.55; }
+
+/* ============================================================
+   Khung app + thanh tab
+   ============================================================ */
+/* `dvh` chứ không `vh`: trên iOS Safari, `100vh` tính CẢ thanh địa chỉ, nên đáy màn
+   hình bị cắt mất đúng phần cao bằng thanh đó. Trong side panel của extension hai đơn
+   vị bằng nhau, nên đổi ở đây không ảnh hưởng gì tới extension. */
+.app { display: flex; flex-direction: column; height: 100dvh; }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  flex: 1;
+  margin-bottom: -1px;
+  /* 4px thay vì 8px: năm tab ở 400px cho mỗi tab ~72px, mà "Thống kê" ở 13px cần ~58px.
+     Padding 8px mỗi bên không còn đủ chỗ và nhãn bị cắt. */
+  padding: 13px 4px 11px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.tabs button:hover { color: var(--text); }
+.tabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline-offset: -3px; border-radius: var(--r-control); }
+
+.content { flex: 1; overflow-y: auto; padding: 16px 16px 0; }
+
+.empty {
+  padding: 54px 20px;
+  color: var(--text-3);
+  text-align: center;
+  font-size: 13.5px;
+}
+.empty button { margin-top: 14px; }
+
+/* ============================================================
+   Đầu mục từ
+   ============================================================ */
+.entry-head { padding-bottom: 14px; }
+
+.term-row { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.term-row h2 {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 640;
+  letter-spacing: -0.018em;
+  line-height: 1.15;
+}
+.ipa {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip {
+  padding: 2.5px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.band {
+  /* tabular-nums: "6.5" và "7.0" rộng bằng nhau nên cột chip không nhấp nhổm theo từng
+     hàng. Chỉ số hai chữ số một dấu thập phân nên khác biệt rất dễ thấy nếu không khoá. */
+  font-variant-numeric: tabular-nums;
+  padding: 2.5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.meaning { margin: 13px 0 0; font-size: 16.5px; font-weight: 500; line-height: 1.45; }
+.definition { margin: 5px 0 0; color: var(--text-2); font-size: 13.5px; }
+
+/* ============================================================
+   Section
+   ============================================================ */
+.section { padding: 15px 0; border-top: 1px solid var(--border-2); }
+.section h3 {
+  margin: 0 0 9px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 660;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+.section p { margin: 0; color: var(--text-2); font-size: 13.5px; }
+
+/* danh sách dạng pill — collocations, cụm đáng học */
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pills li {
+  padding: 4px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+/* danh sách dạng dòng — ví dụ, đồng nghĩa, từ đáng học */
+.rows { margin: 0; padding: 0; list-style: none; }
+.rows > li { padding: 8px 0; }
+.rows > li + li { border-top: 1px solid var(--border-2); }
+
+.example { padding-left: 11px; border-left: 2px solid var(--border); }
+.example .en { display: block; }
+.example .vi { display: block; margin-top: 2px; color: var(--text-2); font-size: 13px; }
+
+.word-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.word-row strong { font-weight: 600; }
+.word-row .vi { flex-basis: 100%; color: var(--text-2); font-size: 13px; }
+
+/* mục "vì sao viết như vậy" */
+.notes { margin: 0; padding-left: 17px; }
+.notes li { margin-bottom: 6px; color: var(--text-2); font-size: 13.5px; }
+.notes li::marker { color: var(--accent); }
+
+/* mục "nên tránh" */
+.avoid { margin: 0; padding: 0; list-style: none; }
+.avoid li {
+  padding: 9px 11px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-control);
+  background: var(--danger-soft);
+}
+.avoid li + li { margin-top: 7px; }
+.avoid strong {
+  color: var(--danger);
+  font-weight: 600;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.avoid .vi { display: block; margin-top: 3px; color: var(--text-2); font-size: 13px; }
+
+/* ============================================================
+   Thanh hành động dính đáy
+   ============================================================ */
+.actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px -16px 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.cached-hint { color: var(--text-3); font-size: 12px; }
+.status { margin: 0; color: var(--text-3); font-size: 12.5px; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--danger); }
+
+/* Nút "Thử lại" nằm trong dòng báo lỗi — nhỏ, nằm cùng dòng chữ. */
+.translate-input .status.bad button,
+.review-tab .status.bad button {
+  margin-left: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.translate-input .status.bad button:hover,
+.review-tab .status.bad button:hover { background: var(--surface); }
+
+/* ============================================================
+   Ô nhập text để dịch
+   ============================================================ */
+.translate-input { margin-bottom: 14px; }
+
+.translate-input textarea {
+  display: block;
+  width: 100%;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.translate-input-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.translate-input-foot .counter { color: var(--text-3); font-size: 12px; }
+.translate-input-foot .counter.over { color: var(--danger); font-weight: 560; }
+
+.translate-input .status.bad { margin-top: 8px; }
+
+/* ============================================================
+   Tab sổ từ
+   ============================================================ */
+.vocab-toolbar { display: flex; gap: 8px; }
+.vocab-toolbar input { flex: 1; min-width: 0; }
+
+/* Dòng đếm nằm giữa ô tìm kiếm và danh sách. Khoảng cách trên rộng hơn dưới để nó đọc là
+   nhãn CỦA danh sách bên dưới, chứ không trôi lửng giữa hai khối. */
+.vocab-tab > .status { margin: 13px 0 7px; }
+
+/* Dãy tối đa 7 ô số + 2 mũi tên. Mọi ô rộng bằng nhau và KHÔNG co giãn: để chiều rộng chạy
+   theo nội dung thì dãy nhấp nhổm mỗi lần đổi trang ("1" hẹp hơn "40"), và ô một chữ số
+   thành mục tiêu bấm quá nhỏ. `justify-content: center` giữ dãy cân giữa khi thừa chỗ. */
+.vocab-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Dãy rộng nhất (7 ô số + 2 mũi tên, không có dấu …) là 9×32 + 8×4 = 320px, cần panel
+     rộng ~352px. Chrome cho kéo side panel hẹp hơn thế, nên `wrap` là lưới chặn: hẹp quá
+     thì dãy xuống hai dòng, thay vì tràn ngang và đẩy cả tab lệch. */
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+.vocab-pager button {
+  flex: 0 0 auto;
+  min-width: 32px;
+  padding: 7px 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Trang đang xem: đảo màu để nổi hẳn khỏi các ô còn lại, không chỉ dựa vào sắc độ nhạt.
+   Cần cả nhánh :hover — `.vocab-pager button:hover:not(:disabled)` ở khối nút phụ phía trên
+   có specificity cao hơn, không chặn lại thì rê chuột qua là ô hiện tại mất màu. */
+.vocab-pager button[aria-current="page"],
+.vocab-pager button[aria-current="page"]:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 650;
+}
+.vocab-pager-gap {
+  flex: 0 0 auto;
+  padding: 0 1px;
+  color: var(--text-3);
+  font-size: 13px;
+  user-select: none;
+}
+
+.vocab-list { margin: 0; padding: 0; list-style: none; }
+.vocab-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 13px;
+  /* --border chứ không --border-2: card đứng trên nền gần cùng màu, viền mờ làm mép card
+     tan vào nền và cả danh sách nhìn thành một mảng xám. */
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+}
+.vocab-item + .vocab-item { margin-top: 8px; }
+.vocab-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-2); }
+.vocab-item > div { flex: 1; min-width: 0; }
+/* Từ tiếng Anh là thứ mắt tìm khi lướt danh sách — nó phải thắng nghĩa tiếng Việt rõ ràng
+   về cả cỡ chữ lẫn độ đậm, không chỉ hơn nửa điểm như trước (14.5 so với 13). */
+.vocab-item strong { font-size: 15px; font-weight: 600; letter-spacing: -0.011em; }
+.vocab-item .meta { margin-left: 6px; color: var(--text-3); font-size: 11.5px; font-weight: 400; }
+.vocab-item .vi { display: block; margin-top: 3px; color: var(--text-2); font-size: 13.5px; }
+
+/* Nút xoá: có mặt nhưng không mời gọi. Ẩn tới khi trỏ vào card hoặc nút nhận focus bàn
+   phím — sáu dấu ✕ thường trực là sáu lời mời phá dữ liệu ngay trong tầm mắt.
+   `opacity` chứ không `display:none`: nút vẫn nằm trong thứ tự Tab và vẫn được trình đọc
+   màn hình đọc, chỉ là mắt không bị nó kéo đi. */
+.vocab-item button {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease),
+    opacity 0.14s var(--ease);
+}
+.vocab-item:hover button,
+.vocab-item button:focus-visible { opacity: 1; }
+.vocab-item:hover button { border-color: var(--border); }
+.vocab-item button:hover { background: var(--danger-soft); color: var(--danger); }
+.vocab-item button:focus-visible { outline: none; box-shadow: var(--ring-danger); border-color: var(--danger); }
+
+/* Không có hover (màn cảm ứng) thì nút phải hiện sẵn, nếu không sẽ không có cách nào xoá. */
+@media (hover: none) {
+  .vocab-item button { opacity: 1; }
+}
+
+/* ============================================================
+   Ô lựa chọn trắc nghiệm — dùng chung cho tab Ôn tập và tab Quiz
+   ============================================================ */
+.review-options,
+.quiz-options { display: grid; gap: 8px; }
+
+.review-option,
+.quiz-option {
+  display: grid;
+  /* [số thứ tự] [nội dung] [dấu đúng/sai] — cột dấu là auto nên khi chưa chấm nó
+     rộng 0, các ô không bị lệch chữ so với lúc đã chấm. */
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  text-align: left;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), border-color 0.14s var(--ease),
+    transform 0.08s var(--ease), box-shadow 0.14s var(--ease);
+}
+.review-option:hover:not(:disabled),
+.quiz-option:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.review-option:active:not(:disabled),
+.quiz-option:active:not(:disabled) { transform: scale(0.99); }
+.review-option:focus-visible,
+.quiz-option:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+/* Sau khi chọn thì mọi ô đều bị khoá — đó là lúc cần đọc kỹ nhất, nên KHÔNG làm mờ. */
+.review-option:disabled,
+.quiz-option:disabled { cursor: default; }
+
+/* Số thứ tự trong ô vuông riêng: ở tab Ôn tập nó CHÍNH LÀ phím tắt (1–4), nên phải
+   nhìn ra là một phím chứ không phải chữ số dính vào câu trả lời. */
+.option-key {
+  display: grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: inherit;
+}
+.review-option:hover:not(:disabled) .option-key,
+.quiz-option:hover:not(:disabled) .option-key {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.option-text { min-width: 0; }
+
+/* Dấu ✓ / ✗ — màu KHÔNG được là kênh thông tin duy nhất, khoảng 8% nam giới
+   không phân biệt được đỏ với xanh lá. */
+.option-mark {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Đáp án đúng và ô chọn sai: viền + nền + phím + dấu cùng đổi màu, riêng phần chữ
+   giữ nguyên --text. Nhuộm cả câu trả lời tiếng Việt theo màu trạng thái làm nó khó
+   đọc đúng lúc người học cần đọc kỹ nhất. */
+.review-option.correct,
+.quiz-option.correct {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  box-shadow: var(--ring-ok);
+}
+.review-option.correct .option-key,
+.quiz-option.correct .option-key {
+  border-color: transparent;
+  background: var(--ok);
+  color: var(--ok-soft);
+}
+.review-option.correct .option-mark,
+.quiz-option.correct .option-mark { color: var(--ok); }
+
+.review-option.wrong,
+.quiz-option.wrong {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  box-shadow: var(--ring-danger);
+}
+.review-option.wrong .option-key,
+.quiz-option.wrong .option-key {
+  border-color: transparent;
+  background: var(--danger);
+  color: var(--danger-soft);
+}
+.review-option.wrong .option-mark,
+.quiz-option.wrong .option-mark { color: var(--danger); }
+
+/* ============================================================
+   Tab Ôn tập
+   ============================================================ */
+/* Div bọc tab ôn nhận focus bằng code để ăn phím tắt 1–4 và Enter; nó không phải control
+   người dùng tab tới nên vòng focus quanh cả panel chỉ là nhiễu. Các nút bên trong vẫn
+   giữ vòng focus riêng. */
+.review-tab:focus { outline: none; }
+
+/* Thanh tiến độ + số đếm, dùng chung cho tab Ôn tập và tab Quiz.
+   Thanh mang aria-hidden vì số đếm ngay cạnh đã nói đủ. */
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s var(--ease);
+}
+.progress-row .status { flex: none; font-variant-numeric: tabular-nums; }
+
+.review-card {
+  margin: 12px 0;
+  padding: 22px 14px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  text-align: center;
+}
+
+.review-front strong { display: block; font-size: 23px; font-weight: 640; letter-spacing: -0.015em; }
+.review-front .meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+}
+.review-front button {
+  margin-top: 10px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1.4;
+  transition: background 0.14s var(--ease), border-color 0.14s var(--ease);
+}
+.review-front button:hover { border-color: var(--border-strong); background: var(--bg); }
+
+/* Gợi ý phím tắt: chỉ có ý nghĩa khi chưa chọn, nên component gỡ đi sau khi chấm. */
+.review-hint {
+  margin: 8px 0 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-align: center;
+}
+.review-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+}
+
+.review-back {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.review-back-term { margin: 0; font-size: 16px; font-weight: 620; letter-spacing: -0.01em; }
+.review-back .vi { margin: 2px 0 9px; color: var(--text-2); font-size: 14.5px; }
+.review-back .meta { margin-right: 6px; color: var(--text-3); font-size: 12px; }
+.review-definition { margin: 9px 0 0; color: var(--text-2); font-size: 13.5px; }
+
+.review-next { width: 100%; margin-top: 10px; }
+
+/* ============================================================
+   Tab Quiz
+   ============================================================ */
+.quiz-setup {
+  padding: 4px 0 18px;
+  border-bottom: 1px solid var(--border-2);
+}
+.quiz-setup > label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13.5px;
+  font-weight: 560;
+}
+.quiz-setup input[type="number"] { width: 96px; }
+
+.quiz-setup fieldset { margin: 18px 0 0; padding: 0; border: 0; }
+.quiz-setup legend { padding: 0; margin-bottom: 8px; font-size: 13.5px; font-weight: 560; }
+
+/* Mỗi loại câu hỏi là một hàng bấm được cả dòng, không phải ô tick 13px bé xíu. */
+.quiz-type {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), border-color 0.14s var(--ease),
+    color 0.14s var(--ease);
+}
+.quiz-type + .quiz-type { margin-top: 6px; }
+.quiz-type:hover { background: var(--surface); border-color: var(--border-strong); }
+.quiz-type:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 520;
+}
+/* Ô tick thật bị vẽ đè nên quầng focus phải do hàng bao ngoài dựng lại — thiếu dòng
+   này thì đi bằng phím Tab không thấy mình đang đứng ở đâu. */
+.quiz-type:has(input:focus-visible) { border-color: var(--accent); box-shadow: var(--ring); }
+.quiz-type:has(input:disabled) { cursor: default; opacity: 0.6; }
+
+.quiz-setup > button { width: 100%; margin-top: 18px; }
+
+.quiz-card { padding: 4px 0 8px; }
+.quiz-term { margin: 0 0 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.quiz-question { margin: 0 0 12px; color: var(--text-2); font-size: 13.5px; }
+.quiz-sentence {
+  margin: 0 0 12px;
+  padding: 13px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.quiz-card input[type="text"],
+.quiz-card textarea {
+  width: 100%;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.quiz-counter { margin: 5px 0 0; color: var(--text-3); font-size: 12px; text-align: right; }
+/* Vượt hạn mức thì đổi màu chứ không cắt chữ: cắt cụt im lặng làm người dùng mất bài
+   mà không hiểu vì sao. Nút Nộp bị khoá là chỗ chặn thật. */
+.quiz-counter.over { color: var(--danger); font-weight: 560; }
+
+/* KHÔNG có quy tắc nào sắp xếp lại thứ tự các ô này (order, flex-direction: reverse…):
+   câu trả lời gửi lên là index trong mảng options, đảo bằng CSS cũng là chấm sai.
+   Hình dạng ô nằm ở khối "Ô lựa chọn trắc nghiệm" phía trên, dùng chung với tab Ôn tập. */
+
+.quiz-submit { width: 100%; margin-top: 10px; }
+
+/* Bỏ qua là lối thoát, không phải hành động chính — nhẹ hơn nút Nộp để không mời gọi. */
+.quiz-skip {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.14s var(--ease), border-color 0.14s var(--ease);
+}
+.quiz-skip:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text); }
+.quiz-skip:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.quiz-skip:disabled { opacity: 0.5; cursor: default; }
+
+/* Giải thích là hành động phụ, bấm mới gọi — nhẹ hơn nút Tiếp để không tranh chỗ với nó. */
+.quiz-explain {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 540;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+.quiz-explain:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+.quiz-explain:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.quiz-explain:disabled { opacity: 0.6; cursor: default; }
+
+.quiz-explanation { margin-top: 12px; }
+.quiz-explanation h3 {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.quiz-explanation h3:first-child { margin-top: 0; }
+.quiz-explanation p { margin: 0; font-size: 13.5px; line-height: 1.55; }
+
+/* Câu tiếng Anh đứng ngay trên bản dịch — nghiêng để mắt tách được hai thứ tiếng. */
+.quiz-explanation .quiz-sentence-en {
+  margin-bottom: 3px;
+  color: var(--text-2);
+  font-style: italic;
+}
+
+.quiz-result {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+.quiz-result.ok { border-color: var(--ok); background: var(--ok-soft); }
+.quiz-result.bad { border-color: var(--danger); background: var(--danger-soft); }
+.quiz-verdict { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; }
+.quiz-result.ok .quiz-verdict { color: var(--ok); }
+.quiz-result.bad .quiz-verdict { color: var(--danger); }
+.quiz-feedback { margin: 0; font-size: 13.5px; line-height: 1.55; }
+
+.quiz-improved {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border-2);
+}
+.quiz-improved h3 {
+  margin: 0 0 4px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.quiz-improved p { margin: 0; font-size: 14px; line-height: 1.55; }
+
+/* Nút Tiếp nằm TRONG khối kết quả đã nhuộm màu — nền --bg để nó nổi lên khỏi nền đó. */
+.quiz-next { width: 100%; margin-top: 12px; background: var(--bg); }
+.quiz-next:hover:not(:disabled) { background: var(--surface); }
+
+/* ============================================================
+   Trang Options
+   ============================================================ */
+.options { max-width: 520px; margin: 36px auto; padding: 0 22px; }
+.options h1 { margin: 0 0 22px; font-size: 19px; font-weight: 640; letter-spacing: -0.01em; }
+.options > label {
+  display: block;
+  margin-top: 18px;
+  margin-bottom: 6px;
+  font-size: 13.5px;
+  font-weight: 560;
+}
+.options input[type="url"],
+.options input[type="text"],
+.options input[type="number"] { width: 100%; }
+
+.options fieldset { margin: 20px 0 0; padding: 0; border: 0; }
+.options legend { padding: 0; margin-bottom: 8px; font-size: 13.5px; font-weight: 560; }
+
+.segmented {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+}
+.segmented label {
+  position: relative;
+  flex: 1;
+  padding: 8px 9px;
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 520;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+.segmented label:hover { color: var(--text); }
+.segmented label:has(input:checked) {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+/* Radio thật bị giấu để vẽ lại nền, nên nhãn phải dựng lại quầng focus — thiếu dòng
+   này thì người đi bằng phím Tab không thấy mình đang chọn ô nào. */
+.segmented label:has(input:focus-visible) { box-shadow: var(--ring); }
+.segmented input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+
+.options-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-2);
+}
+.options .status { margin-top: 12px; font-size: 13px; }
+
+/* ---------- Đăng nhập ---------- */
+
+.login {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 32px 20px;
+  text-align: center;
+}
+.login h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.login-lead { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.login-button { margin-top: 4px; padding: 10px 14px; font-size: 13.5px; }
+
+/* Thanh tài khoản: nhỏ và mờ — nó là thông tin trạng thái, không phải thứ để bấm hằng ngày. */
+.account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.account-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-signout {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.account-signout:hover { border-color: var(--border-strong); color: var(--text); }
+
+/* ============================================================
+   Giảm chuyển động
+   Mọi chuyển động ở đây chỉ là phản hồi 0.1–0.3s, không có gì mang nội dung,
+   nên tắt sạch là an toàn.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   Thống kê tiến độ
+   Biểu đồ vẽ bằng div + CSS, không thư viện và không SVG (ràng buộc #12).
+   Màu lấy từ token sẵn có nên tự hợp dark mode.
+   ============================================================ */
+.stats { padding-bottom: 16px; }
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 4px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.stat-cell strong {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.stat-cell span {
+  color: var(--text-3);
+  font-size: 10.5px;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.chart { margin-bottom: 20px; }
+.chart h3 {
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 72px;
+  padding: 6px 8px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.bar {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.heatmap {
+  display: flex;
+  gap: 5px;
+  padding: 8px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.heatmap-days {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  color: var(--text-3);
+  font-size: 8.5px;
+  line-height: 16px;
+}
+.heatmap-grid { display: flex; flex: 1; gap: 3px; }
+.heatmap-col {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  flex: 1;
+  gap: 3px;
+}
+.cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+/* Ô đệm ngoài khoảng dữ liệu — trong suốt để không đọc nhầm thành "ngày không ôn". */
+.cell.pad { background: none; }
+.cell.lv0 { background: var(--surface-2); }
+.cell.lv1 { background: color-mix(in srgb, var(--accent) 28%, var(--surface-2)); }
+.cell.lv2 { background: color-mix(in srgb, var(--accent) 52%, var(--surface-2)); }
+.cell.lv3 { background: color-mix(in srgb, var(--accent) 76%, var(--surface-2)); }
+.cell.lv4 { background: var(--accent); }
+
+.acc-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-2);
+  font-size: 13px;
+}
+.acc-line > span:first-child { flex: 1; min-width: 0; }
+.acc-line strong { font-weight: 620; }
+.acc-detail {
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.acc-bar {
+  display: flex;
+  overflow: hidden;
+  height: 8px;
+  margin: 4px 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.seg-again { background: var(--danger); }
+.seg-hard  { background: color-mix(in srgb, var(--accent) 40%, var(--surface-2)); }
+.seg-good  { background: var(--accent); }
+.seg-easy  { background: var(--ok); }
+
+/* Dải nhắc chế độ luyện thêm — người dùng phải biết lịch không đang chạy. */
+.practice-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12.5px;
+}
+.practice-banner button {
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

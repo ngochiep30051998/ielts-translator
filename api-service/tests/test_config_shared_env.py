@@ -47,6 +47,13 @@ NGOAI_ENV_EXAMPLE = {
     "SERVER_ADDRESS",
     # Chỉ đổi khi test.
     "AUTH_GOOGLE_TOKEN_URL",
+    # Cùng lý do: authorization endpoint của Google là hằng số của nền tảng, không phải thứ
+    # người dùng khai. Chỉ đổi khi test.
+    "AUTH_GOOGLE_AUTH_URL",
+    # Đường dẫn của một artifact build, không phải cấu hình người dùng chỉnh. Cả đường Docker
+    # lẫn đường Vercel đều đặt SPA vào `api-service/static`; biến này tồn tại để test trỏ
+    # được vào thư mục tạm.
+    "WEB_STATIC_DIR",
     # Do CHÍNH nền tảng đặt (`VERCEL=1` trong mọi function), không phải thứ người dùng khai.
     "VERCEL",
     # Tên thứ hai của `TZ`, chỉ dùng trên Vercel: dashboard ở đó từ chối biến tên `TZ` (tên bị

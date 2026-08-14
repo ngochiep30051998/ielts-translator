@@ -50,6 +50,10 @@ os.environ["AUTH_GOOGLE_TOKEN_URL"] = "http://127.0.0.1:1"
 os.environ["AUTH_GOOGLE_CLIENT_ID"] = "test-client-id"
 os.environ["AUTH_GOOGLE_CLIENT_SECRET"] = "test-client-secret"
 os.environ["AUTH_ALLOWED_EMAILS"] = f"{OWNER_EMAIL},{SECOND_EMAIL}"
+# https chứ không localhost: `AUTH_COOKIE_SECURE=auto` suy cờ Secure từ đây, và cờ đó
+# quyết định luôn tên cookie (`__Host-` cấm cookie không-Secure). Để mặc định localhost
+# thì toàn bộ test cookie chạy nhánh KHÔNG dùng ở production — đúng nhánh không cần canh.
+os.environ["WEB_BASE_URL"] = "https://ielts.test"
 # Tắt hạn mức trong test: nó không phải thứ đang được kiểm ở đây, và một test dài vô tình
 # chạm trần sẽ đỏ vì lý do chẳng liên quan gì tới nó. Test quota tự bật lại.
 os.environ["AUTH_DAILY_GEMINI_CALLS"] = "0"
@@ -137,9 +141,30 @@ class NguoiDungTest:
     id: int
     email: str
     token: str
+    #: `"bearer"` (extension) hoặc `"cookie"` (web app). Xem `headers`.
+    che_do: str = "bearer"
 
     @property
     def headers(self) -> dict[str, str]:
+        """Cách request này mang danh tính.
+
+        Hai đường, và `test_multi_user_isolation.py` chạy TOÀN BỘ bộ test của nó qua cả hai
+        (fixture `hai_nguoi` được parametrize). Lý do: cookie là đường xác thực THỨ HAI cho
+        mọi endpoint chạm dữ liệu học, và ràng buộc #13 nói rõ endpoint chưa có mặt trong
+        file đó là endpoint chưa được chứng minh an toàn — một đường xác thực mới cũng vậy.
+
+        Cookie gửi bằng header `Cookie` thô chứ không qua cookie jar của client: như vậy nó
+        vẫn chỉ là một dict header, và mọi test hiện có dùng lại được không sửa một dòng.
+        `X-IELTS-Web` là bắt buộc — xem `deps.cookie_token`.
+        """
+        if self.che_do == "cookie":
+            from app.auth.cookies import session_cookie_name
+            from app.config import get_settings
+
+            return {
+                "Cookie": f"{session_cookie_name(get_settings())}={self.token}",
+                "X-IELTS-Web": "1",
+            }
         return {"Authorization": f"Bearer {self.token}"}
 
 
@@ -220,7 +245,11 @@ def client(db: Session) -> Iterator[Any]:
             raise
 
     application.dependency_overrides[get_db] = _get_db_test
-    with TestClient(application) as tc:
+    # https chứ không http mặc định: cookie phiên của web mang cờ `Secure`, và httpx KHÔNG
+    # gửi lại cookie Secure qua http. Để `http://testserver` thì mọi test đường cookie hỏng
+    # theo kiểu "state không khớp" — một triệu chứng trỏ đi hoàn toàn sai hướng.
+    # Production cũng luôn là https (Caddy terminate TLS, Vercel mặc định).
+    with TestClient(application, base_url="https://testserver") as tc:
         yield tc
     application.dependency_overrides.clear()
 

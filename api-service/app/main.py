@@ -26,6 +26,7 @@ from app.srs.router import router as srs_router
 from app.stats.router import router as stats_router
 from app.translation.router import router as translation_router
 from app.vocabulary.router import router as vocabulary_router
+from app.web_static import gan_web_app
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +61,10 @@ def create_app() -> FastAPI:
     app.include_router(srs_router)
     app.include_router(quiz_router)
     app.include_router(stats_router)
+
+    # SAU CÙNG, không có ngoại lệ: `gan_web_app` khai một catch-all khớp mọi đường dẫn, nên
+    # router nào include sau nó sẽ không bao giờ nhận được request.
+    gan_web_app(app)
     return app
 
 

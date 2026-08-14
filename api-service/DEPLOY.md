@@ -95,6 +95,42 @@ Rồi `psql "<chuỗi-session-pooler-5432>" -f /tmp/data.sql`.
 **`api-service`**, không phải thư mục gốc repo. Đặt sai thì Vercel không thấy `vercel.json`
 lẫn `requirements.txt`.
 
+### 2.1b Bật "Include source files outside of the Root Directory" — BẮT BUỘC
+
+Settings → Build and Deployment → bật **"Include source files outside of the Root Directory
+in the Build Step"**.
+
+Root Directory là `api-service`, nhưng web app nằm ở `apps/web` và dùng chung
+`packages/core` — cả hai ở NGOÀI thư mục đó. Không bật thì Vercel chỉ tải lên `api-service/`
+và bước build không tìm thấy monorepo.
+
+`scripts/build-web-and-migrate.sh` kiểm tường minh và **dừng hẳn** nếu thiếu, kèm thông điệp
+chỉ đúng vào ô này. Bỏ qua rồi deploy tiếp là kiểu hỏng tệ nhất: build xanh, API chạy, chỉ có
+web là 404 — và không dòng log nào nói vì sao.
+
+### 2.1c Web app được phục vụ thế nào
+
+`buildCommand` là `bash scripts/build-web-and-migrate.sh`, làm hai việc theo thứ tự: dựng
+SPA vào `api-service/static/`, rồi chạy migration như cũ.
+
+Lúc chạy, **FastAPI tự phục vụ SPA** (`app/web_static.py`): `/` và mọi đường dẫn lạ trả
+`index.html`, `/assets/*` trả file tĩnh, còn `/api/*` vẫn đi vào router như thường.
+
+**KHÔNG dùng `rewrites` của Vercel** — có ba lý do độc lập, mỗi lý do đủ để loại:
+
+1. `test_deploy_readiness.py::test_vercel_json_khong_duoc_co_rewrites` cấm.
+2. Thêm `rewrites` khi preset FastAPI đang bật làm **toàn bộ API trả 404** (rewrite chạy
+   trước function và *thay* đường dẫn chứ không chỉ định tuyến).
+3. Chế độ `services` bị khoá sau quyền tài khoản.
+
+Và lý do quan trọng hơn cả ba: đường Docker phải khớp (ràng buộc #15). `Caddyfile`
+reverse_proxy toàn bộ đường dẫn về `api-service:8080`, nên nếu SPA chỉ tồn tại nhờ cấu hình
+riêng của Vercel thì bản tự dựng vỡ. `Dockerfile` có một stage Node làm đúng việc mà script
+trên làm.
+
+`installCommand` **không đụng vào** — nó đang là bước `pip install` tự động của preset
+FastAPI, và Vercel chỉ có MỘT `installCommand`. `npm ci` nằm trong `buildCommand`.
+
 ### 2.2 Biến môi trường
 
 Đặt trong Project Settings → Environment Variables:
@@ -112,12 +148,35 @@ lẫn `requirements.txt`.
 | `AUTH_DAILY_GEMINI_CALLS` | `300` |
 | `APP_TZ` | `Asia/Ho_Chi_Minh` — quyết định "hôm nay" của lịch ôn. **`APP_TZ` chứ không phải `TZ`**, xem dưới |
 | `GEMINI_QUIZ_GENERATE_TIMEOUT_SECONDS` | **`25`** — xem dưới |
+| `WEB_BASE_URL` | **`https://<domain-production>`** — không có dấu `/` ở cuối. Backend dựng redirect URI đăng nhập web từ đây. Thiếu thì `/api/auth/google/start` trả `AUTH_UNAVAILABLE` |
+
+`AUTH_COOKIE_SECURE` không cần đặt: mặc định `auto` tự bật `Secure` vì `WEB_BASE_URL` là
+https.
+
+**`MIGRATION_DATABASE_URL` và `AUTH_BOOTSTRAP_EMAIL` phải có ở môi trường Build**, không chỉ
+Runtime — `buildCommand` chạy migration ở build time.
 
 Hai thứ **không** cần đặt: `DB_HOST`/`DB_PORT`/… (đã có `DATABASE_URL`) và `VERCEL` (nền
 tảng tự gán).
 
 `AUTH_BOOTSTRAP_EMAIL` cũng không cần — nó chỉ dùng lúc chạy migration, mà migration thì đã
 áp ở bước 1.3.
+
+### 2.2b Đăng ký redirect URI của web trong Google Cloud Console
+
+Thêm **một** Authorized redirect URI nữa, cạnh cái của extension:
+
+```
+https://<domain-production>/api/auth/google/callback
+```
+
+Dùng chung `client_id` với extension là an toàn, vì gate `redirect_uri` tách theo từng luồng:
+`POST /api/auth/google` chỉ chấp nhận URI của extension, còn callback web dựng URI từ
+`WEB_BASE_URL` phía server và không bao giờ nhận từ client.
+
+**Preview deployment không đăng nhập web được.** Vercel sinh domain ngẫu nhiên mỗi lần deploy
+nên không đăng ký trước được — trên preview sẽ luôn thấy `redirect_uri_mismatch`, và nó
+trông y hệt lỗi code. Đăng nhập web chỉ chạy trên domain production cố định.
 
 ### 2.3 Vì sao là `APP_TZ` chứ không phải `TZ`
 
@@ -176,8 +235,48 @@ Phải trả `{"status":"UP","dbConnected":true,"geminiConfigured":true}`.
 curl -i https://<project>.vercel.app/api/vocab
 ```
 
-Phải là `401` với body `{"code":"UNAUTHORIZED",...}`. Nếu ra `404` hoặc HTML thì `rewrites`
-chưa ăn.
+Phải là `401` với body `{"code":"UNAUTHORIZED",...}`.
+
+**Nếu ra HTML thì catch-all của SPA đang nuốt `/api/*`** — lỗi nặng, vì client sẽ cố parse
+JSON, thất bại, rồi báo "backend trả phản hồi không đọc được" thay vì "cần đăng nhập".
+`tests/test_spa_static.py::test_API_KHONG_bi_catch_all_nuot` canh đúng chỗ này.
+
+Rồi kiểm web app:
+
+```bash
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' https://<project>.vercel.app/
+```
+
+Phải là `200 text/html`. Ra `404 application/json` nghĩa là `static/index.html` không có
+trong bundle — gần như luôn là do quên bật toggle ở mục 2.1b.
+
+```bash
+curl -sI https://<project>.vercel.app/api/auth/google/start | grep -i location
+```
+
+Phải redirect sang `accounts.google.com` kèm `redirect_uri` đúng domain production. Nếu thấy
+`redirect_uri=https://127.0.0.1:8080/...` thì quên đặt `WEB_BASE_URL`.
+
+Cuối cùng là PWA:
+
+```bash
+for p in /manifest.webmanifest /sw.js /icons/192.png /icons/512.png; do curl -s -o /dev/null -w "$p %{http_code} %{content_type}\n" https://<project>.vercel.app$p; done
+```
+
+Cả bốn phải `200`, và `manifest.webmanifest` phải là `application/manifest+json` — sai MIME
+thì Chrome bỏ qua manifest và không hiện lời mời "Thêm vào màn hình chính".
+
+**Kiểm trên điện thoại Android thật** (không kiểm bằng máy tính được):
+
+1. Mở domain production trong Chrome → menu → "Thêm vào Màn hình chính". Mở app từ icon:
+   phải chạy toàn màn hình, không có thanh địa chỉ.
+2. Bôi đen một đoạn text ở app bất kỳ → Share → chọn IELTS Translator. App phải mở thẳng tab
+   Dịch với text đã điền sẵn, và **thanh địa chỉ phải là `/`** chứ không còn `/share?text=…`.
+3. Bật chế độ máy bay rồi mở lại app: phải mở được và xem lại được Sổ từ đã tải. Tab Dịch
+   báo lỗi mạng là ĐÚNG — offline cố ý chỉ-đọc.
+
+**iOS**: cài được vào màn hình chính, nhưng Safari bỏ qua `share_target` — không có mục trong
+menu Share. Đó là giới hạn của nền tảng, không phải lỗi cấu hình.
 
 ---
 
