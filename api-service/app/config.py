@@ -78,6 +78,17 @@ class Settings(BaseSettings):
     # --- Extension ---
     extension_id: str = Field(default="", alias="EXTENSION_ID")
 
+    # --- Web app (cùng origin với backend) ---
+    # Thư mục chứa SPA đã build, tương đối so với `api-service/`.
+    #
+    # VẮNG MẶT LÀ BÌNH THƯỜNG: chạy backend-only, hoặc chạy test, thì không ai build web cả.
+    # `app/web_static.py` bỏ qua và ghi một dòng log thay vì ném — ném ở đây là biến một bộ
+    # test đang xanh thành FileNotFoundError ở một file trông chẳng liên quan gì.
+    web_static_dir: str = Field(default="static", alias="WEB_STATIC_DIR")
+    # Origin công khai của web, dùng để DỰNG redirect_uri phía server. Không bao giờ lấy từ
+    # `request.base_url` hay header `Host` — đó là đường Host header injection.
+    web_base_url: str = Field(default="http://127.0.0.1:8080", alias="WEB_BASE_URL")
+
     # --- Auth ---
     auth_google_client_id: str = Field(default="", alias="AUTH_GOOGLE_CLIENT_ID")
     # CHỈ sống ở backend. Không bao giờ được xuất hiện trong bundle extension.
@@ -89,6 +100,20 @@ class Settings(BaseSettings):
     # cho mọi tài khoản Google trên đời.
     auth_allowed_emails: str = Field(default="", alias="AUTH_ALLOWED_EMAILS")
     auth_session_days: int = Field(default=60, alias="AUTH_SESSION_DAYS")
+    # Authorization endpoint của Google. KHÔNG tái dùng `auth_google_token_url` được: cái đó
+    # là base_url của httpx client và code POST vào path `/token`, còn đây là một URL đầy đủ
+    # để redirect trình duyệt tới.
+    auth_google_auth_url: str = Field(
+        default="https://accounts.google.com/o/oauth2/v2/auth", alias="AUTH_GOOGLE_AUTH_URL"
+    )
+    # `auto` | `true` | `false`. Kiểu `str` chứ KHÔNG `bool | None`: pydantic không coi chuỗi
+    # rỗng là None, nên `AUTH_COOKIE_SECURE=` trong .env sẽ ném lỗi parse lúc khởi động.
+    #
+    # KHÔNG suy cờ này từ `request.url.scheme`: Dockerfile chạy uvicorn không có
+    # `--proxy-headers` và không dòng nào đọc `X-Forwarded-Proto`, nên sau Caddy (terminate
+    # TLS) app luôn thấy `http`. Suy từ đó là lặng lẽ phát cookie phiên KHÔNG Secure trên
+    # production HTTPS — không lỗi, không cảnh báo.
+    auth_cookie_secure: str = Field(default="auto", alias="AUTH_COOKIE_SECURE")
     # 0 = tắt hạn mức (chỉ dùng ở máy dev).
     auth_daily_gemini_calls: int = Field(default=300, alias="AUTH_DAILY_GEMINI_CALLS")
     # Email chủ sở hữu dữ liệu cũ — V6 dùng nó để backfill vocab_entry.user_id.
@@ -187,8 +212,41 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def cors_origin(self) -> str:
-        """CORS chỉ mở cho đúng extension này (ràng buộc #7)."""
+        """CORS chỉ mở cho đúng extension này (ràng buộc #7).
+
+        Web app chạy CÙNG origin với backend nên không cần — và không được — thêm vào đây:
+        trình duyệt không áp CORS cho request same-origin, còn thêm một origin nữa là mở
+        thật một cửa mà không đổi lại được gì.
+        """
         return f"chrome-extension://{self.extension_id}"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def cookie_secure(self) -> bool:
+        """Cờ `Secure` cho cookie phiên, đã phân giải xong `auto`.
+
+        `auto` = True trừ khi web chạy trên loopback. Đó là chỗ DUY NHẤT mà HTTP thường là
+        hợp lệ; mọi nơi khác thiếu `Secure` là phát phiên qua đường không mã hoá.
+        """
+        chon = self.auth_cookie_secure.strip().lower()
+        if chon == "true":
+            return True
+        if chon == "false":
+            return False
+        return not self.web_base_url.lower().startswith(
+            ("http://localhost", "http://127.0.0.1", "http://[::1]")
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def web_redirect_uri(self) -> str:
+        """Redirect URI của luồng web. Dựng từ config, KHÔNG nhận từ client.
+
+        Tách hẳn khỏi `AuthService.extension_redirect_uri()` chứ không gộp thành một tập:
+        gộp lại thì `POST /api/auth/google` — endpoint trả token phiên THÔ trong JSON body —
+        sẽ chấp nhận luôn redirect_uri của web, và hai luồng mượn được của nhau.
+        """
+        return f"{self.web_base_url.rstrip('/')}/api/auth/google/callback"
 
 
 @lru_cache(maxsize=1)

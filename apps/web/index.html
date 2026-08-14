@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      `viewport-fit=cover` để trang tràn ra sau tai thỏ; phần bù lại nằm ở
+      `env(safe-area-inset-*)` trong styles.css. Thiếu nó thì iPhone tự chừa hai dải đen và
+      `env(safe-area-inset-bottom)` luôn trả 0.
+
+      `maximum-scale` KHÔNG đặt: khoá zoom là chặn người dùng phóng to chữ, và đây là app
+      để đọc từ vựng.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Dịch hai chiều Việt-Anh chuẩn IELTS band 6.5+ và học từ mới" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Màu thanh trạng thái khi chạy standalone. Trùng `theme_color` trong manifest —
+         lệch nhau thì Android lấy cái này, iOS lấy cái kia, và hai máy trông khác nhau. -->
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="apple-touch-icon" href="/icons/192.png" />
+    <title>IELTS Translator</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

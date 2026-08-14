@@ -1,0 +1,22 @@
+{
+  "name": "ielts-translator",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gốc workspace — chứa packages/core dùng chung cho extension và web",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:web": "npm -w ielts-translator-web run dev",
+    "dev:extension": "npm -w ielts-translator-extension run dev",
+    "test:core": "npm -w @ielts/core run test",
+    "test:extension": "npm -w ielts-translator-extension run test",
+    "test:web": "npm -w ielts-translator-web run test",
+    "build:extension": "npm -w ielts-translator-extension run build",
+    "build:extension:prod": "npm -w ielts-translator-extension run build:prod",
+    "build:web": "npm -w ielts-translator-web run build"
+  }
+}

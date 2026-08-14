@@ -48,9 +48,14 @@ class AuthService:
         self._google = google or get_google_client()
         self._settings = settings or get_settings()
 
-    def expected_redirect_uri(self) -> str:
+    def extension_redirect_uri(self) -> str:
         """Dựng từ EXTENSION_ID phía server, KHÔNG nhận từ client."""
         return f"https://{self._settings.extension_id}.chromiumapp.org/"
+
+    def web_redirect_uri(self) -> str:
+        """Dựng từ WEB_BASE_URL phía server, KHÔNG nhận từ client và KHÔNG lấy từ
+        `request.base_url` — cái sau đọc header `Host`, tức Host header injection."""
+        return self._settings.web_redirect_uri
 
     def _allowed(self, email: str) -> bool:
         """Danh sách rỗng = KHÓA HẾT, cố ý. Cấu hình thiếu phải làm hệ thống đóng lại chứ
@@ -61,11 +66,26 @@ class AuthService:
         return email.strip().lower() in allowed
 
     def login(self, db: Session, code: str, redirect_uri: str) -> AuthSessionDto:
+        """Luồng EXTENSION. Chấp nhận đúng một redirect_uri: cái dựng từ EXTENSION_ID.
+
+        **Không nới thành "một trong hai".** Endpoint này trả token phiên THÔ trong JSON
+        body; nếu nó chấp nhận luôn redirect_uri của web callback thì hai luồng mượn được
+        của nhau, và luồng có cookie httpOnly (vốn cố ý giấu token khỏi JavaScript) bỗng có
+        một đường vòng để đọc chính token đó.
+        """
         # Chốt chặn redirect_uri nằm TRƯỚC khi chạm mạng: nhận đại chuỗi client gửi rồi
         # chuyển cho Google là cho một extension lạ mượn client_secret của mình.
-        if self.expected_redirect_uri() != redirect_uri:
+        if self.extension_redirect_uri() != redirect_uri:
             raise AppError.of(ErrorCode.UNAUTHORIZED, "redirect_uri không hợp lệ")
+        return self._hoan_tat(db, code, redirect_uri)
 
+    def login_web(self, db: Session, code: str) -> AuthSessionDto:
+        """Luồng WEB. Không có gate so chuỗi vì không có chuỗi nào đến từ client — redirect
+        uri dựng thẳng từ config ngay tại đây."""
+        return self._hoan_tat(db, code, self.web_redirect_uri())
+
+    def _hoan_tat(self, db: Session, code: str, redirect_uri: str) -> AuthSessionDto:
+        """Phần chung sau khi đã chốt được redirect_uri: đổi code, kiểm quyền, mở phiên."""
         identity = self._google.exchange(code, redirect_uri)
 
         # email_verified = false nghĩa là Google KHÔNG bảo đảm người này sở hữu hộp thư đó,

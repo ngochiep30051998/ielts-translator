@@ -1,0 +1,67 @@
+/*
+ * Chỉnh riêng cho web. Nạp SAU `@ielts/core/styles.css` nên đè lên được.
+ *
+ * Ba khác biệt thật so với side panel của extension, và chỉ ba:
+ *
+ * 1. Side panel luôn hẹp (~400px) và người dùng không kéo rộng ra được. Cửa sổ trình duyệt
+ *    thì rộng bao nhiêu cũng có, và một cột 400px kéo dài hết màn hình 27 inch trông hỏng.
+ * 2. Side panel không có tai thỏ, thanh chỉ báo home, hay bàn phím ảo đẩy layout lên.
+ * 3. Side panel không cuộn cả trang; trên mobile thì cuộn-quá-đà (overscroll) làm cả app
+ *    nảy lên xuống khi đang cuộn danh sách từ.
+ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* Chặn kéo-để-tải-lại và hiệu ứng nảy ở hai đầu. Trong một app dạng tab, cả hai đều là
+     thao tác người dùng KHÔNG cố ý làm — họ đang cuộn danh sách từ. */
+  overscroll-behavior-y: none;
+}
+
+/* Nền phải nằm ở `body` chứ không chỉ ở `.app`: vùng safe-area dưới tai thỏ và quanh thanh
+   home nằm NGOÀI `.app`, và để trống thì nó hiện màu trắng mặc định — một vạch sáng ở đáy
+   màn hình khi đang dùng giao diện tối. */
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.app {
+  /* Giới hạn bề ngang trên màn rộng, nhưng KHÔNG động tới điện thoại (mọi máy đều hẹp hơn
+     560px). Căn giữa để nó không dính lề trái. */
+  max-width: 560px;
+  margin-inline: auto;
+
+  /* `env(safe-area-inset-*)` cần `viewport-fit=cover` ở thẻ meta trong index.html — thiếu
+     nó thì hàm này luôn trả 0 và iPhone tự chừa hai dải đen thay vì để mình tự xử lý. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+
+  /* Viền hai bên chỉ hiện khi có chỗ — trên điện thoại `max-width` không bao giờ chạm tới
+     nên viền cũng không xuất hiện. */
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+@media (min-width: 561px) {
+  body {
+    /* Nền ngoài khung app trên màn rộng. Cùng màu để không thành hai mảng lệch nhau. */
+    background: var(--bg);
+  }
+}
+
+/*
+ * Vùng chạm tối thiểu 44px trên thiết bị cảm ứng.
+ *
+ * `(hover: none)` chứ không `max-width`: cái quyết định là NGÓN TAY hay con trỏ chuột, chứ
+ * không phải màn rộng bao nhiêu. Một laptop cảm ứng vẫn cần nút to; một điện thoại xoay
+ * ngang thì không tự nhiên bớt cần.
+ */
+@media (hover: none) {
+  .tabs button {
+    min-height: 44px;
+  }
+}

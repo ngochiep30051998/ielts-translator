@@ -21,7 +21,14 @@ services:
   # Backend FastAPI — bản duy nhất đang phục vụ. Bản Spring Boot (`backend/`, service
   # `app`) đã bị xoá sau khi port xong; lịch sử của nó còn trong git nếu cần tra.
   api-service:
-    build: ./api-service
+    # Context là GỐC REPO, không phải `./api-service`: Dockerfile có một stage Node dựng SPA
+    # từ `packages/core` + `apps/web`, và cả hai nằm ngoài `api-service/`.
+    #
+    # Đây là cái giá của ràng buộc #15 — web app phải tồn tại ở CẢ hai đường deploy, và
+    # đường Docker chỉ lấy được nó nếu build context nhìn thấy monorepo.
+    build:
+      context: .
+      dockerfile: api-service/Dockerfile
     depends_on:
       db:
         condition: service_healthy
@@ -55,6 +62,11 @@ services:
       AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL}
       AUTH_SESSION_DAYS: ${AUTH_SESSION_DAYS:-60}
       AUTH_DAILY_GEMINI_CALLS: ${AUTH_DAILY_GEMINI_CALLS:-300}
+      # --- Web app cùng origin ---
+      # Cùng cái bẫy với AUTH_* ở trên: thiếu hai dòng này thì đặt chúng trong .env KHÔNG
+      # có tác dụng khi chạy Docker, hoàn toàn im lặng. Mặc định phải khớp app/config.py.
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://127.0.0.1:8080}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-auto}
       # Không có biến này thì tiến trình trong container chạy UTC, trong khi lịch ôn tính
       # "hôm nay" bằng ngày của hệ thống. Hệ quả: ngày ôn đổi lúc 07:00 sáng giờ VN thay
       # vì nửa đêm — hạn mức từ mới/ngày và due_date lệch theo. Chạy uvicorn thẳng trên

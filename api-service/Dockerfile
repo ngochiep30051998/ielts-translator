@@ -1,11 +1,33 @@
-# Bản Docker cho đường chạy local/VPS. Đường Vercel KHÔNG dùng file này — Vercel dựng
-# runtime Python riêng từ `api/index.py` và `requirements.txt`.
+# Bản Docker cho đường chạy local/VPS. Đường Vercel KHÔNG dùng file này — ở đó preset
+# FastAPI của Vercel tự dò entrypoint và nạp `app/main.py` (KHÔNG phải `api/index.py`;
+# thư mục `api/` không nằm trong danh sách nó dò).
+#
+# Hai đường phải phục vụ web app GIỐNG HỆT nhau (ràng buộc #15), nên stage `web` dưới đây
+# làm đúng việc mà `scripts/build-web-and-migrate.sh` làm trên Vercel: dựng SPA rồi đặt vào
+# `static/` để `app/web_static.py` tìm thấy.
+
+# ── Stage 1: dựng SPA ────────────────────────────────────────────────────────
+FROM node:22-slim AS web
+
+WORKDIR /repo
+# Chép manifest trước, cài xong rồi mới chép mã nguồn: sửa code không làm mất cache lớp cài.
+COPY package.json package-lock.json ./
+COPY packages/core/package.json ./packages/core/
+COPY apps/web/package.json ./apps/web/
+COPY apps/extension/package.json ./apps/extension/
+RUN npm ci
+
+COPY packages/core ./packages/core
+COPY apps/web ./apps/web
+RUN npm run build:web
+
+# ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.12-slim
 
 WORKDIR /app
 
 # Cài phụ thuộc trước, chép mã nguồn sau: sửa code không làm mất cache lớp cài đặt.
-COPY pyproject.toml ./
+COPY api-service/pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir \
         "fastapi>=0.115" \
@@ -16,9 +38,10 @@ RUN pip install --no-cache-dir --upgrade pip \
         "psycopg[binary]>=3.2" \
         "httpx>=0.27"
 
-COPY app ./app
-COPY migrations ./migrations
-COPY prompts ./prompts
+COPY api-service/app ./app
+COPY api-service/migrations ./migrations
+COPY api-service/prompts ./prompts
+COPY --from=web /repo/apps/web/dist ./static
 
 EXPOSE 8080
 
