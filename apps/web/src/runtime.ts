@@ -27,6 +27,7 @@ const handle = createOperations(client, {
   auth: createWebAuthFlow(client),
   // Không có `onVocabChanged`: web không có badge nào để vẽ.
   // Không có `openPanel`: web không có side panel.
+
 });
 
 /**
