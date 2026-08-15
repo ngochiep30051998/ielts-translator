@@ -48,7 +48,10 @@ def create_app() -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=[settings.cors_origin],
-            allow_methods=["GET", "POST", "DELETE"],
+            # Liệt kê TAY, nên thêm method mới ở router phải thêm cả ở đây: thiếu thì trình
+            # duyệt chặn ngay từ preflight và request không bao giờ chạm backend — không có
+            # log phía server, không test router nào đỏ.
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
             allow_headers=["*"],
         )
 

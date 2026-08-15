@@ -5,6 +5,7 @@ import { surfaceCapabilities } from '../surface';
 import { MAX_SELECTION_LENGTH, validateSelection } from '../text';
 import type { ApiError, TranslateResult } from '../types';
 import { PayloadView } from './PayloadViews';
+import { Spinner } from './Spinner';
 
 type Status = { text: string; kind: 'ok' | 'bad' } | null;
 
@@ -24,6 +25,8 @@ export function TranslateTab({
 }: TranslateTabProps) {
   const [status, setStatus] = useState<Status>(null);
   const [translating, setTranslating] = useState(false);
+  /** Chặn bấm Lưu hai lần. Không có nó thì hai lượt SAVE_WORD cùng bay đi. */
+  const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<Failure>(null);
 
   const check = validateSelection(draft);
@@ -57,7 +60,10 @@ export function TranslateTab({
   }
 
   async function save() {
-    if (!result) return;
+    // `saving` chặn lượt thứ hai kể cả khi nút chưa kịp disabled — người dùng bấm nhanh hơn
+    // một nhịp render là chuyện thường trên điện thoại.
+    if (!result || saving) return;
+    setSaving(true);
     setStatus(null);
     const response = await sendToBackground({ type: 'SAVE_WORD', result, tags: [] });
     setStatus(response.ok
@@ -66,9 +72,10 @@ export function TranslateTab({
           kind: 'ok',
         }
       : { text: response.error.message, kind: 'bad' });
+    setSaving(false);
   }
 
-  if (!loaded) return <p className="empty">Đang tải…</p>;
+  if (!loaded) return <p className="empty"><Spinner /> Đang tải…</p>;
 
   return (
     <div className="translate-tab">
@@ -87,8 +94,14 @@ export function TranslateTab({
           <span className={tooLong ? 'counter over' : 'counter'}>
             {draft.trim().length}/{MAX_SELECTION_LENGTH}
           </span>
-          <button type="button" disabled={!check.ok || translating} onClick={submit}>
-            {translating ? 'Đang dịch…' : 'Dịch'}
+          <button
+            type="button"
+            disabled={!check.ok || translating}
+            aria-busy={translating}
+            onClick={submit}
+          >
+            {translating && <Spinner />}
+            <span>{translating ? 'Đang dịch…' : 'Dịch'}</span>
           </button>
         </div>
         {failure && (
@@ -107,7 +120,10 @@ export function TranslateTab({
         <>
           <PayloadView result={result} />
           <div className="actions">
-            <button type="button" onClick={() => void save()}>Lưu từ</button>
+            <button type="button" disabled={saving} aria-busy={saving} onClick={() => void save()}>
+              {saving && <Spinner />}
+              <span>{saving ? 'Đang lưu…' : 'Lưu từ'}</span>
+            </button>
             {result.cached && <span className="cached-hint">từ cache</span>}
             {status && <p className={`status ${status.kind}`}>{status.text}</p>}
           </div>

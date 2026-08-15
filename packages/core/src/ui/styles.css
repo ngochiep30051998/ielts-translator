@@ -8,45 +8,80 @@
      khiến thanh cuộn tối trong khi nền vẫn sáng. */
   color-scheme: light;
 
-  --bg: #ffffff;
-  --surface: #f6f7f9;
-  --surface-2: #eef0f4;
+  /* ---------- Bảng màu "Sổ tay xanh" (thiết kế 1a) ---------- */
+  --bg: #fbfcfc;
+  --surface: #f1f4f4;
+  --surface-2: #e6ecec;
   /* Nền của card nổi trên mặt phẳng nền. KHÔNG gộp được với --surface: ở chế độ sáng card
      phải TRẮNG hơn nền để nổi lên, còn ở chế độ tối lại phải SÁNG hơn nền — hai hướng
      ngược nhau, nên đây là token riêng chứ không phải --surface đổi tên. */
   --card: #ffffff;
-  --text: #14161a;
-  --text-2: #5b6270;
-  --text-3: #8b93a1;
-  --border: rgba(20, 22, 26, 0.1);
-  --border-2: rgba(20, 22, 26, 0.06);
+  --text: #1a2224;
+  --text-2: #3d4a4c;
+  --text-3: #879497;
+  --border: rgba(26, 34, 36, 0.1);
+  --border-2: rgba(26, 34, 36, 0.08);
   /* Viền của control (nút, ô nhập, ô lựa chọn) — đậm hơn viền phân cách để control
      nhìn ra là bấm/gõ được. Dùng --border cho đường kẻ, --border-strong cho control. */
-  --border-strong: rgba(20, 22, 26, 0.18);
-  --accent: #4f46e5;
-  --accent-soft: #eef0fe;
-  --accent-text: #4338ca;
-  /* Màu chữ ĐẶT TRÊN nền --accent. Không hardcode #fff: dark mode accent là tím nhạt
-     (#8b85f5), chữ trắng trên đó chỉ đạt 3.1:1 — trượt WCAG AA. */
+  --border-strong: rgba(26, 34, 36, 0.14);
+  --accent: #0f7a55;
+  --accent-soft: #e6f4ee;
+  --accent-text: #0b5c40;
+  /* Màu chữ ĐẶT TRÊN nền --accent. Không hardcode #fff: dark mode accent là xanh nhạt
+     (#3fbc8d), chữ trắng trên đó trượt WCAG AA. */
   --on-accent: #ffffff;
-  --danger: #b42318;
-  --danger-soft: #fef3f2;
-  --ok: #067647;
-  --ok-soft: #ecfdf3;
+  --danger: #b02318;
+  --danger-soft: #fdf0ef;
+  --ok: #0f7a55;
+  --ok-soft: #eaf6f0;
+  /* Cảnh báo — CHỈ dùng cho thẻ "hay quên" (thanh thành thạo của thẻ đang học lại).
+     Không phải màu lỗi: quên một từ là chuyện bình thường của việc học, tô đỏ như hỏng
+     hóc là nói sai mức độ. */
+  --warn: #c8891a;
+
+  /* Dải streak 7 ngày trong header. Ba mức: có ôn theo lịch / chỉ luyện thêm / không học. */
+  --streak-on: #0f7a55;
+  --streak-half: #a9d5c4;
+  --streak-off: #dfe5e5;
+
+  /* Màu chip chủ đề, xoay vòng a→b→c theo thứ tự backend trả về. Chỉ để mắt tách được các
+     chủ đề với nhau — KHÔNG mang nghĩa nào, nên đừng gán "a = quan trọng". */
+  --topic-a-bg: #e6f0f8;
+  --topic-a-fg: #175880;
+  --topic-b-bg: #fdf1de;
+  --topic-b-fg: #8a5406;
+  --topic-c-bg: #efeafe;
+  --topic-c-fg: #5a3fd0;
+
+  /* ---------- Chữ ----------
+     KHÔNG có <link> Google Fonts ở bất kỳ surface nào, và đó là quyết định có lý do riêng
+     cho từng surface: bubble chạy trong origin của trang lạ nên CSP của trang đó chặn
+     fonts.googleapis.com ở rất nhiều site; web PWA nạp font từ origin ngoài là phá
+     offline-first của service worker; còn side panel nạp được nhưng khi đó ba surface dùng
+     chung packages/core lại hiện ba bộ chữ khác nhau.
+     Stack dưới dùng ĐÚNG font thiết kế nếu máy có sẵn, không thì rơi về fallback CÙNG PHÂN
+     LOẠI (serif → Georgia, sans → font hệ thống) nên nhịp chữ vẫn giữ. */
+  --font-ui: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Từ tiếng Anh, số band, số đếm — thứ mắt tìm khi lướt. */
+  --font-display: "Space Grotesk", "Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Nghĩa tiếng Việt. Đây là chữ ký thị giác của thiết kế 1a, không phải trang trí:
+     serif tách hẳn phần nghĩa khỏi phần giao diện xung quanh. */
+  --font-serif: Lora, Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Quầng focus. Mọi control có nền/viền riêng dùng quầng này thay cho outline mặc
      định — outline hình chữ nhật cắt qua góc bo nhìn gãy. */
-  --ring: 0 0 0 3px rgba(79, 70, 229, 0.22);
-  --ring-ok: 0 0 0 3px rgba(6, 118, 71, 0.18);
-  --ring-danger: 0 0 0 3px rgba(180, 35, 24, 0.18);
+  --ring: 0 0 0 3px rgba(15, 122, 85, 0.22);
+  --ring-ok: 0 0 0 3px rgba(15, 122, 85, 0.18);
+  --ring-danger: 0 0 0 3px rgba(176, 35, 24, 0.18);
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
   /* Bậc hai của thang đổ bóng — chỉ dùng cho trạng thái hover, để card nhấc lên một
      chút thay vì chỉ đổi màu viền. */
   --shadow-2: 0 2px 6px rgba(16, 24, 40, 0.09);
 
   /* Thang bo góc — ĐÚNG BA MỨC. Mọi chỗ dùng token, không viết số rời:
-     control 8px (nút, input, ô lựa chọn), card 12px (khối nội dung), pill cho chip. */
-  --r-control: 8px;
+     control 10px (nút, input, ô lựa chọn), card 12px (khối nội dung), pill cho chip. */
+  --r-control: 10px;
   --r-card: 12px;
   --r-pill: 999px;
 
@@ -57,29 +92,46 @@
    Không dùng `@media (prefers-color-scheme: dark)` ở đây: người dùng chọn được Sáng/Tối/Theo
    hệ thống trong Options, và `shared/theme.ts` phân giải lựa chọn đó ra rồi gắn
    `<html data-theme="…">`. Nếu giữ cả media query lẫn selector này thì bộ token phải viết
-   hai lần và một lần sửa màu quên nửa kia là hai chế độ lệch nhau âm thầm. */
+   hai lần và một lần sửa màu quên nửa kia là hai chế độ lệch nhau âm thầm.
+
+   Thiết kế 1a chỉ vẽ bản sáng; bộ dưới đây suy ra từ nó và BẮT BUỘC giữ — bỏ dark mode đi
+   là một regression, không phải "đơn giản hoá". Font stack không lặp lại ở đây: chữ không
+   đổi theo chế độ màu. */
 :root[data-theme="dark"] {
-  --bg: #15171c;
-  --surface: #1c1f26;
-  --surface-2: #242833;
-  --card: #1e222a;
-  --text: #e9ecf1;
-  --text-2: #a3abb9;
-  --text-3: #79818f;
+  --bg: #101617;
+  --surface: #172021;
+  --surface-2: #1f2a2b;
+  --card: #161f20;
+  --text: #e6eded;
+  --text-2: #a8b6b7;
+  --text-3: #7d8c8e;
   --border: rgba(255, 255, 255, 0.1);
   --border-2: rgba(255, 255, 255, 0.06);
   --border-strong: rgba(255, 255, 255, 0.17);
-  --accent: #8b85f5;
-  --accent-soft: #262552;
-  --accent-text: #b3aefb;
-  --on-accent: #14132a;
+  --accent: #3fbc8d;
+  --accent-soft: #10312a;
+  --accent-text: #7fd9b4;
+  --on-accent: #06231a;
   --danger: #ff9c92;
-  --danger-soft: #3a1f1c;
-  --ok: #6ee7a8;
-  --ok-soft: #10291f;
+  --danger-soft: #351d1b;
+  --ok: #3fbc8d;
+  --ok-soft: #10312a;
+  /* Sáng hơn #c8891a để đọc được trên nền tối — cùng sắc vàng đất, chỉ nâng độ sáng. */
+  --warn: #e0b062;
 
-  --ring: 0 0 0 3px rgba(139, 133, 245, 0.3);
-  --ring-ok: 0 0 0 3px rgba(110, 231, 168, 0.2);
+  --streak-on: #3fbc8d;
+  --streak-half: #256b53;
+  --streak-off: #2a3535;
+
+  --topic-a-bg: #13293d;
+  --topic-a-fg: #8fc2ea;
+  --topic-b-bg: #33260f;
+  --topic-b-fg: #e3b876;
+  --topic-c-bg: #241d3d;
+  --topic-c-fg: #b4a3f0;
+
+  --ring: 0 0 0 3px rgba(63, 188, 141, 0.3);
+  --ring-ok: 0 0 0 3px rgba(63, 188, 141, 0.2);
   --ring-danger: 0 0 0 3px rgba(255, 156, 146, 0.2);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -91,7 +143,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font: 14px/1.55 var(--font-ui);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -298,28 +350,33 @@ body {
 
 .tabs {
   display: flex;
-  gap: 4px;
-  padding: 0 12px;
+  gap: 2px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
 }
 .tabs button {
   flex: 1;
   margin-bottom: -1px;
-  /* 4px thay vì 8px: năm tab ở 400px cho mỗi tab ~72px, mà "Thống kê" ở 13px cần ~58px.
-     Padding 8px mỗi bên không còn đủ chỗ và nhãn bị cắt. */
-  padding: 13px 4px 11px;
+  /* 3px thay vì 8px: năm tab ở 400px cho mỗi tab ~76px, mà "Tiến độ" ở 12.5px cần ~52px.
+     Padding rộng ở hai bên không còn đủ chỗ và nhãn bị cắt. */
+  padding: 12px 3px 10px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
   color: var(--text-2);
   font: inherit;
-  font-size: 13px;
-  font-weight: 550;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
   cursor: pointer;
   transition: color 0.12s;
 }
 .tabs button:hover { color: var(--text); }
-.tabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); }
+.tabs button.active {
+  color: var(--accent-text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
 .tabs button:focus-visible { outline-offset: -3px; border-radius: var(--r-control); }
 
 .content { flex: 1; overflow-y: auto; padding: 16px 16px 0; }
@@ -340,13 +397,16 @@ body {
 .term-row { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .term-row h2 {
   margin: 0;
+  /* --font-display: từ tiếng Anh là thứ mắt tìm trước tiên, cho nó bộ chữ riêng để nó
+     tách hẳn khỏi phần giao diện xung quanh. */
+  font-family: var(--font-display);
   font-size: 25px;
   font-weight: 640;
   letter-spacing: -0.018em;
   line-height: 1.15;
 }
 .ipa {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--text-3);
 }
@@ -367,16 +427,26 @@ body {
   font-variant-numeric: tabular-nums;
   padding: 2.5px 8px;
   border: 1px solid transparent;
-  border-radius: var(--r-pill);
+  /* 6px chứ không pill: thiết kế 1a vẽ band là một ô vuông bo nhẹ, để mắt phân biệt nó
+     với chip chủ đề (pill) ngay trên cùng một dòng. */
+  border-radius: 6px;
   background: var(--accent-soft);
   color: var(--accent-text);
+  font-family: var(--font-display);
   font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
   cursor: help;
 }
 
-.meaning { margin: 13px 0 0; font-size: 16.5px; font-weight: 500; line-height: 1.45; }
+/* Nghĩa tiếng Việt — serif. Xem ghi chú ở --font-serif. */
+.meaning {
+  margin: 13px 0 0;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
 .definition { margin: 5px 0 0; color: var(--text-2); font-size: 13.5px; }
 
 /* ============================================================
@@ -507,6 +577,41 @@ body {
    nhãn CỦA danh sách bên dưới, chứ không trôi lửng giữa hai khối. */
 .vocab-tab > .status { margin: 13px 0 7px; }
 
+/* ---------- Hàng chip chủ đề ---------- */
+.vocab-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+/* Một class cho cả chip lọc (nút ở hàng trên) lẫn chip gắn trên từng dòng — cùng hình
+   dạng, cùng bảng màu, chỉ khác cỡ. Cỡ đặt ở hai khối bên dưới. */
+.vocab-tag {
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.vocab-tag[data-tone="a"] { background: var(--topic-a-bg); color: var(--topic-a-fg); }
+.vocab-tag[data-tone="b"] { background: var(--topic-b-bg); color: var(--topic-b-fg); }
+.vocab-tag[data-tone="c"] { background: var(--topic-c-bg); color: var(--topic-c-fg); }
+
+.vocab-tags .vocab-tag {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: filter 0.14s var(--ease);
+}
+.vocab-tags .vocab-tag:hover { filter: brightness(0.96); }
+/* Chip đang lọc: ĐẢO MÀU chứ không chỉ đậm lên. Ở hàng nhiều màu như thế này, một sắc độ
+   nhạt hơn không đọc ra là "đang chọn" — nó chỉ trông như một chủ đề khác. */
+.vocab-tags .vocab-tag[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.vocab-tags .vocab-tag:focus-visible { outline: none; box-shadow: var(--ring); }
+.vocab-tag-count { opacity: 0.7; }
+
 /* Dãy tối đa 7 ô số + 2 mũi tên. Mọi ô rộng bằng nhau và KHÔNG co giãn: để chiều rộng chạy
    theo nội dung thì dãy nhấp nhổm mỗi lần đổi trang ("1" hẹp hơn "40"), và ô một chữ số
    thành mục tiêu bấm quá nhỏ. `justify-content: center` giữ dãy cân giữa khi thừa chỗ. */
@@ -526,6 +631,7 @@ body {
   min-width: 32px;
   padding: 7px 6px;
   text-align: center;
+  font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
 }
 /* Trang đang xem: đảo màu để nổi hẳn khỏi các ô còn lại, không chỉ dựa vào sắc độ nhạt.
@@ -550,8 +656,8 @@ body {
 .vocab-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 13px;
+  gap: 11px;
+  padding: 13px;
   /* --border chứ không --border-2: card đứng trên nền gần cùng màu, viền mờ làm mép card
      tan vào nền và cả danh sách nhìn thành một mảng xám. */
   border: 1px solid var(--border);
@@ -562,18 +668,84 @@ body {
 }
 .vocab-item + .vocab-item { margin-top: 8px; }
 .vocab-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-2); }
-.vocab-item > div { flex: 1; min-width: 0; }
+.vocab-main { flex: 1; min-width: 0; }
+.vocab-head { display: flex; align-items: baseline; gap: 7px; }
 /* Từ tiếng Anh là thứ mắt tìm khi lướt danh sách — nó phải thắng nghĩa tiếng Việt rõ ràng
-   về cả cỡ chữ lẫn độ đậm, không chỉ hơn nửa điểm như trước (14.5 so với 13). */
-.vocab-item strong { font-size: 15px; font-weight: 600; letter-spacing: -0.011em; }
-.vocab-item .meta { margin-left: 6px; color: var(--text-3); font-size: 11.5px; font-weight: 400; }
-.vocab-item .vi { display: block; margin-top: 3px; color: var(--text-2); font-size: 13.5px; }
+   về cả cỡ chữ, độ đậm lẫn bộ chữ. */
+.vocab-item strong {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.vocab-item .meta { color: var(--text-3); font-size: 11px; font-weight: 400; }
+.vocab-item .vi {
+  margin: 2px 0 0;
+  font-family: var(--font-serif);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+/* Dòng chân: chip chủ đề · thanh thành thạo · chữ trạng thái. `wrap` vì side panel kéo hẹp
+   được, và ba thứ này tràn ngang thì đẩy cả card lệch. */
+.vocab-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+.vocab-foot .vocab-tag { padding: 2px 8px; font-size: 10.5px; }
+
+/* Thanh thành thạo 5 vạch. Màu KHÔNG phải kênh thông tin duy nhất — chữ trạng thái ngay
+   bên cạnh nói đúng cùng một điều bằng lời. */
+.mastery { display: flex; gap: 2px; flex: none; }
+.mastery i {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--streak-off);
+}
+.mastery i[data-on] { background: var(--accent); }
+/* Thẻ đang học lại: SM-2 đặt repetitions về 0 nên chỉ nhìn SỐ vạch thì nó giống hệt thẻ
+   mới tinh — màu là thứ duy nhất tách được hai chuyện đó ở mức liếc mắt. */
+.mastery i[data-on][data-lapsed] { background: var(--warn); }
+
+.vocab-status { color: var(--text-3); font-size: 10.5px; }
+
+/* Cột phải: band, "Sửa", "✕". Xếp dọc và canh phải như thiết kế. */
+.vocab-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  flex: none;
+}
+
+/* "Sửa" là chữ, không phải nút có viền: nó đứng cạnh band nên một nút đầy đủ ở đó sẽ tranh
+   chỗ với chính con số band. */
+.vocab-edit-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.14s var(--ease);
+}
+.vocab-edit-open:hover { color: var(--accent-text); }
+.vocab-edit-open:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 4px; }
 
 /* Nút xoá: có mặt nhưng không mời gọi. Ẩn tới khi trỏ vào card hoặc nút nhận focus bàn
    phím — sáu dấu ✕ thường trực là sáu lời mời phá dữ liệu ngay trong tầm mắt.
    `opacity` chứ không `display:none`: nút vẫn nằm trong thứ tự Tab và vẫn được trình đọc
-   màn hình đọc, chỉ là mắt không bị nó kéo đi. */
-.vocab-item button {
+   màn hình đọc, chỉ là mắt không bị nó kéo đi.
+   Chỉ nhắm `.vocab-delete`, KHÔNG nhắm mọi `button` trong card: từ khi có form sửa, một
+   quy tắc chung sẽ giấu luôn cả nút "Lưu" và "Huỷ". */
+.vocab-delete {
   flex-shrink: 0;
   width: 26px;
   height: 26px;
@@ -588,16 +760,56 @@ body {
   transition: background 0.14s var(--ease), color 0.14s var(--ease),
     opacity 0.14s var(--ease);
 }
-.vocab-item:hover button,
-.vocab-item button:focus-visible { opacity: 1; }
-.vocab-item:hover button { border-color: var(--border); }
-.vocab-item button:hover { background: var(--danger-soft); color: var(--danger); }
-.vocab-item button:focus-visible { outline: none; box-shadow: var(--ring-danger); border-color: var(--danger); }
+.vocab-item:hover .vocab-delete,
+.vocab-delete:focus-visible { opacity: 1; }
+.vocab-item:hover .vocab-delete { border-color: var(--border); }
+.vocab-delete:hover { background: var(--danger-soft); color: var(--danger); }
+.vocab-delete:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-danger);
+  border-color: var(--danger);
+}
 
 /* Không có hover (màn cảm ứng) thì nút phải hiện sẵn, nếu không sẽ không có cách nào xoá. */
 @media (hover: none) {
-  .vocab-item button { opacity: 1; }
+  .vocab-delete { opacity: 1; }
 }
+
+/* ---------- Form sửa một mục ---------- */
+.vocab-edit { display: grid; gap: 3px; margin-top: 6px; }
+.vocab-edit label { color: var(--text-3); font-size: 10.5px; }
+.vocab-edit label + input { margin-bottom: 5px; }
+.vocab-edit input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.vocab-edit input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+
+.vocab-edit-actions { display: flex; gap: 6px; margin-top: 3px; }
+.vocab-edit-actions button {
+  padding: 6px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.vocab-edit-actions .vocab-edit-save {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.vocab-edit-actions button:disabled { opacity: 0.5; cursor: default; }
+.vocab-edit-actions button:focus-visible { outline: none; box-shadow: var(--ring); }
 
 /* ============================================================
    Ô lựa chọn trắc nghiệm — dùng chung cho tab Ôn tập và tab Quiz
@@ -655,7 +867,9 @@ body {
   border-radius: 6px;
   background: var(--surface);
   color: var(--text-3);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  /* --font-display chứ không mono: nó là một CON SỐ, và thiết kế 1a đặt mọi con số vào bộ
+     chữ display. Mono ở đây làm ô phím trông như một đoạn code lạc chỗ. */
+  font-family: var(--font-display);
   font-size: 11.5px;
   font-weight: 600;
   transition: inherit;
@@ -738,37 +952,73 @@ body {
   background: var(--accent);
   transition: width 0.3s var(--ease);
 }
-.progress-row .status { flex: none; font-variant-numeric: tabular-nums; }
+.progress-row .status {
+  flex: none;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 
+/* Mặt thẻ: card TRẮNG nổi trên nền panel, không phải một mảng --surface phẳng. Đây là thứ
+   duy nhất người dùng nhìn khi đang nhớ lại, nên nó phải tách hẳn khỏi mọi thứ quanh nó.
+   14px chứ không --r-card: thiết kế cho khối này bo mềm hơn các card danh sách. */
 .review-card {
-  margin: 12px 0;
-  padding: 22px 14px;
+  margin: 12px 0 10px;
+  padding: 18px 16px 15px;
   border: 1px solid var(--border-2);
-  border-radius: var(--r-card);
-  background: var(--surface);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow-1);
   text-align: center;
 }
 
-.review-front strong { display: block; font-size: 23px; font-weight: 640; letter-spacing: -0.015em; }
-.review-front .meta {
-  display: block;
-  margin-top: 4px;
+.review-direction {
+  margin: 0;
   color: var(--text-3);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.review-front strong {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.review-ipa-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.review-front .meta {
+  color: var(--text-3);
+  font-family: var(--font-mono);
   font-size: 12.5px;
 }
 .review-front button {
-  margin-top: 10px;
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   background: none;
+  color: var(--text-2);
   cursor: pointer;
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1;
   transition: background 0.14s var(--ease), border-color 0.14s var(--ease);
 }
-.review-front button:hover { border-color: var(--border-strong); background: var(--bg); }
+.review-front button:hover { border-color: var(--accent); background: var(--accent-soft); }
 
 /* Gợi ý phím tắt: chỉ có ý nghĩa khi chưa chọn, nên component gỡ đi sau khi chấm. */
 .review-hint {
@@ -782,21 +1032,62 @@ body {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
 }
 
+/* Khối nghĩa hiện SAU khi chấm: nền --surface, không viền. Nó nằm dưới mặt thẻ trắng nên
+   chỉ cần khác nền là đủ tách; thêm viền nữa là hai đường kẻ sát nhau. */
 .review-back {
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid var(--border-2);
+  margin-top: 10px;
+  padding: 11px 14px;
   border-radius: var(--r-card);
   background: var(--surface);
 }
-.review-back-term { margin: 0; font-size: 16px; font-weight: 620; letter-spacing: -0.01em; }
-.review-back .vi { margin: 2px 0 9px; color: var(--text-2); font-size: 14.5px; }
-.review-back .meta { margin-right: 6px; color: var(--text-3); font-size: 12px; }
-.review-definition { margin: 9px 0 0; color: var(--text-2); font-size: 13.5px; }
+.review-back-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.review-back-term {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.review-back .meta { color: var(--text-3); font-size: 11.5px; }
+/* Band ở đây là CHỮ trong dòng phân loại, không phải chip — chip nữa thì khối này có ba
+   mảng màu chồng nhau. `cursor: help` giữ lại vì lời nhắc "AI ước lượng" vẫn nằm ở title. */
+.band-inline { cursor: help; }
+.review-back .vi {
+  margin: 6px 0 0;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.review-definition {
+  margin: 4px 0 0;
+  font-family: var(--font-serif);
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* "Lần ôn sau · 6 ngày" — con số duy nhất cho biết lượt vừa rồi đã dời lịch đi đâu. */
+.review-next-due {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.review-interval {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+}
 
 .review-next { width: 100%; margin-top: 10px; }
 
@@ -1041,18 +1332,47 @@ body {
 .login-lead { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-2); }
 .login-button { margin-top: 4px; padding: 10px 14px; font-size: 13.5px; }
 
-/* Thanh tài khoản: nhỏ và mờ — nó là thông tin trạng thái, không phải thứ để bấm hằng ngày. */
+/* Thanh tài khoản: nhỏ và mờ — nó là thông tin trạng thái, không phải thứ để bấm hằng ngày.
+   Bên trái là dải streak, bên phải là email + nút đăng xuất. */
 .account {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border-2);
   font-size: 11.5px;
   color: var(--text-3);
 }
-.account-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* `margin-left: auto` chứ không `justify-content: space-between`: khi chưa tải xong streak
+   (hoặc GET_STATS hỏng) thì khối bên trái không tồn tại, và space-between sẽ đẩy email
+   sang trái làm cả header nhảy một nhịp lúc streak hiện ra. */
+.account-email {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Dải streak 7 ngày ---------- */
+.streak { display: flex; align-items: center; gap: 8px; flex: none; }
+.streak-count {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+.streak-cells { display: flex; gap: 3px; }
+.streak-cells i {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--streak-off);
+}
+.streak-cells i[data-level="on"] { background: var(--streak-on); }
+/* Ngày chỉ luyện thêm: có màu nhưng nhạt hơn — nó KHÔNG nối chuỗi streak. */
+.streak-cells i[data-level="half"] { background: var(--streak-half); }
 .account-signout {
   flex: none;
   padding: 2px 8px;
@@ -1071,6 +1391,57 @@ body {
    Mọi chuyển động ở đây chỉ là phản hồi 0.1–0.3s, không có gì mang nội dung,
    nên tắt sạch là an toàn.
    ============================================================ */
+/* ============================================================
+   Vòng quay chờ
+   Dùng chung cho mọi nút đang bận. Không thư viện, không SVG (ràng buộc #12).
+   ============================================================ */
+
+.spinner {
+  display: inline-block;
+  /* `em` chứ không `px`: nó tự cân theo cỡ chữ của nút đặt nó, nên nút to nút nhỏ đều vừa
+     mà không phải truyền prop kích thước. */
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  /* Một cạnh trong suốt tạo ra khe hở — chính khe đó làm mắt thấy nó đang quay. */
+  border-top-color: transparent;
+  border-radius: 50%;
+  /* `currentColor` + opacity thay vì một màu cố định: nút chính (chữ trắng trên nền nhấn)
+     và nút phụ (chữ tối trên nền sáng) dùng chung một class mà vẫn đọc được ở cả hai. */
+  opacity: 0.7;
+  animation: spinner-quay 0.7s linear infinite;
+  /* Không đẩy nhãn lệch khỏi đường chân chữ. */
+  vertical-align: -0.125em;
+  flex: none;
+}
+
+@keyframes spinner-quay {
+  to { transform: rotate(360deg); }
+}
+
+/* Khoảng cách giữa vòng quay và nhãn, khi cả hai nằm trong một nút. */
+button > .spinner + * {
+  margin-left: 0.45em;
+}
+
+button:has(> .spinner) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Quy tắc chung ở dưới đã ép animation về 0.01ms, tức vòng quay ĐỨNG LẠI ở một góc ngẫu
+     nhiên — một vòng tròn khuyết nằm nghiêng, trông như phần tử vẽ hụt chứ không như đang
+     chờ. Nên ở đây trả nó về một vòng tròn ĐỦ, mờ đi.
+
+     Thông tin không mất: nhãn nút đã đổi thành "Đang lưu…" và nút mang `aria-busy`. */
+  .spinner {
+    border-top-color: currentColor;
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1103,6 +1474,7 @@ body {
   background: var(--surface);
 }
 .stat-cell strong {
+  font-family: var(--font-display);
   font-size: 20px;
   font-weight: 650;
   letter-spacing: -0.02em;

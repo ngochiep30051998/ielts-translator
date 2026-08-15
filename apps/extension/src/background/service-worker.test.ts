@@ -13,6 +13,8 @@ const api = {
   saveVocab: vi.fn(),
   searchVocab: vi.fn(),
   deleteVocab: vi.fn(),
+  vocabTags: vi.fn(),
+  updateVocab: vi.fn(),
   getDueCards: vi.fn(),
   submitReview: vi.fn(),
   getPracticeCards: vi.fn(),
@@ -80,6 +82,8 @@ describe('service worker', () => {
     vi.mocked(chrome.alarms.get).mockResolvedValue(undefined as unknown as chrome.alarms.Alarm);
     api.saveVocab.mockResolvedValue({ id: 1, alreadyExists: false });
     api.deleteVocab.mockResolvedValue(null);
+    api.vocabTags.mockResolvedValue({ total: 0, untagged: 0, tags: [] });
+    api.updateVocab.mockResolvedValue({ id: 7, term: 'mitigate', meaningVi: 'giảm nhẹ' });
     api.getDueCards.mockResolvedValue([]);
     api.submitReview.mockResolvedValue({ nextDueDate: '2026-08-07', intervalDays: 1, easeFactor: 2.5 });
     api.srsStats.mockResolvedValue({ dueCount: 3, newCount: 1, learnedCount: 9 });
@@ -196,6 +200,44 @@ describe('service worker', () => {
       expect(response).toMatchObject({
         ok: false, error: { code: 'BACKEND_DOWN', retryable: true },
       });
+    });
+  });
+
+  describe('định tuyến message sổ từ', () => {
+    it('GET_VOCAB_TAGS xuống vocabTags, không tham số', async () => {
+      // Trả về nguyên khối `{ total, untagged, tags }` — tổng KHÔNG lọc đi cùng danh sách
+      // chủ đề trong đúng một lượt gọi, để hai nửa của hàng chip không lệch nhau.
+      const info = { total: 128, untagged: 41, tags: [{ tag: 'Môi trường', count: 24 }] };
+      api.vocabTags.mockResolvedValue(info);
+      await loadServiceWorker();
+
+      const response = await send({ type: 'GET_VOCAB_TAGS' });
+
+      expect(api.vocabTags).toHaveBeenCalledWith();
+      expect(response).toEqual({ ok: true, data: info });
+    });
+
+    it('UPDATE_VOCAB xuống updateVocab giữ nguyên null của field không đổi', async () => {
+      // `null` phải đi tới tận ApiClient để nó bỏ field ra khỏi body. Đổi thành `[]` hay
+      // chuỗi rỗng ở đây là im lặng gỡ sạch thẻ của người dùng.
+      await loadServiceWorker();
+
+      const response = await send({
+        type: 'UPDATE_VOCAB', id: 7, meaningVi: 'giảm nhẹ', tags: null,
+      });
+
+      expect(api.updateVocab).toHaveBeenCalledWith({
+        id: 7, meaningVi: 'giảm nhẹ', tags: null,
+      });
+      expect(response).toMatchObject({ ok: true, data: { id: 7 } });
+    });
+
+    it('UPDATE_VOCAB KHÔNG đụng badge — sửa nghĩa không thêm bớt thẻ ôn nào', async () => {
+      await loadServiceWorker();
+
+      await send({ type: 'UPDATE_VOCAB', id: 7, meaningVi: null, tags: ['Môi trường'] });
+
+      expect(refreshBadge).not.toHaveBeenCalled();
     });
   });
 
@@ -337,7 +379,7 @@ describe('service worker', () => {
       api.searchVocab.mockResolvedValue({ content: [], totalElements: 0, totalPages: 0, number: 0 });
       await loadServiceWorker();
 
-      await send({ type: 'SEARCH_VOCAB', query: 'renew', tag: null, page: 0 });
+      await send({ type: 'SEARCH_VOCAB', query: 'renew', tag: null, untagged: false, page: 0 });
 
       expect(refreshBadge).not.toHaveBeenCalled();
     });

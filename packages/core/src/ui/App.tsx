@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { sendToBackground } from '../messages';
-import type { ApiError, AuthUser, TranslateResult } from '../types';
+import type { ApiError, AuthUser, DailyPoint, TranslateResult } from '../types';
 import { LoginScreen } from './LoginScreen';
 import { TranslateTab } from './TranslateTab';
 import { VocabTab } from './VocabTab';
@@ -15,8 +15,31 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'vocab', label: 'Sổ từ' },
   { id: 'review', label: 'Ôn tập' },
   { id: 'quiz', label: 'Quiz' },
-  { id: 'stats', label: 'Thống kê' },
+  { id: 'stats', label: 'Tiến độ' },
 ];
+
+/** Số ô trong dải streak ở header — một tuần. */
+const STREAK_DAYS = 7;
+
+/** Chuỗi ngày rút gọn cho header: số ngày liên tiếp + một tuần gần nhất. */
+interface StreakStrip {
+  current: number;
+  days: DailyPoint[];
+}
+
+/**
+ * Ba mức của một ô trong dải.
+ *
+ * `half` tồn tại vì `reviews` và `practice` là hai field RIÊNG ở backend: streak chỉ đếm
+ * lượt ôn theo lịch. Một ngày chỉ luyện thêm KHÔNG nối chuỗi, nhưng cũng không phải ngày
+ * bỏ trống — tô nó y hệt ngày không học là xoá công của người dùng, tô y hệt ngày có ôn là
+ * nói dối về chuỗi.
+ */
+function streakLevel(point: DailyPoint): 'on' | 'half' | 'off' {
+  if (point.reviews > 0) return 'on';
+  if (point.practice > 0) return 'half';
+  return 'off';
+}
 
 /**
  * `undefined` = ĐANG ĐỌC trạng thái, `null` = chưa đăng nhập.
@@ -42,6 +65,8 @@ export function App({
   const [draft, setDraft] = useState(initialDraft);
   const [result, setResult] = useState<TranslateResult | null>(null);
   const [loaded, setLoaded] = useState(false);
+  /** `null` = chưa có gì để vẽ (chưa tải xong, backend lỗi, hoặc sổ chưa có dữ liệu). */
+  const [streak, setStreak] = useState<StreakStrip | null>(null);
 
   // Ở App chứ không ở TranslateTab: đổi tab làm TranslateTab unmount, nên effect đặt
   // trong đó sẽ chạy lại mỗi lần quay lại tab Dịch và ghi đè state người dùng đang gõ dở.
@@ -70,6 +95,24 @@ export function App({
     })();
   }, [auth, initialDraft]);
 
+  // Dải streak: gọi ĐÚNG MỘT LẦN sau khi biết đã đăng nhập, và hỏng thì im lặng bỏ qua.
+  // Đây là thông tin động viên, không phải chức năng — để nó chặn cả panel (hay hiện một
+  // dòng lỗi ở header) là đánh đổi sai hoàn toàn.
+  useEffect(() => {
+    if (!auth) return;
+    void (async () => {
+      const response = await sendToBackground({ type: 'GET_STATS' });
+      if (!response.ok || !response.data) return;
+      setStreak({
+        current: response.data.streak.current,
+        // `daily` LUÔN kết thúc ở hôm nay (theo múi giờ server) nên 7 phần tử CUỐI chính
+        // là tuần vừa rồi. `slice(-7)` chứ không `slice(0, 7)` — lấy đầu mảng là vẽ tuần
+        // của ba tháng trước mà không có gì đỏ.
+        days: response.data.daily.slice(-STREAK_DAYS),
+      });
+    })();
+  }, [auth]);
+
   async function signOut() {
     await sendToBackground({ type: 'SIGN_OUT' });
     // Xoá sạch state phiên trước: giữ lại kết quả dịch của người vừa đăng xuất trên một
@@ -77,6 +120,7 @@ export function App({
     setResult(null);
     setDraft('');
     setLoaded(false);
+    setStreak(null);
     setAuth(null);
   }
 
@@ -96,6 +140,22 @@ export function App({
   return (
     <div className="app">
       <header className="account">
+        {streak && (
+          <div className="streak">
+            <span className="streak-count">{streak.current} ngày liền</span>
+            {/* Dải ô là hình minh hoạ cho con số ngay bên trái, không mang thêm thông tin
+                nào — nên nó aria-hidden thay vì bắt trình đọc màn hình đọc bảy ô. */}
+            <span className="streak-cells" aria-hidden="true">
+              {streak.days.map((point) => (
+                <i
+                  key={point.date}
+                  data-testid="streak-cell"
+                  data-level={streakLevel(point)}
+                />
+              ))}
+            </span>
+          </div>
+        )}
         <span className="account-email">{auth.email}</span>
         <button type="button" className="account-signout" onClick={() => void signOut()}>
           Đăng xuất

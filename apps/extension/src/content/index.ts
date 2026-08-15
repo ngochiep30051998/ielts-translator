@@ -1,5 +1,5 @@
 import { extractContextSentence } from './selection';
-import { validateSelection, sendToBackground, shortMeaning, speak } from '@ielts/core';
+import { validateSelection, sendToBackground, bubbleSummary, shortMeaning, speak } from '@ielts/core';
 import type { TranslateResult } from '@ielts/core';
 import {
   showLoadingBubble, showResultBubble, showNoticeBubble, showErrorBubble, showIconBubble,
@@ -120,7 +120,7 @@ async function translateSnapshot(shot: SelectionSnapshot): Promise<void> {
   }
 
   currentResult = response.data;
-  showResultBubble(shot.rect, shortMeaning(response.data), {
+  showResultBubble(shot.rect, bubbleSummary(response.data), {
     onSpeak: () => speak(spokenTextOf(response.data), settings.voiceName),
     onSave: () => void saveCurrent(shot.rect),
     onExpand: () => void sendToBackground({ type: 'OPEN_PANEL_WITH_RESULT', result: response.data }),

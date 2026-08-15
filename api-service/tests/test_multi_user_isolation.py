@@ -135,6 +135,95 @@ def test_xoa_tu_cua_nguoi_khac_tra_404_va_hang_do_van_con(
     assert con_lai == 1
 
 
+def test_danh_sach_tag_chi_chua_tag_cua_chinh_minh(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """`GET /api/vocab/tags` bung mảng `tags` rồi gom nhóm. Câu gom nhóm là chỗ dễ rơi mất
+    mệnh đề `WHERE user_id = ?` nhất — và rơi thì nó vừa lộ chủ đề người khác đang học, vừa
+    thổi phồng `count` của chính mình."""
+    db.execute(
+        text("UPDATE vocab_entry SET tags = ARRAY['của A'] WHERE id = :i"),
+        {"i": hai_nguoi.vocab_a},
+    )
+    db.execute(
+        text("UPDATE vocab_entry SET tags = ARRAY['của A', 'của B'] WHERE id = :i"),
+        {"i": hai_nguoi.vocab_b},
+    )
+    db.commit()
+
+    ra = client.get("/api/vocab/tags", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    # 'của A' đếm 1 chứ không 2, và 'của B' không xuất hiện.
+    assert ra.json()["tags"] == [{"tag": "của A", "count": 1}]
+    # `total` là chip "Tất cả" — đếm cả sổ của A, và CHỈ của A.
+    assert ra.json()["total"] == 1
+
+    rb = client.get("/api/vocab/tags", headers=hai_nguoi.b.headers)
+    assert rb.status_code == 200
+    assert sorted(hang["tag"] for hang in rb.json()["tags"]) == ["của A", "của B"]
+    assert rb.json()["total"] == 1
+
+
+def test_dem_tu_chua_gan_the_chi_dem_so_tu_cua_minh(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """`untagged` đi qua một câu đếm KHÁC câu gom nhóm tag ở trên, nên nó cần chốt riêng.
+
+    A gắn thẻ cho từ của mình, B không — nếu câu đếm rơi mất `user_id` thì A vẫn thấy
+    "Chưa gắn 1" và bấm vào là một danh sách rỗng không giải thích được.
+    """
+    db.execute(
+        text("UPDATE vocab_entry SET tags = ARRAY['của A'] WHERE id = :i"),
+        {"i": hai_nguoi.vocab_a},
+    )
+    db.commit()
+
+    ra = client.get("/api/vocab/tags", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    assert ra.json()["untagged"] == 0
+
+    rb = client.get("/api/vocab/tags", headers=hai_nguoi.b.headers)
+    assert rb.json()["untagged"] == 1
+
+
+def test_loc_chua_gan_the_chi_tra_tu_cua_minh(client: Any, hai_nguoi: HaiNguoi) -> None:
+    """`GET /api/vocab?untagged=true` là một đường đọc dữ liệu MỚI, nên nó phải có mặt ở đây.
+
+    Cả hai người đều có đúng một từ chưa gắn thẻ, trùng `term` — thiếu `user_id` trong điều
+    kiện lọc thì mỗi người thấy hai dòng "mitigate" và không biết dòng nào của mình.
+    """
+    ra = client.get("/api/vocab", headers=hai_nguoi.a.headers, params={"untagged": "true"})
+    assert ra.status_code == 200
+    assert ra.json()["totalElements"] == 1
+    assert ra.json()["content"][0]["meaningVi"] == "giảm nhẹ (của A)"
+
+    rb = client.get("/api/vocab", headers=hai_nguoi.b.headers, params={"untagged": "true"})
+    assert rb.status_code == 200
+    assert rb.json()["totalElements"] == 1
+    assert rb.json()["content"][0]["meaningVi"] == "giảm nhẹ (của B)"
+
+
+def test_sua_tu_cua_nguoi_khac_tra_404_va_du_lieu_khong_doi(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """404 chứ không 403, và kiểm cả dữ liệu: trả 404 mà vẫn ghi đè là ca tệ nhất — người
+    kia mất nghĩa mình tự sửa mà không ai thấy gì."""
+    resp = client.patch(
+        f"/api/vocab/{hai_nguoi.vocab_b}",
+        headers=hai_nguoi.a.headers,
+        json={"meaningVi": "bị A ghi đè", "tags": ["A gắn vào"]},
+    )
+    assert resp.status_code == 404
+
+    db.expire_all()
+    hang = db.execute(
+        text("SELECT meaning_vi, tags FROM vocab_entry WHERE id = :i"),
+        {"i": hai_nguoi.vocab_b},
+    ).one()
+    assert hang[0] == "giảm nhẹ (của B)"
+    assert hang[1] == []
+
+
 def test_export_csv_chi_chua_tu_cua_minh(client: Any, hai_nguoi: HaiNguoi) -> None:
     resp = client.get("/api/vocab/export.csv", headers=hai_nguoi.a.headers)
 

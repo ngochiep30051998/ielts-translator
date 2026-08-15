@@ -200,7 +200,7 @@ def test_tim_theo_term_khong_phan_biet_hoa_thuong(
     _luu(db, owner.id, _request("renewable", "adj", "tái tạo"))
     _luu(db, owner.id, _request("mitigate", "v", "giảm nhẹ"))
 
-    found = service.search(db, owner.id, "RENEW", None, 0, 20).content
+    found = service.search(db, owner.id, "RENEW", None, untagged=False, page=0, size=20).content
 
     assert len(found) == 1
     assert found[0].term == "renewable"
@@ -211,14 +211,16 @@ def test_tim_theo_nghia_tieng_viet(db: Session, owner: NguoiDungTest) -> None:
     trước khi nhớ mặt chữ."""
     _luu(db, owner.id, _request("mitigate", "v", "giảm nhẹ"))
 
-    assert len(service.search(db, owner.id, "giảm", None, 0, 20).content) == 1
+    trang = service.search(db, owner.id, "giảm", None, untagged=False, page=0, size=20)
+
+    assert len(trang.content) == 1
 
 
 def test_loc_theo_tag(db: Session, owner: NguoiDungTest) -> None:
     _luu(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment"]))
     _luu(db, owner.id, _request("mitigate", "v", "giảm nhẹ", ["writing"]))
 
-    found = service.search(db, owner.id, None, "writing", 0, 20).content
+    found = service.search(db, owner.id, None, "writing", untagged=False, page=0, size=20).content
 
     assert len(found) == 1
     assert found[0].term == "mitigate"
@@ -235,7 +237,7 @@ def test_khong_loc_gi_tra_tat_ca_moi_nhat_truoc(db: Session, owner: NguoiDungTes
     _luu(db, owner.id, _request("first", "n", "một"))
     _luu(db, owner.id, _request("second", "n", "hai"))
 
-    found = service.search(db, owner.id, None, None, 0, 20).content
+    found = service.search(db, owner.id, None, None, untagged=False, page=0, size=20).content
 
     assert [e.term for e in found] == ["second", "first"]
 

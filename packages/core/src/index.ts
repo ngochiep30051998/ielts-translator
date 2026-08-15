@@ -23,6 +23,7 @@ export {
 
 export * from './mcq';
 export * from './heatmap';
+export * from './vocab-progress';
 export * from './pagination';
 export * from './summary';
 export * from './text';

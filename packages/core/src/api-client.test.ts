@@ -132,11 +132,27 @@ describe('ApiClient', () => {
       content: [], totalElements: 0, totalPages: 0, number: 0,
     }));
 
-    await client.searchVocab({ query: 'renew', tag: null, page: 2 });
+    await client.searchVocab({ query: 'renew', tag: null, untagged: false, page: 2 });
 
     const calledUrl = fetchMock.mock.calls[0][0] as string;
     expect(calledUrl).toContain('q=renew');
     expect(calledUrl).toContain('page=2');
+    expect(calledUrl).not.toContain('tag=');
+    // `untagged=false` KHÔNG được có mặt: nó là mặc định của backend, và một tham số thừa
+    // trên URL chỉ làm khó đọc log.
+    expect(calledUrl).not.toContain('untagged');
+  });
+
+  it('searchVocab gửi untagged=true khi lọc chip "Chưa gắn"', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({
+      content: [], totalElements: 0, totalPages: 0, number: 0,
+    }));
+
+    await client.searchVocab({ query: null, tag: null, untagged: true, page: 0 });
+
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('untagged=true');
+    // Backend trả 400 khi nhận cả hai — hai điều kiện mâu thuẫn.
     expect(calledUrl).not.toContain('tag=');
   });
 
@@ -149,6 +165,59 @@ describe('ApiClient', () => {
       `${BASE_URL}/api/vocab/42`,
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+
+  it('vocabTags GET /api/vocab/tags và trả cả tổng KHÔNG lọc lẫn số từ chưa gắn thẻ', async () => {
+    // `total` và `untagged` đi CÙNG một lượt gọi với danh sách chủ đề: hàng chip là một
+    // đơn vị hiển thị, ghép từ hai request là mở đường cho hai nửa lệch nhau trên màn hình.
+    fetchMock.mockResolvedValue(jsonResponse({
+      total: 128,
+      untagged: 41,
+      tags: [{ tag: 'Môi trường', count: 24 }, { tag: 'Giáo dục', count: 19 }],
+    }));
+
+    const info = await client.vocabTags();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/vocab/tags`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(info.total).toBe(128);
+    expect(info.untagged).toBe(41);
+    // Thứ tự count DESC, tag ASC là hợp đồng của backend — client KHÔNG sắp lại.
+    expect(info.tags).toEqual([{ tag: 'Môi trường', count: 24 }, { tag: 'Giáo dục', count: 19 }]);
+  });
+
+  it('updateVocab dùng PATCH và chỉ gửi field được yêu cầu đổi', async () => {
+    // PATCH chứ không PUT: field vắng mặt trong body nghĩa là "không đổi". Gửi kèm
+    // `tags: null` sẽ bị backend hiểu là "gỡ sạch thẻ" — mất dữ liệu im lặng.
+    fetchMock.mockResolvedValue(jsonResponse({ id: 7, term: 'mitigate' }));
+
+    await client.updateVocab({ id: 7, meaningVi: 'giảm nhẹ', tags: null });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BASE_URL}/api/vocab/7`);
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({ meaningVi: 'giảm nhẹ' });
+  });
+
+  it('updateVocab gửi mảng tags rỗng khi người dùng gỡ hết thẻ', async () => {
+    // `[]` là "thay thế toàn bộ bằng không có gì", khác hẳn `null` = "đừng động tới".
+    fetchMock.mockResolvedValue(jsonResponse({ id: 7, term: 'mitigate' }));
+
+    await client.updateVocab({ id: 7, meaningVi: null, tags: [] });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({ tags: [] });
+  });
+
+  it('updateVocab id lạ trả NOT_FOUND chứ không FORBIDDEN', async () => {
+    // 403 xác nhận id đó có tồn tại — ràng buộc #13. Client phải chuyển nguyên mã lỗi.
+    fetchMock.mockResolvedValue(jsonResponse(
+      { code: 'NOT_FOUND', message: 'Không tìm thấy từ này', retryable: false }, 404));
+
+    await expect(client.updateVocab({ id: 999, meaningVi: 'x', tags: null }))
+      .rejects.toMatchObject({ code: 'NOT_FOUND', retryable: false });
   });
 
   it('getDueCards gọi đúng đường dẫn kèm limit và newLimit', async () => {

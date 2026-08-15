@@ -76,6 +76,45 @@ export interface VocabEntryDto {
   collocations: unknown;
   examples: unknown;
   createdAt: string;
+  /**
+   * Ba field dưới đến từ `srs_card` qua LEFT JOIN, KHÔNG từ `vocab_entry`.
+   *
+   * CẢ BA CÙNG null khi từ chưa có thẻ ôn — đó là "chưa vào lịch ôn", KHÔNG phải "chưa
+   * tải xong". UI phải phân biệt được hai chuyện đó, nếu không một từ mới lưu sẽ trông
+   * y hệt một dòng đang loading.
+   */
+  srsState: CardState | null;
+  /** "YYYY-MM-DD" theo múi giờ server. */
+  srsDueDate: string | null;
+  srsRepetitions: number | null;
+}
+
+/**
+ * Một chủ đề trong sổ từ kèm số từ đang gắn — nguồn của hàng chip lọc ở tab Sổ từ.
+ *
+ * Backend sắp `count DESC, tag ASC`; thứ tự đó là hợp đồng chứ không phải tình cờ, nên
+ * client KHÔNG sắp lại.
+ */
+export interface VocabTag {
+  tag: string;
+  count: number;
+}
+
+/**
+ * Toàn bộ dữ liệu của hàng chip lọc, lấy trong ĐÚNG MỘT lượt gọi `GET /api/vocab/tags`.
+ *
+ * `total` KHÔNG lọc gì — nó là con số của chip "Tất cả", tức đường về. Lấy nó từ
+ * `totalElements` của lượt tìm kiếm đang lọc sẽ biến chip đó thành bản sao con số của chủ
+ * đề vừa bấm, và người dùng mất luôn tham chiếu "cả sổ có bao nhiêu từ".
+ *
+ * `untagged` đi cùng ở đây chứ không phải một request riêng: hàng chip là MỘT đơn vị hiển
+ * thị, ghép nó từ hai lượt gọi là mở đường cho hai nửa lệch nhau trên màn hình.
+ */
+export interface VocabTagsResponse {
+  total: number;
+  /** Số từ có `tags` là mảng RỖNG. Chip "Chưa gắn" chỉ hiện khi số này > 0. */
+  untagged: number;
+  tags: VocabTag[];
 }
 
 export interface PageResponse<T> {

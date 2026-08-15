@@ -36,9 +36,11 @@ describe('chỉ dẫn đổi theo khả năng của surface', () => {
   });
 
   it('sổ từ rỗng: extension chỉ tới bubble, web chỉ tới tab Dịch', async () => {
-    transportSend.mockResolvedValue({
-      ok: true,
-      data: { content: [], totalElements: 0, totalPages: 0, number: 0 },
+    transportSend.mockImplementation(async (request: { type: string }) => {
+      if (request.type === 'GET_VOCAB_TAGS') {
+        return { ok: true, data: { total: 0, untagged: 0, tags: [] } };
+      }
+      return { ok: true, data: { content: [], totalElements: 0, totalPages: 0, number: 0 } };
     });
 
     setSurfaceCapabilities({ selectionCapture: true });

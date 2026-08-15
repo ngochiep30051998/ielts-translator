@@ -2,10 +2,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
-import type { AuthUser, TranslateResult } from '../types';
+import type { AuthUser, DailyPoint, StatsDto, TranslateResult } from '../types';
 import { transportSend } from '../../vitest.setup';
 
 const USER: AuthUser = { email: 'hiep@test.local', displayName: 'Hiep', pictureUrl: null };
+
+function day(date: string, reviews: number, practice = 0): DailyPoint {
+  return { date, reviews, practice };
+}
+
+/** StatsDto tối thiểu cho dải streak ở header — 8 ngày để kiểm phép cắt "7 ngày cuối". */
+function stats(current: number, daily: DailyPoint[]): StatsDto {
+  return {
+    streak: { current, longest: current, lastActiveDate: daily.at(-1)?.date ?? null },
+    totals: { reviews: 10, learnedWords: 4, activeDays: 3 },
+    daily,
+    recall: { again: 1, hard: 1, good: 5, easy: 3 },
+    quiz: [],
+  };
+}
 
 const lastResult: TranslateResult = {
   direction: 'EN_VI', mode: 'WORD', cached: false, sourceText: 'was resiliented',
@@ -42,6 +57,8 @@ function mockBackend(last: TranslateResult | null, auth: AuthUser | null = USER)
           return { ok: true, data: last };
         case 'SEARCH_VOCAB':
           return { ok: true, data: { content: [], totalElements: 0, totalPages: 0, number: 0 } };
+        case 'GET_VOCAB_TAGS':
+          return { ok: true, data: { total: 0, untagged: 0, tags: [] } };
         default:
           return { ok: true, data: null };
       }
@@ -250,13 +267,104 @@ describe('App', () => {
     });
   });
 
-  it('có tab Thống kê và bấm vào thì chuyển sang đó', async () => {
+  it('có tab Tiến độ và bấm vào thì chuyển sang đó', async () => {
     mockBackend(null);
     render(<App />);
 
-    const tab = await screen.findByRole('tab', { name: 'Thống kê' });
+    const tab = await screen.findByRole('tab', { name: 'Tiến độ' });
     await userEvent.click(tab);
 
     expect(tab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  /* ================= Dải streak ở header ================= */
+
+  describe('dải streak 7 ngày', () => {
+    /** mockBackend + GET_STATS trả về `data`. `null` = backend trả rỗng, `false` = lỗi. */
+    function mockWithStats(data: StatsDto | null | false) {
+      transportSend.mockImplementation(
+        async (request: { type: string }) => {
+          if (request.type === 'GET_AUTH_STATE') return { ok: true, data: USER };
+          if (request.type === 'GET_STATS') {
+            return data === false
+              ? { ok: false, error: { code: 'BACKEND_DOWN', message: 'x', retryable: true } }
+              : { ok: true, data };
+          }
+          if (request.type === 'GET_VOCAB_TAGS') {
+            return { ok: true, data: { total: 0, untagged: 0, tags: [] } };
+          }
+          if (request.type === 'SEARCH_VOCAB') {
+            return { ok: true, data: { content: [], totalElements: 0, totalPages: 0, number: 0 } };
+          }
+          return { ok: true, data: null };
+        },
+      );
+    }
+
+    function countOfType(type: string): number {
+      return transportSend.mock.calls
+        .filter((call) => (call[0] as { type: string }).type === type).length;
+    }
+
+    it('hiện số ngày liên tiếp lấy từ GET_STATS', async () => {
+      mockWithStats(stats(12, [day('2026-08-15', 3)]));
+      render(<App />);
+
+      expect(await screen.findByText('12 ngày liền')).toBeInTheDocument();
+    });
+
+    it('vẽ đúng 7 ô, lấy 7 phần tử CUỐI của daily', async () => {
+      // `daily` dài 91 phần tử ở backend thật. Lấy nhầm 7 phần tử ĐẦU là vẽ tuần của ba
+      // tháng trước và không có gì đỏ cả.
+      mockWithStats(stats(2, [
+        day('2026-08-08', 9), day('2026-08-09', 1), day('2026-08-10', 0),
+        day('2026-08-11', 0), day('2026-08-12', 0), day('2026-08-13', 0),
+        day('2026-08-14', 0), day('2026-08-15', 5),
+      ]));
+      render(<App />);
+      await screen.findByText('2 ngày liền');
+
+      const cells = screen.getAllByTestId('streak-cell');
+      expect(cells).toHaveLength(7);
+      // Ngày 08/08 (9 lượt) đã bị cắt khỏi cửa sổ; ô đầu tiên là 09/08.
+      expect(cells[0]).toHaveAttribute('data-level', 'on');
+      expect(cells[6]).toHaveAttribute('data-level', 'on');
+    });
+
+    it('ngày chỉ luyện thêm là mức nửa — streak không đếm nó', async () => {
+      // `reviews` và `practice` là hai field RIÊNG ở backend đúng vì lý do này: streak chỉ
+      // đếm lượt ôn theo lịch. Gộp hai cái làm một là nói dối về chuỗi ngày.
+      mockWithStats(stats(1, [
+        day('2026-08-09', 0), day('2026-08-10', 0), day('2026-08-11', 0),
+        day('2026-08-12', 0), day('2026-08-13', 0), day('2026-08-14', 0, 4),
+        day('2026-08-15', 2),
+      ]));
+      render(<App />);
+      await screen.findByText('1 ngày liền');
+
+      const cells = screen.getAllByTestId('streak-cell');
+      expect(cells[5]).toHaveAttribute('data-level', 'half');
+      expect(cells[4]).toHaveAttribute('data-level', 'off');
+    });
+
+    it('GET_STATS hỏng thì ẩn dải đi, KHÔNG chặn cả panel', async () => {
+      mockWithStats(false);
+      render(<App />);
+
+      expect(await screen.findByRole('tab', { name: 'Dịch' })).toBeInTheDocument();
+      expect(screen.getAllByRole('tab')).toHaveLength(5);
+      expect(screen.queryByTestId('streak-cell')).not.toBeInTheDocument();
+    });
+
+    it('gọi GET_STATS đúng MỘT lần dù đổi tab qua lại', async () => {
+      mockWithStats(stats(3, [day('2026-08-15', 1)]));
+      render(<App />);
+      await screen.findByText('3 ngày liền');
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Sổ từ' }));
+      await userEvent.click(screen.getByRole('tab', { name: 'Dịch' }));
+
+      expect(countOfType('GET_STATS')).toBe(1);
+    });
   });
 });
