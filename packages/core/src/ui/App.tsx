@@ -2,20 +2,35 @@ import { useEffect, useState } from 'react';
 import { sendToBackground } from '../messages';
 import type { ApiError, AuthUser, TranslateResult } from '../types';
 import { LoginScreen } from './LoginScreen';
+import { HomeTab } from './HomeTab';
 import { TranslateTab } from './TranslateTab';
 import { VocabTab } from './VocabTab';
 import { ReviewTab } from './ReviewTab';
 import { QuizTab } from './QuizTab';
 import { StatsTab } from './StatsTab';
 
-type Tab = 'translate' | 'vocab' | 'review' | 'quiz' | 'stats';
+type Tab = 'home' | 'translate' | 'vocab' | 'review' | 'quiz';
 
+/** Id của tiêu đề màn con — vùng nội dung mượn nó làm nhãn khi màn đó đang mở. */
+const SUBSCREEN_TITLE_ID = 'subscreen-title';
+
+/**
+ * Bottom nav của thiết kế 1b — ĐÚNG năm mục, "Hôm nay" đứng đầu và là tab mở sẵn.
+ *
+ * "Tiến độ" không còn ở đây, nhưng `StatsTab` vẫn nguyên vẹn: nó thành màn con của Hôm nay,
+ * mở bằng nút "Xem chi tiết tiến độ". Bỏ hẳn tab đi mà không làm gì là xoá heatmap 91 ngày,
+ * biểu đồ cột và phân rã tỉ lệ nhớ — xoá tính năng, không phải đổi giao diện.
+ */
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'home', label: 'Hôm nay' },
   { id: 'translate', label: 'Dịch' },
   { id: 'vocab', label: 'Sổ từ' },
   { id: 'review', label: 'Ôn tập' },
   { id: 'quiz', label: 'Quiz' },
+<<<<<<< Updated upstream
   { id: 'stats', label: 'Thống kê' },
+=======
+>>>>>>> Stashed changes
 ];
 
 /**
@@ -38,7 +53,9 @@ export function App({
   initialDraft?: string;
 } = {}) {
   const [auth, setAuth] = useState<AuthState>(undefined);
-  const [tab, setTab] = useState<Tab>('translate');
+  const [tab, setTab] = useState<Tab>('home');
+  /** Màn thống kê đầy đủ đang mở đè lên Hôm nay. */
+  const [statsOpen, setStatsOpen] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
   const [result, setResult] = useState<TranslateResult | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -70,6 +87,15 @@ export function App({
     })();
   }, [auth, initialDraft]);
 
+<<<<<<< Updated upstream
+=======
+  /** Đổi tab. Luôn đóng màn con của Hôm nay — nó là một lớp đè, không phải một tab. */
+  function goTab(next: Tab) {
+    setStatsOpen(false);
+    setTab(next);
+  }
+
+>>>>>>> Stashed changes
   async function signOut() {
     await sendToBackground({ type: 'SIGN_OUT' });
     // Xoá sạch state phiên trước: giữ lại kết quả dịch của người vừa đăng xuất trên một
@@ -77,6 +103,11 @@ export function App({
     setResult(null);
     setDraft('');
     setLoaded(false);
+<<<<<<< Updated upstream
+=======
+    setStatsOpen(false);
+    setTab('home');
+>>>>>>> Stashed changes
     setAuth(null);
   }
 
@@ -93,15 +124,70 @@ export function App({
     );
   }
 
+  /** Màn con "Tiến độ" đang đè lên Hôm nay. */
+  const subscreenOpen = tab === 'home' && statsOpen;
+
   return (
     <div className="app">
+<<<<<<< Updated upstream
       <header className="account">
         <span className="account-email">{auth.email}</span>
         <button type="button" className="account-signout" onClick={() => void signOut()}>
           Đăng xuất
         </button>
       </header>
+=======
+      <main
+        className="content"
+        id="tab-panel"
+        role="tabpanel"
+        // Màn con có tiêu đề riêng: để nhãn trỏ tab "Hôm nay" trong khi nội dung là màn
+        // "Tiến độ" là đọc sai tên vùng người dùng vừa mở.
+        aria-labelledby={subscreenOpen ? SUBSCREEN_TITLE_ID : `tab-${tab}`}
+      >
+        {/* Hôm nay được GIỮ MOUNTED và ẩn bằng `hidden` thay vì tháo ra khỏi cây, để giữ
+            lại state đã nạp thay vì dựng màn trắng mỗi lần quay về. `hidden` bỏ nó khỏi cả
+            phần nhìn lẫn cây a11y và thứ tự tab của bàn phím.
 
+            Giữ mounted KHÔNG có nghĩa là dữ liệu đứng yên: `active` báo cho HomeTab biết
+            lúc nào nó được mở ra để nạp lại số. Đó là bảng điểm — ôn xong quay về mà vẫn
+            thấy con số cũ là sai ngay chỗ người ta nhìn vào. */}
+        <div className="tab-pane" hidden={tab !== 'home' || statsOpen}>
+          <HomeTab
+            user={auth}
+            active={tab === 'home' && !statsOpen}
+            onSignOut={() => void signOut()}
+            onNavigate={goTab}
+            onOpenStats={() => setStatsOpen(true)}
+          />
+        </div>
+        {subscreenOpen && (
+          <div className="subscreen">
+            <button
+              type="button"
+              className="subscreen-back"
+              onClick={() => setStatsOpen(false)}
+            >
+              ← Hôm nay
+            </button>
+            <h2 className="subscreen-title" id={SUBSCREEN_TITLE_ID}>Tiến độ</h2>
+            <StatsTab />
+          </div>
+        )}
+        {tab === 'translate' && (
+          <TranslateTab
+            draft={draft} onDraftChange={setDraft}
+            result={result} onResult={setResult} loaded={loaded}
+          />
+        )}
+        {tab === 'vocab' && <VocabTab />}
+        {tab === 'review' && <ReviewTab />}
+        {tab === 'quiz' && <QuizTab />}
+      </main>
+>>>>>>> Stashed changes
+
+      {/* Nav nằm SAU main trong DOM chứ không trước: nó dính đáy màn hình, và thứ tự đọc
+          của bàn phím/trình đọc màn hình phải khớp thứ tự nhìn thấy. */}
       <nav className="tabs" role="tablist" aria-label="Khu vực">
         {TABS.map((t) => (
           <button
@@ -112,25 +198,15 @@ export function App({
             className={tab === t.id ? 'active' : ''}
             aria-selected={tab === t.id}
             aria-controls="tab-panel"
-            onClick={() => setTab(t.id)}
+            onClick={() => goTab(t.id)}
           >
+            {/* Ô vuông bo góc thay cho icon, đúng như khung 1b vẽ. Nó không mang thông tin
+                nào ngoài chữ ngay dưới nên aria-hidden. */}
+            <i className="tab-icon" aria-hidden="true" />
             {t.label}
           </button>
         ))}
       </nav>
-
-      <main className="content" id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {tab === 'translate' && (
-          <TranslateTab
-            draft={draft} onDraftChange={setDraft}
-            result={result} onResult={setResult} loaded={loaded}
-          />
-        )}
-        {tab === 'vocab' && <VocabTab />}
-        {tab === 'review' && <ReviewTab />}
-        {tab === 'quiz' && <QuizTab />}
-        {tab === 'stats' && <StatsTab />}
-      </main>
     </div>
   );
 }

@@ -38,6 +38,54 @@ describe('bubble', () => {
     expect(root.querySelector('[data-action="expand"]')).not.toBeNull();
   });
 
+<<<<<<< Updated upstream
+=======
+  it('bubble kết quả hiện từ tiếng Anh và chip band cùng dòng', () => {
+    showResultBubble(rect, summary(), handlers());
+
+    const root = shadow();
+    expect(root.querySelector('.term')?.textContent).toBe('renewable');
+    // Chữ "BAND" nằm trong nội dung chứ không phải một `::before` của CSS: trình đọc màn
+    // hình phải đọc được "band 6.5", không phải một con số trơ trọi.
+    expect(root.querySelector('.band')?.textContent).toBe('BAND 6.5');
+  });
+
+  it('không có band thì KHÔNG vẽ chip rỗng', () => {
+    // Chiều VI→EN không có band nào. Một chip rỗng ở đó là một vệt màu vô nghĩa.
+    showResultBubble(rect, summary({ band: '' }), handlers());
+
+    expect(shadow().querySelector('.band')).toBeNull();
+  });
+
+  it('dòng nghĩa TIẾNG VIỆT mang class .vi để nhận mặt chữ serif', () => {
+    showResultBubble(rect, summary(), handlers());
+
+    expect(shadow().querySelector('.meaning')?.classList.contains('vi')).toBe(true);
+  });
+
+  it('dòng nghĩa TIẾNG ANH KHÔNG mang class .vi — serif chỉ dành cho tiếng Việt', () => {
+    // VI→EN chế độ CÂU trả `band65_version`, một câu tiếng Anh. Lora là mặt chữ dành cho
+    // tiếng Việt; gắn class .vi ở đây là hiện tiếng Anh bằng sai mặt chữ.
+    showResultBubble(rect, summary({
+      term: '', band: '',
+      meaning: 'The government should invest more.',
+      meaningLang: 'en',
+    }), handlers());
+
+    const line = shadow().querySelector('.meaning');
+    expect(line?.textContent).toBe('The government should invest more.');
+    expect(line?.classList.contains('vi')).toBe(false);
+  });
+
+  it('kết quả dịch câu không có dòng từ, chỉ có dòng nghĩa', () => {
+    showResultBubble(rect, summary({ term: '', band: '' }), handlers());
+
+    const root = shadow();
+    expect(root.querySelector('.term')).toBeNull();
+    expect(root.textContent).toContain('tái tạo');
+  });
+
+>>>>>>> Stashed changes
   it('bấm nút gọi đúng handler', () => {
     const h = handlers();
     showResultBubble(rect, 'tái tạo', h);
@@ -123,6 +171,29 @@ describe('bubble', () => {
     showResultBubble(rect, 'tái tạo', handlers());
 
     expect(document.body.textContent).not.toContain('tái tạo');
+  });
+
+  /* ========== Chip "+N từ hôm nay" trên thanh hành động (thiết kế 1b) ========== */
+
+  it('chip đếm số từ đã lưu trong ngày', () => {
+    showResultBubble(rect, summary(), handlers(), 3);
+
+    expect(shadow().querySelector('.daily')?.textContent).toBe('+3 từ hôm nay');
+  });
+
+  it('chưa lưu từ nào hôm nay thì KHÔNG vẽ chip', () => {
+    // "+0 từ hôm nay" là một huy hiệu nói rằng bạn chưa làm gì — nhiễu chứ không động viên.
+    showResultBubble(rect, summary(), handlers(), 0);
+
+    expect(shadow().querySelector('.daily')).toBeNull();
+  });
+
+  it('nút "Lưu vào sổ" là chữ, nằm trên thanh hành động', () => {
+    showResultBubble(rect, summary(), handlers(), 1);
+
+    const save = shadow().querySelector('[data-action="save"]');
+    expect(save?.textContent).toBe('Lưu vào sổ');
+    expect(save?.closest('.bar')).not.toBeNull();
   });
 });
 

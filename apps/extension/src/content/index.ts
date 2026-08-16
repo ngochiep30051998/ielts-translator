@@ -8,6 +8,7 @@ import {
 import { watchThemeChoice } from '../shared/theme-boot';
 
 import { loadSettings } from '../shared/settings';
+import { readDailySaves } from '../shared/daily-saves';
 import { installChromeTransport } from '../shared/chrome-transport';
 
 installChromeTransport();
@@ -68,7 +69,15 @@ async function saveCurrent(rect: DOMRect): Promise<void> {
     showErrorBubble(rect, messageFor(response.error), response.error.retryable, noopHandlers());
     return;
   }
-  showNoticeBubble(rect, response.data.alreadyExists ? 'Đã có trong sổ' : 'Đã lưu vào sổ');
+  if (response.data.alreadyExists) {
+    showNoticeBubble(rect, 'Đã có trong sổ');
+    return;
+  }
+  // Đọc LẠI ở đây chứ không dùng con số của bubble kết quả: service worker đếm trước khi
+  // trả lời, nên đây là số MỚI. Con số kia đọc từ lúc chưa bấm Lưu, và vì bubble kết quả
+  // bị thay hẳn bằng thông báo này nên nó không có lần vẽ lại nào — lượt lưu đầu tiên
+  // trong ngày sẽ mãi mãi hiện 0 (tức ẩn chip).
+  showNoticeBubble(rect, 'Đã lưu vào sổ', await readDailySaves());
 }
 
 /**
@@ -120,12 +129,19 @@ async function translateSnapshot(shot: SelectionSnapshot): Promise<void> {
   }
 
   currentResult = response.data;
+<<<<<<< Updated upstream
   showResultBubble(shot.rect, shortMeaning(response.data), {
+=======
+  // Đọc sau khi đã có kết quả, ngay trước lúc vẽ: service worker là chỗ đếm, và nó vừa có
+  // thể đếm thêm vì một lượt lưu ở side panel trong lúc mình đang chờ Gemini.
+  const savedToday = await readDailySaves();
+  showResultBubble(shot.rect, bubbleSummary(response.data), {
+>>>>>>> Stashed changes
     onSpeak: () => speak(spokenTextOf(response.data), settings.voiceName),
     onSave: () => void saveCurrent(shot.rect),
     onExpand: () => void sendToBackground({ type: 'OPEN_PANEL_WITH_RESULT', result: response.data }),
     onRetry: () => void translateSnapshot(shot),
-  });
+  }, savedToday);
 }
 
 /** Đường của phím tắt: bấm Alt+T đã là ý định rõ ràng nên dịch thẳng, không qua icon. */

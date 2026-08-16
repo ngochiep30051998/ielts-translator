@@ -33,11 +33,43 @@ class StreakDto(ApiModel):
 
 
 class TotalsDto(ApiModel):
-    """Toàn bộ lịch sử, không giới hạn cửa sổ — đây là màn động lực, con số phải to lên mãi."""
+    """Toàn bộ lịch sử, không giới hạn cửa sổ — đây là màn động lực, con số phải to lên mãi.
+
+    Hai ngoại lệ có chủ ý: `avgBand` là ảnh chụp hiện tại của cả sổ từ (không cộng dồn được),
+    còn `introducedLast7` cố ý chỉ nhìn 7 ngày.
+
+    Ba con số đếm TỪ ở đây đo ba thứ khác nhau, đừng dùng lẫn. Bất biến:
+    `masteredWords + learningWords == learnedWords`; từ chưa ôn lượt nào không nằm trong con
+    số nào cả.
+    """
 
     reviews: int
+    #: Số từ đã ôn ít nhất MỘT lượt (`repetitions >= 1`). Nhãn hiển thị là "từ đã học" ở
+    #: StatsTab — KHÔNG phải "đã thuộc". Giữ nguyên nghĩa cũ, đừng gán nhãn "thuộc" cho nó.
     learned_words: int
+    #: Số từ ĐÃ THUỘC (`repetitions >= MASTERED_REPETITIONS`) — ô xanh dương ở màn Hôm nay.
+    #:
+    #: Cùng một ngưỡng với `mastered` của từng chủ đề (`VocabTagDto`) và với thanh thành thạo
+    #: phía frontend. Trước đây ô đó vẽ `learnedWords`, nên một từ mới ôn đúng một lượt làm
+    #: màn hình vừa ghi "1 từ đã thuộc" vừa vẽ chủ đề của nó ở 0%.
+    mastered_words: int
+    #: Số từ ĐANG HỌC — `1 <= repetitions < MASTERED_REPETITIONS`.
+    learning_words: int
     active_days: int
+    #: Band trung bình của CẢ sổ từ (`vocab_entry.band_level`), làm tròn một chữ số thập phân.
+    #:
+    #: `None` nghĩa là chưa từ nào có band ĐỌC ĐƯỢC — khác hẳn `0.0`. UI phải hiện "—" cho ca
+    #: đó: nói với người học rằng band trung bình của họ bằng 0 là một câu vừa sai vừa nản.
+    avg_band: float | None
+    #: Số TỪ lần đầu được đưa vào vòng ôn trong 7 ngày gần nhất, tính CẢ hôm nay, theo
+    #: `settings.tz`. Nhãn hiển thị: "+N từ mới tuần này".
+    #:
+    #: KHÔNG phải "số từ đạt ngưỡng thuộc trong tuần" — con số đó KHÔNG tính được từ dữ liệu
+    #: đang có: `review_log` không lưu `repetitions`, chỉ lưu `rating`, `reviewed_at`,
+    #: `prev_interval`, `new_interval`, `mode`. Đừng đặt nó dưới ô "đã thuộc" như phần tăng
+    #: thêm của con số đó; nó là một phép đo riêng, và một thẻ bấm "Lại" vẫn được tính vì nó
+    #: THẬT SỰ đã bước vào vòng ôn.
+    introduced_last7: int
 
 
 class RecallDto(ApiModel):

@@ -15,6 +15,60 @@ type Mode = 'scheduled' | 'practice';
 const RELEARN_GAP = 3;
 const PRACTICE_LIMIT = 30;
 
+<<<<<<< Updated upstream
+=======
+const BAND_HINT = 'Band do AI ước lượng, chỉ mang tính tham khảo';
+
+/**
+ * Điểm cơ bản của một câu đúng, và bậc thưởng theo combo.
+ *
+ * Đây là CON SỐ ĐỘNG VIÊN của một buổi, không phải điểm số học thuật: nó sống trong
+ * component, mất khi đóng panel, và KHÔNG bao giờ được gửi xuống backend. Lưu nó xuống là
+ * thêm một cột phải migrate cho một dòng chữ mà chính thiết kế muốn nó phù du.
+ */
+const POINT_BASE = 1;
+/** Cứ mỗi `COMBO_STEP` câu đúng liên tiếp thì thưởng thêm 1 điểm. */
+const COMBO_STEP = 3;
+/** Trần thưởng — không có trần thì một buổi 50 thẻ kết thúc bằng những con số vô nghĩa. */
+const MAX_BONUS = 4;
+
+/** Mốc "nhanh"/"chắc tay" của nhận xét tốc độ, khớp thang mức SM-2 ở `mcq.ts`. */
+const FAST_UNDER_MS = 5_000;
+const STEADY_UNDER_MS = 15_000;
+
+function pointsFor(combo: number): number {
+  return POINT_BASE + Math.min(Math.floor(combo / COMBO_STEP), MAX_BONUS);
+}
+
+/** "2,1 giây" — dấu phẩy thập phân, đúng cách viết số tiếng Việt. */
+function formatSeconds(elapsedMs: number): string {
+  return `${(elapsedMs / 1000).toFixed(1).replace('.', ',')} giây`;
+}
+
+function speedLabel(correct: boolean, elapsedMs: number): string {
+  if (!correct) return `Chưa đúng — ${formatSeconds(elapsedMs)}`;
+  if (elapsedMs < FAST_UNDER_MS) return `Nhanh gọn — ${formatSeconds(elapsedMs)}`;
+  if (elapsedMs < STEADY_UNDER_MS) return `Chắc tay — ${formatSeconds(elapsedMs)}`;
+  return `Đúng rồi — ${formatSeconds(elapsedMs)}`;
+}
+
+/** Kết quả của lượt chấm vừa xong. `null` = chưa chấm câu nào trên thẻ đang hiện. */
+interface Scored {
+  correct: boolean;
+  elapsedMs: number;
+  /** Điểm của riêng câu này. 0 khi sai. */
+  gain: number;
+  /** Combo SAU câu này — 0 nếu vừa trả lời sai. */
+  combo: number;
+}
+
+/** Nhãn hướng hỏi, in nhỏ ở đỉnh mặt thẻ. */
+const DIRECTION_LABEL: Record<Question['direction'], string> = {
+  EN_VI: 'Anh → Việt',
+  VI_EN: 'Việt → Anh',
+};
+
+>>>>>>> Stashed changes
 export function ReviewTab() {
   // Dựng câu hỏi MỘT LẦN lúc nạp hàng đợi, không phải useMemo: useMemo là gợi ý hiệu năng,
   // React được phép vứt cache. Vứt cache ở đây nghĩa là trộn lại đáp án giữa lúc người dùng
@@ -29,6 +83,25 @@ export function ReviewTab() {
   const [loading, setLoading] = useState(true);
   // Mức vừa chấm, để nút Thử lại gửi lại ĐÚNG mức đó chứ không đoán bừa.
   const [lastRating, setLastRating] = useState<Rating | null>(null);
+<<<<<<< Updated upstream
+=======
+  /**
+   * Số ngày tới lần ôn sau, lấy từ phản hồi SUBMIT_REVIEW của CHÍNH thẻ đang hiện.
+   *
+   * `null` = không có con số nào để nói: lượt luyện thêm (SUBMIT_PRACTICE trả 204, và luyện
+   * thêm cố ý không đụng lịch), hoặc chưa chấm xong. Bịa ra một số ở hai ca đó là nói với
+   * người dùng rằng lịch vừa bị dời trong khi nó đứng yên.
+   */
+  const [nextInterval, setNextInterval] = useState<number | null>(null);
+  /**
+   * Combo và điểm — trạng thái của MỘT buổi, không lưu ở đâu cả.
+   *
+   * `combo` sống qua nhiều thẻ nên nằm riêng; `scored` chỉ mô tả thẻ đang hiện và bị xoá
+   * mỗi lần sang thẻ mới, y như `nextInterval`.
+   */
+  const [combo, setCombo] = useState(0);
+  const [scored, setScored] = useState<Scored | null>(null);
+>>>>>>> Stashed changes
   // Mốc bắt đầu tính giờ, đặt lại mỗi khi câu hỏi đổi.
   const startedAt = useRef(Date.now());
   const container = useRef<HTMLDivElement>(null);
@@ -62,6 +135,14 @@ export function ReviewTab() {
       setIndex(0);
       setPicked(null);
       setError(null);
+<<<<<<< Updated upstream
+=======
+      setNextInterval(null);
+      // Nạp xấp mới = buổi mới. Giữ combo của buổi trước là nói dối: chuỗi đúng liên tiếp
+      // đó thuộc về một xấp thẻ khác.
+      setCombo(0);
+      setScored(null);
+>>>>>>> Stashed changes
       // `questions`, `mode` và `scheduledSent` phải đổi CÙNG NHAU, chỉ khi nạp THÀNH CÔNG.
       // Nạp lỗi (vd bấm "Quay lại" mà GET_DUE_CARDS rớt mạng) phải giữ nguyên cả ba — đổi
       // `mode` một mình trong khi xấp thẻ vẫn là xấp cũ làm `submit()` tính sai thẻ đang ôn
@@ -115,7 +196,15 @@ export function ReviewTab() {
 
     setPicked(optionIndex);
     const correct = optionIndex === question.correctIndex;
-    await submit(ratingFor(correct, Date.now() - startedAt.current), question.card.id);
+    const elapsedMs = Date.now() - startedAt.current;
+
+    // Combo tính TRƯỚC khi gửi: nó là phản hồi tức thì cho cú bấm vừa rồi, không phụ thuộc
+    // vào việc backend có nhận được lượt chấm hay không.
+    const nextCombo = correct ? combo + 1 : 0;
+    setCombo(nextCombo);
+    setScored({ correct, elapsedMs, combo: nextCombo, gain: correct ? pointsFor(nextCombo) : 0 });
+
+    await submit(ratingFor(correct, elapsedMs), question.card.id);
 
     // Trả lời sai thì chèn lại thẻ để hiện lại trong CÙNG buổi, thay vì phải đợi lịch SM-2
     // ngày mai. Chèn xen RELEARN_GAP thẻ khác ở giữa để không lặp lại ngay tức thì.
@@ -132,6 +221,13 @@ export function ReviewTab() {
   function next() {
     setPicked(null);
     setError(null);
+<<<<<<< Updated upstream
+=======
+    // Giữ lại con số của thẻ vừa xong là gán lịch của nó cho thẻ đang hiện — sai dữ liệu,
+    // không phải một chi tiết hiển thị. Dải điểm cũng vậy: nó nói về câu vừa rồi.
+    setNextInterval(null);
+    setScored(null);
+>>>>>>> Stashed changes
     setIndex((i) => i + 1);
   }
 
@@ -205,6 +301,9 @@ export function ReviewTab() {
       {/* Thanh tiến độ mang aria-hidden: số đếm ngay bên cạnh đã nói đúng thông tin đó,
           đọc hai lần chỉ làm phiền người dùng trình đọc màn hình. */}
       <div className="progress-row">
+        {/* Chip chỉ hiện khi đang có chuỗi. "Combo 0" là một huy hiệu nói rằng bạn đang
+            không có gì — nhiễu chứ không động viên. */}
+        {combo > 0 && <span className="combo-chip">Combo {combo}</span>}
         <div className="progress-track" aria-hidden="true">
           <div
             className="progress-fill"
@@ -294,6 +393,7 @@ export function ReviewTab() {
                 nhau, xếp chồng thì mắt tách được ngay mà không phải đọc qua dấu nối. */}
             <p className="review-back-term">{card.term}</p>
             <p className="vi">{card.meaningVi}</p>
+<<<<<<< Updated upstream
             {card.pos && <span className="meta">{card.pos}</span>}
             {card.cefr && <span className="meta">{card.cefr}</span>}
             {card.bandLevel && (
@@ -301,11 +401,44 @@ export function ReviewTab() {
                 {card.bandLevel}
               </span>
             )}
+=======
+>>>>>>> Stashed changes
             {card.definitionEn && <p className="review-definition">{card.definitionEn}</p>}
           </div>
+
+          {/* Dải điểm: nhận xét tốc độ, chuyện xảy ra với lịch và combo, rồi điểm câu này.
+              Cả ba đều là chuyện của CÂU VỪA RỒI nên chúng biến mất khi sang thẻ sau. */}
+          {scored && (
+            <div className="review-score">
+              <div className="review-score-text">
+                <p className="review-speed">{speedLabel(scored.correct, scored.elapsedMs)}</p>
+                <p className="review-score-note">
+                  {nextInterval !== null && (
+                    <>
+                      <span>Lần ôn sau:</span>{' '}
+                      <span className="review-interval">{nextInterval} ngày</span>
+                      {' · '}
+                    </>
+                  )}
+                  {/* Không có `nextInterval` (lượt luyện thêm, hoặc lượt chấm vừa lỗi) thì
+                      KHÔNG bịa ra một con số ngày — lịch của thẻ đó đang đứng yên. */}
+                  {scored.correct
+                    ? `combo lên ${scored.combo}`
+                    : 'thẻ này sẽ quay lại · combo về 0'}
+                </p>
+              </div>
+              <span className="review-gain">+{scored.gain}</span>
+            </div>
+          )}
+
           {/* Lỗi chưa xử lý xong thì KHÔNG cho đi tiếp — bỏ qua lúc này là mất luôn lượt chấm. */}
           {!error && (
-            <button type="button" className="review-next" onClick={next}>Tiếp</button>
+            <button type="button" className="review-next" onClick={next}>
+              Tiếp
+              {/* Gợi ý phím tắt, KHÔNG phải một phần tên nút — aria-hidden để tên có thể
+                  truy cập của nút vẫn đúng là "Tiếp". */}
+              <span className="review-next-key" aria-hidden="true">Enter</span>
+            </button>
           )}
         </>
       )}

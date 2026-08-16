@@ -5,6 +5,7 @@ import type {
 } from '@ielts/core';
 import { refreshBadge } from './badge';
 import { loadSettings } from '../shared/settings';
+import { bumpDailySaves } from '../shared/daily-saves';
 import { clearAuth, loadAuth, loadToken, saveAuth } from '../shared/auth-storage';
 
 /**
@@ -125,9 +126,31 @@ const handle = createOperations(client, {
   openPanel: (tabId) => chrome.sidePanel.open({ tabId }),
 });
 
+/**
+ * Đếm số từ mới lưu trong ngày cho chip "+N từ hôm nay" trên bubble.
+ *
+ * Đặt ở service worker chứ không ở content script vì đây là chỗ DUY NHẤT mọi lượt lưu đi
+ * qua — lưu từ bubble và lưu từ side panel phải cùng được đếm, nếu không chip nói một con
+ * số nhỏ hơn sự thật.
+ *
+ * `alreadyExists` KHÔNG đếm: từ đó đã ở trong sổ từ trước rồi, người dùng không học thêm
+ * được từ nào mới trong hôm nay.
+ */
+async function noteVocabSaved(request: ExtensionRequest, data: unknown): Promise<void> {
+  if (request.type !== 'SAVE_WORD') return;
+  const saved = data as { alreadyExists?: boolean } | null;
+  if (saved?.alreadyExists) return;
+  await bumpDailySaves();
+}
+
 chrome.runtime.onMessage.addListener((request: ExtensionRequest, sender, sendResponse) => {
   handle(request, sender.tab?.id)
-    .then((data) => sendResponse({ ok: true, data } satisfies ExtensionResponse<unknown>))
+    .then(async (data) => {
+      // Đếm TRƯỚC khi trả lời: content script đọc lại con số ngay sau khi nhận phản hồi,
+      // nên đếm sau là nó đọc phải giá trị cũ đúng một nhịp.
+      await noteVocabSaved(request, data);
+      sendResponse({ ok: true, data } satisfies ExtensionResponse<unknown>);
+    })
     .catch((error) => sendResponse({ ok: false, error: toApiError(error) } satisfies ExtensionResponse<never>));
   return true;   // giữ kênh mở cho phản hồi bất đồng bộ
 });

@@ -54,6 +54,19 @@ class ReviewMode(enum.StrEnum):
     PRACTICE = "PRACTICE"
 
 
+#: Số lần ôn đúng liên tiếp (`srs_card.repetitions`) để coi một từ là "đã thuộc".
+#:
+#: PHẢI bằng `MASTERED_REPETITIONS` trong `packages/core/src/vocab-progress.ts` — frontend
+#: vẽ đúng bấy nhiêu vạch trên thanh thành thạo và đổi nhãn sang "đã thuộc" tại ngưỡng đó,
+#: còn backend đếm `mastered` của từng chủ đề (`GET /api/vocab/tags`) và `masteredWords` của
+#: cả sổ (`GET /api/stats`) tại ngưỡng này. Hai con số lệch nhau thì thanh đầy kín mà chip
+#: chủ đề vẫn báo chưa thuộc — hai kênh thông tin nói ngược nhau trên cùng một màn hình.
+#:
+#: `tests/test_mastered_threshold_sync.py` đọc thẳng file TS và so với hằng số này; đó là
+#: chốt chặn DUY NHẤT cho ràng buộc liên ngôn ngữ đó, đừng xoá nó.
+MASTERED_REPETITIONS = 5
+
+
 class SrsCard(Base):
     __tablename__ = "srs_card"
 

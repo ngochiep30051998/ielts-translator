@@ -216,7 +216,10 @@ describe('ApiClient', () => {
   it('learningStats gọi GET /api/stats', async () => {
     fetchMock.mockResolvedValue(jsonResponse({
       streak: { current: 0, longest: 0, lastActiveDate: null },
-      totals: { reviews: 0, learnedWords: 0, activeDays: 0 },
+      totals: {
+        reviews: 0, learnedWords: 0, masteredWords: 0, learningWords: 0,
+        activeDays: 0, avgBand: null, introducedLast7: 0,
+      },
       daily: [],
       recall: { again: 0, hard: 0, good: 0, easy: 0 },
       quiz: [],

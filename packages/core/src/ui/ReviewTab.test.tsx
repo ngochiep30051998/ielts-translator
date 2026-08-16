@@ -407,4 +407,120 @@ describe('ReviewTab', () => {
       'GET_DUE_CARDS', 'GET_PRACTICE_CARDS', 'GET_PRACTICE_CARDS',
     ]);
   });
+
+  /* ================= Combo + điểm của MỘT buổi (thiết kế 1b) ================= */
+
+  describe('combo và điểm trong buổi', () => {
+    /** Chọn đáp án đúng của thẻ đang hiện. */
+    async function traLoiDung(term: string) {
+      const options = await screen.findAllByRole('button', { name: /^\d/ });
+      await userEvent.click(options.find((b) => isCorrectFor(term, b))!);
+    }
+
+    async function sangTheSau() {
+      // Tên vẫn đúng là "Tiếp": chữ "Enter" cạnh nó là gợi ý phím tắt và mang aria-hidden,
+      // nên nó không lọt vào tên có thể truy cập của nút.
+      await userEvent.click(await screen.findByRole('button', { name: 'Tiếp' }));
+    }
+
+    it('chưa trả lời câu nào thì chưa có chip combo', async () => {
+      // "Combo 0" là một huy hiệu nói rằng bạn đang không có gì — nhiễu chứ không động viên.
+      mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
+      render(<ReviewTab />);
+      await screen.findAllByRole('button', { name: /^\d/ });
+
+      expect(screen.queryByText(/^Combo/)).not.toBeInTheDocument();
+    });
+
+    it('đúng liên tiếp thì combo tăng dần', async () => {
+      mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
+      render(<ReviewTab />);
+
+      await traLoiDung('mitigate');
+      expect(await screen.findByText('Combo 1')).toBeInTheDocument();
+
+      await sangTheSau();
+      await traLoiDung('resilient');
+      expect(await screen.findByText('Combo 2')).toBeInTheDocument();
+    });
+
+    it('trả lời SAI thì combo về 0', async () => {
+      mockQueue([card(1, 'mitigate'), card(2, 'resilient')]);
+      render(<ReviewTab />);
+
+      await traLoiDung('mitigate');
+      await screen.findByText('Combo 1');
+      await sangTheSau();
+
+      await userEvent.click(await nutSai('resilient'));
+
+      // Chip mang chữ "Combo" viết hoa; dòng nhận xét viết thường — hai thứ khác nhau, và
+      // phép so ở đây phân biệt hoa thường đúng vì lý do đó.
+      expect(screen.queryByText(/^Combo/)).not.toBeInTheDocument();
+      expect(await screen.findByText(/combo về 0/)).toBeInTheDocument();
+    });
+
+    it('nhận xét tốc độ đi kèm số giây thật', async () => {
+      mockQueue([card(1, 'mitigate')]);
+      render(<ReviewTab />);
+
+      await traLoiDung('mitigate');
+
+      // Dấu phẩy thập phân, đúng cách viết số tiếng Việt.
+      expect(await screen.findByText(/\d+,\d giây/)).toBeInTheDocument();
+    });
+
+    it('mỗi câu đúng cộng điểm, combo càng dài điểm càng cao', async () => {
+      const cards = [1, 2, 3, 4].map((i) => card(i, `tu${i}`));
+      mockQueue(cards);
+      render(<ReviewTab />);
+
+      await traLoiDung('tu1');
+      expect(await screen.findByText('+1')).toBeInTheDocument();
+
+      for (const term of ['tu2', 'tu3']) {
+        await sangTheSau();
+        await traLoiDung(term);
+      }
+
+      // Combo 3 vượt một bậc thưởng — điểm câu này phải cao hơn câu đầu.
+      expect(await screen.findByText('+2')).toBeInTheDocument();
+    });
+
+    it('câu sai không được điểm', async () => {
+      mockQueue([card(1, 'mitigate')]);
+      render(<ReviewTab />);
+
+      await userEvent.click(await nutSai('mitigate'));
+
+      expect(await screen.findByText('+0')).toBeInTheDocument();
+    });
+
+    it('combo là trạng thái của MỘT buổi — không gửi lên backend', async () => {
+      // Đây là con số động viên, không phải dữ liệu học. Lưu nó xuống backend là thêm một
+      // cột phải migrate cho một dòng chữ mất đi khi đóng panel — đúng như thiết kế muốn.
+      const sent = mockWithLog([card(1, 'mitigate'), card(2, 'resilient')]);
+      render(<ReviewTab />);
+
+      await traLoiDung('mitigate');
+      await screen.findByText('Combo 1');
+
+      expect(sent.every((s) => !('combo' in s) && !('score' in s))).toBe(true);
+    });
+
+    it('nạp buổi mới thì combo về 0', async () => {
+      mockWithLog([card(1, 'mitigate')], [card(9, 'resilient')]);
+      render(<ReviewTab />);
+
+      await traLoiDung('mitigate');
+      await screen.findByText('Combo 1');
+      await sangTheSau();
+
+      // Hết xấp theo lịch → chuyển sang luyện thêm là một buổi mới.
+      await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+      await screen.findAllByRole('button', { name: /^\d/ });
+
+      expect(screen.queryByText(/^Combo/)).not.toBeInTheDocument();
+    });
+  });
 });

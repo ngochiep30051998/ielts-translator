@@ -142,7 +142,55 @@ def find_by_id(db: Session, user_id: int, entry_id: int) -> VocabEntryDto:
     entry = repository.find_by_id_and_user(db, entry_id, user_id)
     if entry is None:
         raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy từ id={entry_id}")
+<<<<<<< Updated upstream
     return _to_dto(entry)
+=======
+    return _to_dto(*hang)
+
+
+def update(
+    db: Session, user_id: int, entry_id: int, request: VocabUpdateRequest
+) -> VocabEntryDto:
+    """Sửa một mục sổ từ. Chỉ đụng tới field CÓ MẶT trong body (xem `VocabUpdateRequest`).
+
+    Ngữ nghĩa `tags` ở đây THAY THẾ toàn bộ, ngược với `save()` (gộp thêm qua `_merge_tags`).
+    Cố ý tách: gộp là đúng cho lượt bôi đen lưu lại một từ cũ, còn thay thế là đúng cho lượt
+    người dùng bấm Sửa — trộn hai ngữ nghĩa vào một đường thì không còn cách nào gỡ một thẻ
+    đã gắn nhầm.
+
+    Tra theo `(id, user_id)` trong MỘT bước và trả NOT_FOUND khi không khớp — 403 xác nhận
+    id đó tồn tại, tức một kênh dò id (ràng buộc #13).
+    """
+    hang = repository.find_by_id_and_user_with_card(db, entry_id, user_id)
+    if hang is None:
+        raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy từ id={entry_id}")
+
+    entry, card = hang
+    # Vế `is not None` thứ hai là để mypy thu hẹp kiểu, không phải điều kiện nghiệp vụ thứ
+    # hai — `co_gui` đã bao hàm nó rồi.
+    if request.co_gui("meaning_vi") and request.meaning_vi is not None:
+        entry.meaning_vi = request.meaning_vi.strip()
+    if request.co_gui("tags") and request.tags is not None:
+        # GÁN LẠI chứ không sửa list tại chỗ — cùng lý do như `_merge_tags`: SQLAlchemy theo
+        # dõi cột mảng qua phép gán. Bỏ thẻ rỗng và thẻ trùng vì cả hai đều lọt được từ ô
+        # nhập tự do, và mỗi cái đẻ ra một chip vô nghĩa ở `GET /api/vocab/tags`.
+        entry.tags = list(dict.fromkeys(t.strip() for t in request.tags if t.strip()))
+
+    db.flush()
+    return _to_dto(entry, card)
+
+
+def list_tags(db: Session, user_id: int) -> VocabTagsResponse:
+    total, untagged = repository.count_total_and_untagged(db, user_id)
+    return VocabTagsResponse(
+        total=total,
+        untagged=untagged,
+        tags=[
+            VocabTagDto(tag=tag, count=count, mastered=mastered)
+            for tag, count, mastered in repository.count_tags(db, user_id)
+        ],
+    )
+>>>>>>> Stashed changes
 
 
 def delete(db: Session, user_id: int, entry_id: int) -> None:

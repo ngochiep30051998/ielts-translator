@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+import math
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
@@ -24,6 +25,10 @@ from app.stats.streak import tinh_streak
 #: Độ dài cửa sổ `daily`. 91 = 13 tuần chẵn. Đổi số này là đổi hợp đồng API — mirror
 #: TypeScript và test đều dựa vào "đúng 91 phần tử".
 WINDOW_DAYS = 91
+
+#: Cửa sổ của `totals.introducedLast7` — dòng "+N từ mới tuần này". 7 ngày TÍNH CẢ hôm nay,
+#: tức [hôm nay − 6 ; hôm nay].
+INTRODUCED_WINDOW_DAYS = 7
 
 
 def lay_thong_ke(db: Session, user_id: int) -> StatsDto:
@@ -48,8 +53,20 @@ def lay_thong_ke(db: Session, user_id: int) -> StatsDto:
             # Dùng lại hàm sẵn có của srs thay vì viết lại `count(*) WHERE repetitions >= 1`:
             # hai định nghĩa cho "đã học" sẽ trôi khỏi nhau.
             learned_words=srs_repo.count_learned(db, user_id),
+            # Cùng ngưỡng với `mastered` của từng chủ đề. "Đã thuộc" phải có đúng MỘT nghĩa
+            # trên toàn hệ thống, nếu không hai ô cạnh nhau ở màn Hôm nay nói ngược nhau.
+            mastered_words=srs_repo.count_mastered(db, user_id),
+            learning_words=srs_repo.count_learning(db, user_id),
             # Cùng lý do với streak: chỉ đếm ngày có ôn THEO LỊCH.
             active_days=len(ngay_co_on_theo_lich),
+            avg_band=_band_trung_binh(repo.dem_band_level(db, user_id)),
+            # `count_introduced_since` đếm số TỪ lần đầu bước vào vòng ôn. Cố ý KHÔNG phải
+            # "số từ đạt ngưỡng thuộc trong tuần": `review_log` không lưu `repetitions` nên
+            # con số đó không tính được từ dữ liệu đang có, và bịa ra một xấp xỉ rồi gắn nhãn
+            # chính xác cho nó còn tệ hơn là không có.
+            introduced_last7=srs_repo.count_introduced_since(
+                db, user_id, _dau_cua_so_gioi_thieu(hom_nay)
+            ),
         ),
         daily=[
             DailyPoint(
@@ -83,6 +100,60 @@ def _hom_nay() -> date:
 def _cua_so(hom_nay: date) -> list[date]:
     """`WINDOW_DAYS` ngày liên tục kết thúc ở hôm nay, tăng dần."""
     return [hom_nay - timedelta(days=WINDOW_DAYS - 1 - i) for i in range(WINDOW_DAYS)]
+
+
+def _dau_cua_so_gioi_thieu(hom_nay: date) -> datetime:
+    """Nửa đêm — THEO `settings.tz` — của ngày mở đầu cửa sổ `introducedLast7`.
+
+    Mốc phải mang offset của `settings.tz` chứ không phải `.astimezone()` (giờ hệ thống) như
+    `srs.service._introduced_today`: ở đây "hôm nay" đã được `_hom_nay()` tính theo
+    `settings.tz`, và trên Vercel tiến trình chạy giờ UTC nên hai múi giờ khác nhau — trộn
+    chúng lại là cửa sổ lệch 7 tiếng ở hai đầu.
+    Gửi một `datetime` KHÔNG có offset xuống Postgres còn tệ hơn: nó tự diễn giải theo
+    timezone của phiên, thứ không kiểm soát được.
+
+    Cùng biên với cách `daily` gom nhóm: `daily` gom theo `(reviewed_at AT TIME ZONE tz)::date`,
+    và "ngày địa phương >= hôm nay − 6" tương đương "reviewed_at >= nửa đêm địa phương của
+    ngày đó" — một biên duy nhất, viết bằng hai thứ tiếng.
+    """
+    ngay_dau = hom_nay - timedelta(days=INTRODUCED_WINDOW_DAYS - 1)
+    return datetime.combine(ngay_dau, time.min, tzinfo=ZoneInfo(get_settings().tz))
+
+
+def _band_trung_binh(theo_gia_tri: list[tuple[str, int]]) -> float | None:
+    """Trung bình có trọng số của những chuỗi band ĐỌC ĐƯỢC. `None` khi không có chuỗi nào.
+
+    Hàng không parse được bị BỎ QUA, không bị coi là 0: một từ Gemini trả "chưa rõ" mà kéo
+    trung bình của cả sổ xuống thì con số vẫn trông hợp lý và không ai lần ra được.
+
+    `None` ở đây là "chưa có band nào", khác hẳn `0.0`. Trả 0.0 cho ca đó là bịa ra một phép
+    đo.
+    """
+    tong = 0.0
+    so_tu = 0
+    for gia_tri, so_luong in theo_gia_tri:
+        band = _doc_band(gia_tri)
+        if band is None:
+            continue
+        tong += band * so_luong
+        so_tu += so_luong
+    if so_tu == 0:
+        return None
+    # Một chữ số thập phân: thang IELTS chỉ nhảy 0.5, in thêm chữ số là bịa ra độ chính xác
+    # không tồn tại — và làm con số nhảy loạn mỗi lần lưu thêm một từ.
+    return round(tong / so_tu, 1)
+
+
+def _doc_band(gia_tri: str) -> float | None:
+    """Chuỗi `band_level` → số, hoặc `None` nếu không đọc được."""
+    try:
+        band = float(gia_tri)
+    except ValueError:
+        return None
+    # Bắt `ValueError` một mình là CHƯA đủ: `float("nan")` và `float("inf")` chạy êm. Một NaN
+    # lọt vào trung bình thì response mang literal `NaN`/`Infinity` — JSON không có hai thứ
+    # đó, `JSON.parse` của trình duyệt ném lỗi, và cả màn Hôm nay trắng vì một hàng rác.
+    return band if math.isfinite(band) else None
 
 
 def _quiz_dto(loai: QuizType, hang: tuple[int, int, float | None] | None) -> QuizTypeStatsDto:

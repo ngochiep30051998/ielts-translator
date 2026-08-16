@@ -76,6 +76,59 @@ export interface VocabEntryDto {
   collocations: unknown;
   examples: unknown;
   createdAt: string;
+<<<<<<< Updated upstream
+=======
+  /**
+   * Ba field dưới đến từ `srs_card` qua LEFT JOIN, KHÔNG từ `vocab_entry`.
+   *
+   * CẢ BA CÙNG null khi từ chưa có thẻ ôn — đó là "chưa vào lịch ôn", KHÔNG phải "chưa
+   * tải xong". UI phải phân biệt được hai chuyện đó, nếu không một từ mới lưu sẽ trông
+   * y hệt một dòng đang loading.
+   */
+  srsState: CardState | null;
+  /** "YYYY-MM-DD" theo múi giờ server. */
+  srsDueDate: string | null;
+  srsRepetitions: number | null;
+}
+
+/**
+ * Một chủ đề trong sổ từ kèm số từ đang gắn — nguồn của hàng chip lọc ở tab Sổ từ.
+ *
+ * Backend sắp `count DESC, tag ASC`; thứ tự đó là hợp đồng chứ không phải tình cờ, nên
+ * client KHÔNG sắp lại.
+ */
+export interface VocabTag {
+  tag: string;
+  count: number;
+  /**
+   * Số từ mang chủ đề này đã đạt ngưỡng thuộc — thẻ ôn có `repetitions >= 5`.
+   *
+   * Ngưỡng 5 đó là `MASTERED_REPETITIONS` trong `vocab-progress.ts`; backend giữ đúng cùng
+   * con số. Hai bên lệch nhau thì thanh thành thạo của một chủ đề nói khác thanh của từng
+   * từ trong chính chủ đề đó, ngay cạnh nhau trên một màn hình.
+   *
+   * Backend chỉ trả SỐ ĐẾM, phần trăm do frontend tính (`topicMastery` trong `today.ts`) —
+   * trả sẵn % là khoá cứng cách làm tròn vào API.
+   */
+  mastered: number;
+}
+
+/**
+ * Toàn bộ dữ liệu của hàng chip lọc, lấy trong ĐÚNG MỘT lượt gọi `GET /api/vocab/tags`.
+ *
+ * `total` KHÔNG lọc gì — nó là con số của chip "Tất cả", tức đường về. Lấy nó từ
+ * `totalElements` của lượt tìm kiếm đang lọc sẽ biến chip đó thành bản sao con số của chủ
+ * đề vừa bấm, và người dùng mất luôn tham chiếu "cả sổ có bao nhiêu từ".
+ *
+ * `untagged` đi cùng ở đây chứ không phải một request riêng: hàng chip là MỘT đơn vị hiển
+ * thị, ghép nó từ hai lượt gọi là mở đường cho hai nửa lệch nhau trên màn hình.
+ */
+export interface VocabTagsResponse {
+  total: number;
+  /** Số từ có `tags` là mảng RỖNG. Chip "Chưa gắn" chỉ hiện khi số này > 0. */
+  untagged: number;
+  tags: VocabTag[];
+>>>>>>> Stashed changes
 }
 
 export interface PageResponse<T> {
@@ -224,8 +277,37 @@ export interface StreakInfo {
 
 export interface StatsTotals {
   reviews: number;
+  /**
+   * Số từ đã ôn ít nhất một lần (`repetitions >= 1`).
+   *
+   * ĐỪNG đọc nó là "đã thuộc": ngưỡng thuộc của cả 1b là `MASTERED_REPETITIONS`
+   * (`vocab-progress.ts`), và con số đó là `masteredWords`. Field này chỉ còn dùng ở
+   * `StatsTab` dưới nhãn "từ đã học" — một nhãn khác, nên không mâu thuẫn.
+   */
   learnedWords: number;
+  /** Số từ đã THUỘC: `repetitions >= MASTERED_REPETITIONS`. Ô "từ đã thuộc" ở Hôm nay. */
+  masteredWords: number;
+  /** Số từ ĐANG học: `1 <= repetitions < MASTERED_REPETITIONS`. */
+  learningWords: number;
   activeDays: number;
+  /**
+   * Trung bình `band_level` của cả sổ từ.
+   *
+   * `null` = CHƯA từ nào có band, khác hẳn `0.0`. UI phải hiện "—" cho ca null; vẽ "0.0"
+   * là nói với người học rằng vốn từ của họ ở band 0.
+   *
+   * Backend bỏ qua những hàng có `band_level` không parse được thay vì tính chúng thành 0
+   * — một hàng rác kéo tụt trung bình của cả sổ mà không có gì đỏ.
+   */
+  avgBand: number | null;
+  /**
+   * Số TỪ lần đầu được đưa vào ôn trong 7 ngày gần nhất — dòng "+N từ mới tuần này".
+   *
+   * "Đưa vào ôn", KHÔNG phải "học thuộc": `review_log` không lưu `repetitions` nên "vượt
+   * ngưỡng thuộc trong 7 ngày" là con số không tính được từ dữ liệu đang có. Đặt nó dưới
+   * nhãn "+N tuần này" của ô "đã thuộc" là gán cho nó một ý nghĩa nó không có.
+   */
+  introducedLast7: number;
 }
 
 /** Số lượt THÔ theo 4 mức tự chấm. Tỉ lệ nhớ = `1 − again/tổng`, tính ở chỗ hiển thị. */

@@ -23,7 +23,10 @@ describe('StatRow', () => {
     render(
       <StatRow
         streak={{ current: 5, longest: 23, lastActiveDate: '2026-08-11' }}
-        totals={{ reviews: 1284, learnedWords: 312, activeDays: 87 }}
+        totals={{
+          reviews: 1284, learnedWords: 312, masteredWords: 208, learningWords: 104,
+          activeDays: 87, avgBand: 7.2, introducedLast7: 9,
+        }}
       />,
     );
 

@@ -2,13 +2,29 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendToBackground } from '../messages';
 import { surfaceCapabilities } from '../surface';
 import { pageSlots } from '../pagination';
+<<<<<<< Updated upstream
 import { loadSettings } from '../settings';
 import type { ApiError, VocabEntryDto } from '../types';
+=======
+import { MASTERED_REPETITIONS, vocabProgress } from '../vocab-progress';
+import { topicMastery } from '../today';
+import type { ApiError, VocabEntryDto, VocabTagsResponse } from '../types';
+>>>>>>> Stashed changes
 
 const SEARCH_DEBOUNCE_MS = 300;
 const BAND_HINT = 'Band do AI ước lượng, chỉ mang tính tham khảo';
 
+<<<<<<< Updated upstream
 /** Từ khoá tìm kiếm và số trang phải nằm trong CÙNG một state.
+=======
+/** Ba màu chip chủ đề, xoay vòng theo THỨ TỰ backend trả về. Không mang nghĩa gì thêm. */
+const TOPIC_TONES = ['a', 'b', 'c'] as const;
+
+/** Số ô chủ đề nhiều màu ở đầu tab — đúng ba, như khung 1b vẽ. */
+const TOPIC_CARDS = 3;
+
+/** Từ khoá tìm kiếm, chủ đề đang lọc và số trang phải nằm trong CÙNG một state.
+>>>>>>> Stashed changes
  *
  * Gõ một phím vừa đổi từ khoá vừa phải kéo trang về 0 — tách thành hai state thì hai lần
  * `set` đó cho effect thấy một trạng thái trung gian (từ khoá mới, trang cũ) và bắn thừa
@@ -88,6 +104,13 @@ export function VocabTab() {
     );
   }
 
+  // Ba chủ đề đầu bảng — backend đã sắp `count DESC, tag ASC`, client KHÔNG sắp lại.
+  const topicCards = tagInfo.tags.slice(0, TOPIC_CARDS).map(topicMastery);
+  /** Chủ đề đang lọc, để vẽ tiêu đề nhóm. `undefined` = đang xem cả sổ. */
+  const activeTopic = cursor.tag === null
+    ? undefined
+    : tagInfo.tags.filter((t) => t.tag === cursor.tag).map(topicMastery)[0];
+
   return (
     <div className="vocab-tab">
       <div className="vocab-toolbar">
@@ -100,7 +123,102 @@ export function VocabTab() {
         <button type="button" onClick={() => void openExport()}>CSV</button>
       </div>
 
+<<<<<<< Updated upstream
       {loading && <p className="status">Đang tải…</p>}
+=======
+      {/* Ba ô chủ đề nhiều màu: đường tắt tới những chủ đề đang có nhiều từ nhất, kèm mức
+          thành thạo để thấy ngay chỗ nào còn yếu. Hàng chip ngay dưới vẫn là chỗ lọc ĐẦY
+          ĐỦ — ba ô này chỉ là ba mục đầu bảng, không thay thế nó. */}
+      {topicCards.length > 0 && (
+        <div className="topic-cards">
+          {topicCards.map((topic, i) => (
+            <button
+              key={topic.tag}
+              type="button"
+              className="topic-card"
+              data-tone={TOPIC_TONES[i % TOPIC_TONES.length]}
+              aria-pressed={cursor.tag === topic.tag}
+              aria-label={`Chủ đề ${topic.tag}, ${topic.count} từ, thành thạo ${topic.percent}%`}
+              onClick={() => filterByTag(topic.tag)}
+            >
+              <span className="topic-card-count">{topic.count}</span>
+              <span className="topic-card-name">{topic.tag}</span>
+              {/* Thanh mang aria-hidden: nhãn của nút đã nói đúng con số này bằng lời. */}
+              <span className="topic-card-track" aria-hidden="true">
+                <i style={{ width: `${topic.percent}%` }} />
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Điều kiện là `tags.length`, KHÔNG phải `total > 0` — và đó là cố ý. Sổ từ chưa gắn
+          thẻ nào thì hàng chip chỉ còn "Tất cả N" với "Chưa gắn N" bằng đúng nhau, tức hai
+          nút lọc ra cùng một danh sách. Tổng số từ vẫn đọc được ở dòng "N từ" ngay bên dưới,
+          nên ẩn cả hàng không giấu mất thông tin nào. Đừng đổi thành `total > 0`. */}
+      {tagInfo.tags.length > 0 && (
+        <div className="vocab-tags" role="group" aria-label="Lọc theo chủ đề">
+          {/* "Tất cả" luôn đứng đầu: nó là đường về, và người dùng phải thấy nó ở chỗ cố
+              định chứ không phải đi tìm giữa hàng chip đang đổi theo sổ từ.
+
+              Con số lấy từ `tagInfo.total` — tổng KHÔNG lọc. Lấy `total` của lượt tìm kiếm
+              đang lọc sẽ biến chip này thành bản sao con số của chủ đề vừa bấm, và người
+              dùng mất luôn tham chiếu "cả sổ có bao nhiêu từ". */}
+          <button
+            type="button"
+            className="vocab-tag"
+            data-tone="all"
+            aria-pressed={cursor.tag === null && !cursor.untagged}
+            aria-label={`Lọc theo Tất cả, ${tagInfo.total} từ`}
+            onClick={() => filterByTag(null)}
+          >
+            Tất cả <span className="vocab-tag-count">{tagInfo.total}</span>
+          </button>
+          {tagInfo.tags.map((t, i) => (
+            <button
+              key={t.tag}
+              type="button"
+              className="vocab-tag"
+              data-tone={TOPIC_TONES[i % TOPIC_TONES.length]}
+              aria-pressed={cursor.tag === t.tag}
+              aria-label={`Lọc theo ${t.tag}, ${t.count} từ`}
+              onClick={() => filterByTag(t.tag)}
+            >
+              {t.tag} <span className="vocab-tag-count">{t.count}</span>
+            </button>
+          ))}
+          {/* "Chưa gắn" đứng CUỐI hàng — nó là chỗ dọn dẹp, không phải một chủ đề. Chỉ hiện
+              khi còn từ chưa gắn thẻ: một chip đếm 0 là ô bấm vào ra danh sách rỗng. */}
+          {tagInfo.untagged > 0 && (
+            <button
+              type="button"
+              className="vocab-tag"
+              data-tone="none"
+              aria-pressed={cursor.untagged}
+              aria-label={`Lọc theo Chưa gắn, ${tagInfo.untagged} từ`}
+              onClick={() => filterUntagged()}
+            >
+              Chưa gắn <span className="vocab-tag-count">{tagInfo.untagged}</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Tiêu đề nhóm — chỉ khi đang lọc theo một chủ đề. Không lọc thì danh sách là cả
+          sổ, và gán cho nó một cái tên nhóm là nói sai về thứ đang hiện. */}
+      {activeTopic && (
+        <div className="vocab-group">
+          <span className="vocab-group-name">{activeTopic.tag}</span>
+          <span className="vocab-group-mastery">thành thạo {activeTopic.percent}%</span>
+        </div>
+      )}
+
+      {loading && (
+        <p className="status" aria-live="polite">
+          <Spinner /> Đang tải…
+        </p>
+      )}
+>>>>>>> Stashed changes
 
       {!loading && entries.length === 0 && (
         <p className="empty">

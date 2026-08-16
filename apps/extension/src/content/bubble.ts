@@ -80,6 +80,20 @@ function textNode(content: string): HTMLSpanElement {
   return text;
 }
 
+/**
+ * Chip "+N từ hôm nay".
+ *
+ * Dùng chung cho bubble kết quả (đứng cạnh nút "Lưu vào sổ") và bubble báo đã lưu (mang
+ * con số VỪA tăng) — hai chỗ phải là cùng một thứ trong mắt người dùng, nên cùng một hàm
+ * dựng và cùng một class.
+ */
+function dailyChip(count: number): HTMLSpanElement {
+  const chip = document.createElement('span');
+  chip.className = 'daily';
+  chip.textContent = `+${count} từ hôm nay`;
+  return chip;
+}
+
 function separator(): HTMLSpanElement {
   const sep = document.createElement('span');
   sep.className = 'sep';
@@ -138,24 +152,103 @@ export function showLoadingBubble(rect: DOMRect): void {
   root.appendChild(container);
 }
 
+<<<<<<< Updated upstream
 export function showResultBubble(rect: DOMRect, meaning: string, handlers: BubbleHandlers): void {
+=======
+/**
+ * Bubble kết quả theo thiết kế 1b: khối chữ ở trên, thanh hành động nền xanh đặc ở dưới,
+ * card không viền chỉ có bóng nổi.
+ *
+ * `summary.term` rỗng (kết quả dịch CÂU) thì bỏ hẳn dòng đầu — nhét cả câu vào ô dành cho
+ * một từ là phá bố cục ở ca thường gặp nhất của chế độ đó.
+ *
+ * @param savedToday số từ đã lưu vào sổ trong ngày, cho chip "+N từ hôm nay". 0 = ẩn chip.
+ */
+export function showResultBubble(
+  rect: DOMRect, summary: BubbleSummary, handlers: BubbleHandlers, savedToday = 0,
+): void {
+>>>>>>> Stashed changes
   const root = mountShadow();
   const container = positionedContainer(rect);
 
+<<<<<<< Updated upstream
   container.appendChild(textNode(meaning));
   container.appendChild(separator());
   container.appendChild(button('speak', 'Phát âm', handlers.onSpeak, ICONS.speak));
   container.appendChild(button('save', 'Lưu vào sổ từ', handlers.onSave, ICONS.save));
   container.appendChild(button('expand', 'Mở side panel', handlers.onExpand, ICONS.expand));
+=======
+  const body = document.createElement('div');
+  body.className = 'body';
+
+  if (summary.term) {
+    const head = document.createElement('div');
+    head.className = 'head';
+
+    const term = document.createElement('span');
+    term.className = 'term';
+    term.textContent = summary.term;
+    head.appendChild(term);
+
+    // Không có band thì KHÔNG vẽ chip: một ô màu rỗng chỉ là nhiễu.
+    if (summary.band) {
+      const band = document.createElement('span');
+      band.className = 'band';
+      band.title = 'Band do AI ước lượng, chỉ mang tính tham khảo';
+      // Chữ "BAND" nằm trong nội dung chứ không phải `::before` của CSS: một con số 6.5
+      // trơ trọi không nói được gì với trình đọc màn hình.
+      band.textContent = `BAND ${summary.band}`;
+      head.appendChild(band);
+    }
+    body.appendChild(head);
+  }
+
+  // `.text` giữ nguyên tên class của mọi trạng thái bubble khác (loading, lỗi, đã lưu) để
+  // một chỗ khai báo màu chữ là đủ cho tất cả; `.meaning` mang phần bố cục của riêng dòng
+  // này.
+  //
+  // `.vi` CHỈ thêm khi dòng đó thật sự là tiếng Việt: nó là class bật serif (Lora), mặt chữ
+  // mà thiết kế 1a dành riêng cho tiếng Việt. Ca VI→EN chế độ CÂU trả về một câu tiếng Anh
+  // và phải giữ mặt chữ sans.
+  const meaning = textNode(summary.meaning);
+  meaning.classList.add('meaning');
+  if (summary.meaningLang === 'vi') meaning.classList.add('vi');
+  body.appendChild(meaning);
+  container.appendChild(body);
+
+  // Thanh hành động nền xanh đặc chạy hết bề ngang đáy card. "Lưu vào sổ" là hành động
+  // chính nên nó là CHỮ chiếm hết chỗ trống, không phải một trong ba icon giống nhau.
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  bar.appendChild(button('save', 'Lưu vào sổ', handlers.onSave));
+
+  // Chip chỉ hiện khi đã lưu được từ nào hôm nay — "+0 từ hôm nay" là một huy hiệu nói
+  // rằng bạn chưa làm gì.
+  if (savedToday > 0) bar.appendChild(dailyChip(savedToday));
+
+  bar.appendChild(button('speak', 'Phát âm', handlers.onSpeak, ICONS.speak));
+  // Không có trong khung 1b, nhưng đây là đường DUY NHẤT mở side panel kèm kết quả — bỏ đi
+  // là mất tính năng, không phải gọn hơn.
+  bar.appendChild(button('expand', 'Mở side panel', handlers.onExpand, ICONS.expand));
+  container.appendChild(bar);
+>>>>>>> Stashed changes
 
   root.appendChild(container);
 }
 
-/** Bubble chỉ có một dòng thông báo, không nút — dùng sau khi lưu xong. */
-export function showNoticeBubble(rect: DOMRect, message: string): void {
+/**
+ * Bubble chỉ có một dòng thông báo, không nút — dùng sau khi lưu xong.
+ *
+ * @param savedToday số từ đã lưu trong ngày TÍNH CẢ lượt vừa rồi. Đây là lần vẽ DUY NHẤT
+ *   mà người dùng thấy con số đã tăng: bubble kết quả bị thay hẳn bằng thông báo này, và
+ *   chip trên đó đọc số từ trước lúc bấm Lưu. 0 = ẩn chip (ca "Đã có trong sổ" — không từ
+ *   nào được thêm vào sổ nên không có gì vừa tăng).
+ */
+export function showNoticeBubble(rect: DOMRect, message: string, savedToday = 0): void {
   const root = mountShadow();
   const container = positionedContainer(rect, 'saved');
   container.appendChild(textNode(message));
+  if (savedToday > 0) container.appendChild(dailyChip(savedToday));
   root.appendChild(container);
 }
 

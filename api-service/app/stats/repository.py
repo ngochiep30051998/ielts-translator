@@ -1,4 +1,4 @@
-"""Truy vấn của màn thống kê — đúng ba câu.
+"""Truy vấn của màn thống kê — đúng bốn câu.
 
 File này CỐ Ý đọc chéo cả ba context (srs, quiz, vocabulary). Đó là việc của một read model
 báo cáo, khác `quiz/candidates.py` — file đó phải khoanh vùng vì quiz chỉ chạm dữ liệu SRS ở
@@ -90,6 +90,30 @@ def dem_luot_on_theo_rating(db: Session, user_id: int) -> dict[str, int]:
         .group_by(ReviewLog.rating)
     )
     return {str(hang[0]): int(hang[1]) for hang in db.execute(cau).all()}
+
+
+def dem_band_level(db: Session, user_id: int) -> list[tuple[str, int]]:
+    """`(chuỗi band_level, số từ mang đúng chuỗi đó)` của MỘT người. CHƯA parse, chưa lọc rác.
+
+    Trả chuỗi THÔ và để service parse, cố ý:
+
+    * `band_level` là `varchar(8)` do Gemini điền, nên "chưa rõ" hay "6.5-7" là dữ liệu có
+      thật. `avg(band_level::numeric)` sẽ làm CẢ câu nổ vì đúng một hàng như vậy — tức tab
+      thống kê chết hẳn thay vì bỏ qua một dòng.
+    * Lọc rác bằng regex trong SQL thì luật "thế nào là band đọc được" nằm ở hai chỗ (regex
+      và Python), và chúng sẽ lệch nhau.
+
+    GROUP BY thay vì trả từng hàng: band chỉ có vài giá trị phân biệt, nên kết quả gọn bất
+    kể sổ từ to cỡ nào. Hàng `band_level IS NULL` bị loại ngay tại đây — "chưa có band" không
+    phải một giá trị cần parse.
+    """
+    cau = (
+        select(VocabEntry.band_level, func.count())
+        .select_from(VocabEntry)
+        .where(VocabEntry.user_id == user_id, VocabEntry.band_level.is_not(None))
+        .group_by(VocabEntry.band_level)
+    )
+    return [(str(hang[0]), int(hang[1])) for hang in db.execute(cau).all()]
 
 
 def thong_ke_quiz_theo_loai(db: Session, user_id: int) -> dict[str, tuple[int, int, float | None]]:

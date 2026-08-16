@@ -9,7 +9,10 @@ function stats(patch: Partial<StatsDto> = {}): StatsDto {
   const end = new Date(2026, 7, 11);
   return {
     streak: { current: 5, longest: 23, lastActiveDate: '2026-08-11' },
-    totals: { reviews: 1284, learnedWords: 312, activeDays: 87 },
+    totals: {
+      reviews: 1284, learnedWords: 312, masteredWords: 208, learningWords: 104,
+      activeDays: 87, avgBand: 7.2, introducedLast7: 9,
+    },
     daily: Array.from({ length: 91 }, (_, i) => {
       const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (90 - i));
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -63,7 +66,10 @@ it('chưa ôn lượt nào thì mời đi ôn, không vẽ bốn khối rỗng',
     ok: true,
     data: stats({
       streak: { current: 0, longest: 0, lastActiveDate: null },
-      totals: { reviews: 0, learnedWords: 0, activeDays: 0 },
+      totals: {
+        reviews: 0, learnedWords: 0, masteredWords: 0, learningWords: 0,
+        activeDays: 0, avgBand: null, introducedLast7: 0,
+      },
     }),
   });
   render(<StatsTab />);

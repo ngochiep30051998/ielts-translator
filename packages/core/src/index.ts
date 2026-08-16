@@ -25,6 +25,7 @@ export * from './mcq';
 export * from './heatmap';
 export * from './pagination';
 export * from './summary';
+export * from './today';
 export * from './text';
 export * from './speech';
 export * from './theme';

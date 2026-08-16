@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BUBBLE_HOST_ID } from './bubble';
 import { sendToBackground } from '@ielts/core';
 import { DEFAULT_SETTINGS, type Settings } from '../shared/settings';
+import { bumpDailySaves } from '../shared/daily-saves';
 
 // `importOriginal` chứ không thay cả module: content script còn dùng `validateSelection`,
 // `shortMeaning` và `speak` thật từ core.
@@ -161,6 +162,73 @@ describe('content script — bôi đen hiện icon, bấm icon mới dịch', ()
 
     expect(shadow().textContent).toContain('Đã lưu vào sổ');
     expect(iconButton()).toBeNull();
+  });
+
+  /* ========== Chip "+N từ hôm nay" sau khi lưu (thiết kế 1b) ========== */
+
+  /**
+   * Giả lập đúng thứ tự của service worker: nó `bumpDailySaves()` TRƯỚC khi trả lời
+   * SAVE_WORD (xem `noteVocabSaved`), nên content script đọc lại là thấy số mới.
+   */
+  function mockSaveFlow(alreadyExists = false): void {
+    vi.mocked(sendToBackground).mockImplementation(async (message) => {
+      if ((message as { type: string }).type === 'SAVE_WORD') {
+        if (!alreadyExists) await bumpDailySaves();
+        return { ok: true, data: { id: 1, alreadyExists } } as never;
+      }
+      return {
+        ok: true,
+        data: {
+          direction: 'EN_VI',
+          mode: 'WORD',
+          cached: false,
+          payload: { meaning_vi: 'giảm nhẹ' },
+          sourceText: 'mitigate',
+        },
+      } as never;
+    });
+  }
+
+  /** Bôi đen → bấm icon → bấm "Lưu vào sổ". */
+  async function dichRoiLuu(): Promise<void> {
+    await selectText('mitigate');
+    realClick(iconButton()!);
+    await vi.advanceTimersByTimeAsync(0);
+    realClick(shadow().querySelector('[data-action="save"]') as HTMLElement);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  it('lượt lưu ĐẦU TIÊN trong ngày vẫn hiện chip số vừa tăng', async () => {
+    // Ca hỏng cũ: chip đọc số TRƯỚC khi lưu, nên lượt đầu tiên của ngày luôn là 0 (ẩn
+    // chip) và số mới không có lần vẽ lại nào — người dùng không bao giờ thấy nó tăng.
+    await chrome.storage.local.clear();
+    mockSaveFlow();
+
+    await dichRoiLuu();
+
+    expect(shadow().textContent).toContain('Đã lưu vào sổ');
+    expect(shadow().querySelector('.daily')?.textContent).toBe('+1 từ hôm nay');
+  });
+
+  it('lưu thêm từ nữa thì chip đi lên theo', async () => {
+    await chrome.storage.local.clear();
+    await bumpDailySaves();          // đã lưu 1 từ trước đó trong ngày
+    mockSaveFlow();
+
+    await dichRoiLuu();
+
+    expect(shadow().querySelector('.daily')?.textContent).toBe('+2 từ hôm nay');
+  });
+
+  it('từ ĐÃ CÓ trong sổ thì không có chip — không có số nào vừa tăng', async () => {
+    await chrome.storage.local.clear();
+    mockSaveFlow(true);
+
+    await dichRoiLuu();
+
+    expect(shadow().textContent).toContain('Đã có trong sổ');
+    expect(shadow().querySelector('.daily')).toBeNull();
   });
 
   it('đoạn quá dài ra bubble lỗi, không ra icon', async () => {

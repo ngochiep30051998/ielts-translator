@@ -7,6 +7,7 @@
 
 export { App } from './App';
 export { LoginScreen } from './LoginScreen';
+export { HomeTab } from './HomeTab';
 export { TranslateTab } from './TranslateTab';
 export { VocabTab } from './VocabTab';
 export { ReviewTab } from './ReviewTab';

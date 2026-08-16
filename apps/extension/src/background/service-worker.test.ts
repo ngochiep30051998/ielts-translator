@@ -36,6 +36,7 @@ vi.mock('@ielts/core', async (importOriginal) => ({
 vi.mock('./badge', () => ({ refreshBadge: vi.fn() }));
 
 const { refreshBadge } = await import('./badge');
+const { readDailySaves } = await import('../shared/daily-saves');
 
 const BADGE_ALARM = 'srs-badge';
 
@@ -170,7 +171,10 @@ describe('service worker', () => {
     it('GET_STATS gọi learningStats và KHÔNG đụng badge', async () => {
       const STATS = {
         streak: { current: 1, longest: 1, lastActiveDate: '2026-08-11' },
-        totals: { reviews: 1, learnedWords: 1, activeDays: 1 },
+        totals: {
+          reviews: 1, learnedWords: 1, masteredWords: 1, learningWords: 0,
+          activeDays: 1, avgBand: 6.5, introducedLast7: 1,
+        },
         daily: [],
         recall: { again: 0, hard: 0, good: 1, easy: 0 },
         quiz: [],
@@ -285,6 +289,43 @@ describe('service worker', () => {
 
       expect(api.explainQuiz).toHaveBeenCalledWith({ quizItemId: 12 });
       expect(response).toMatchObject({ ok: true, data: { explanation: 'x' } });
+    });
+  });
+
+  describe('đếm số từ lưu trong ngày (chip "+N từ hôm nay" của bubble)', () => {
+    it('lưu một từ mới thì con số tăng', async () => {
+      await chrome.storage.local.clear();
+      api.saveVocab.mockResolvedValue({ id: 1, alreadyExists: false });
+      await loadServiceWorker();
+
+      await send({ type: 'SAVE_WORD', result: RESULT, tags: [] });
+
+      expect(await readDailySaves()).toBe(1);
+    });
+
+    it('từ ĐÃ CÓ trong sổ thì KHÔNG tăng', async () => {
+      // Chip nói "từ hôm nay". Lưu lại một từ đã có không thêm từ nào vào sổ, nên đếm nó
+      // là thổi phồng con số đúng vào lúc người dùng lưu trùng nhiều nhất.
+      await chrome.storage.local.clear();
+      api.saveVocab.mockResolvedValue({ id: 1, alreadyExists: true });
+      await loadServiceWorker();
+
+      await send({ type: 'SAVE_WORD', result: RESULT, tags: [] });
+
+      expect(await readDailySaves()).toBe(0);
+    });
+
+    it('đếm ở service worker nên lưu từ side panel cũng vào sổ đếm', async () => {
+      // Đặt ở content script thì chỉ đếm được lượt lưu từ bubble, và chip nói một con số
+      // nhỏ hơn sự thật với người hay lưu từ tab Dịch.
+      await chrome.storage.local.clear();
+      api.saveVocab.mockResolvedValue({ id: 1, alreadyExists: false });
+      await loadServiceWorker();
+
+      await send({ type: 'SAVE_WORD', result: RESULT, tags: [] });
+      await send({ type: 'SAVE_WORD', result: RESULT, tags: [] });
+
+      expect(await readDailySaves()).toBe(2);
     });
   });
 

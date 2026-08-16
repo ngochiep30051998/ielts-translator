@@ -12,10 +12,18 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, distinct, func, select
 from sqlalchemy.orm import Session
 
-from app.srs.models import CardState, Rating, ReviewLog, ReviewMode, SrsCard, SrsDistractor
+from app.srs.models import (
+    MASTERED_REPETITIONS,
+    CardState,
+    Rating,
+    ReviewLog,
+    ReviewMode,
+    SrsCard,
+    SrsDistractor,
+)
 from app.vocabulary.models import VocabEntry
 
 
@@ -112,6 +120,11 @@ def count_by_state(db: Session, user_id: int, state: CardState) -> int:
 
 
 def count_learned(db: Session, user_id: int) -> int:
+    """Số từ đã ôn đúng ít nhất MỘT lượt (`repetitions >= 1`) — nhãn "từ đã học" ở StatsTab.
+
+    KHÔNG phải "đã thuộc". Ngưỡng thuộc là `count_mastered`; hai hàm này đứng cạnh nhau vì
+    đúng chỗ này từng có một con số mang hai nghĩa trên cùng một màn hình.
+    """
     return _count(
         db,
         select(func.count())
@@ -121,12 +134,59 @@ def count_learned(db: Session, user_id: int) -> int:
     )
 
 
+def count_mastered(db: Session, user_id: int) -> int:
+    """Số từ ĐÃ THUỘC — `repetitions >= MASTERED_REPETITIONS`.
+
+    Cùng ngưỡng với `mastered` của từng chủ đề (`vocabulary/repository.py`) và với thanh
+    thành thạo phía frontend. Một ngưỡng, một nghĩa: nếu ô "đã thuộc" ở màn Hôm nay đếm theo
+    ngưỡng khác thì nó và card "Chủ đề đang yếu" ngay bên dưới nói ngược nhau về cùng một từ.
+    """
+    return _count(
+        db,
+        select(func.count())
+        .select_from(SrsCard)
+        .join(VocabEntry, SrsCard.vocab_entry_id == VocabEntry.id)
+        .where(VocabEntry.user_id == user_id, SrsCard.repetitions >= MASTERED_REPETITIONS),
+    )
+
+
+def count_learning(db: Session, user_id: int) -> int:
+    """Số từ ĐANG HỌC — `1 <= repetitions < MASTERED_REPETITIONS`.
+
+    Viết thành câu riêng chứ không lấy `count_learned() - count_mastered()`: phép trừ đó
+    đúng CHỈ KHI hai hàm kia còn cùng lọc trên `repetitions`. Đổi `count_learned` sang lọc
+    theo `state` (một đề xuất hợp lý, xem `find_practice_cards`) là phép trừ lặng lẽ ra số âm
+    hoặc số sai, mà không có gì đỏ.
+    """
+    return _count(
+        db,
+        select(func.count())
+        .select_from(SrsCard)
+        .join(VocabEntry, SrsCard.vocab_entry_id == VocabEntry.id)
+        .where(
+            VocabEntry.user_id == user_id,
+            SrsCard.repetitions >= 1,
+            SrsCard.repetitions < MASTERED_REPETITIONS,
+        ),
+    )
+
+
 def count_introduced_since(db: Session, user_id: int, since: datetime) -> int:
-    """Số thẻ MỚI đã học kể từ mốc thời gian truyền vào.
+    """Số THẺ lần đầu được đưa vào vòng ôn kể từ mốc thời gian truyền vào.
+
+    "Đưa vào ôn", KHÔNG phải "học thuộc" — hai chuyện khác hẳn nhau. Thẻ mới bấm "Lại" VẪN
+    được đếm ở đây, và đó là đúng: nó đã thật sự bước vào vòng ôn, chỉ là chưa thuộc. Con số
+    "vượt ngưỡng thuộc trong N ngày" KHÔNG tính được từ dữ liệu đang có vì `review_log` không
+    lưu `repetitions`; đừng gắn nhãn "đã thuộc" cho kết quả của hàm này.
 
     `prev_interval = 0` nhận diện chính xác lượt review đầu đời của một thẻ: thẻ mới có
-    `interval_days = 0`, còn bấm Lại luôn đặt interval về 1 nên mọi lượt sau đó đều có
-    `prev_interval >= 1`. Nhờ vậy không cần bảng đếm riêng.
+    `interval_days = 0`, còn bấm Lại luôn đặt interval về 1 (`scheduler._interval_for`) nên
+    mọi lượt sau đó đều có `prev_interval >= 1`. Nhờ vậy không cần bảng đếm riêng.
+
+    `count(DISTINCT card_id)` chứ KHÔNG `count(*)`: đơn vị của con số này là THẺ. Bất biến
+    "mỗi thẻ tối đa một dòng `prev_interval = 0`" nằm ở `scheduler.py`, không có ràng buộc
+    nào trong DB giữ nó — một lần nhập tay hay một lần đổi công thức lịch là con số đếm bội
+    mà không có gì đỏ.
 
     Lọc `mode = SCHEDULED` là bắt buộc: hàng luyện chỉ chứa thẻ `repetitions >= 1` nên hôm
     nay không dòng PRACTICE nào có `prev_interval = 0` — nhưng bất biến đó phụ thuộc vào
@@ -134,7 +194,7 @@ def count_introduced_since(db: Session, user_id: int, since: datetime) -> int:
     """
     return _count(
         db,
-        select(func.count())
+        select(func.count(distinct(ReviewLog.card_id)))
         .select_from(ReviewLog)
         .join(SrsCard, ReviewLog.card_id == SrsCard.id)
         .join(VocabEntry, SrsCard.vocab_entry_id == VocabEntry.id)

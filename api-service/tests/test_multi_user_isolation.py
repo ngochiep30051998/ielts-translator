@@ -18,6 +18,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.srs.models import MASTERED_REPETITIONS
 from tests.conftest import SECOND_EMAIL, GeminiGia, NguoiDungTest, tao_nguoi_dung
 
 
@@ -135,6 +136,127 @@ def test_xoa_tu_cua_nguoi_khac_tra_404_va_hang_do_van_con(
     assert con_lai == 1
 
 
+<<<<<<< Updated upstream
+=======
+def test_danh_sach_tag_chi_chua_tag_cua_chinh_minh(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """`GET /api/vocab/tags` bung mảng `tags` rồi gom nhóm. Câu gom nhóm là chỗ dễ rơi mất
+    mệnh đề `WHERE user_id = ?` nhất — và rơi thì nó vừa lộ chủ đề người khác đang học, vừa
+    thổi phồng `count` của chính mình."""
+    db.execute(
+        text("UPDATE vocab_entry SET tags = ARRAY['của A'] WHERE id = :i"),
+        {"i": hai_nguoi.vocab_a},
+    )
+    db.execute(
+        text("UPDATE vocab_entry SET tags = ARRAY['của A', 'của B'] WHERE id = :i"),
+        {"i": hai_nguoi.vocab_b},
+    )
+    db.commit()
+
+    ra = client.get("/api/vocab/tags", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    # 'của A' đếm 1 chứ không 2, và 'của B' không xuất hiện.
+    assert ra.json()["tags"] == [{"tag": "của A", "count": 1, "mastered": 0}]
+    # `total` là chip "Tất cả" — đếm cả sổ của A, và CHỈ của A.
+    assert ra.json()["total"] == 1
+
+    rb = client.get("/api/vocab/tags", headers=hai_nguoi.b.headers)
+    assert rb.status_code == 200
+    assert sorted(hang["tag"] for hang in rb.json()["tags"]) == ["của A", "của B"]
+    assert rb.json()["total"] == 1
+
+
+def test_mastered_cua_tag_khong_dem_the_on_cua_nguoi_khac(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """`mastered` là con số ĐẾM MỚI, đọc từ `srs_card.repetitions` — dữ liệu học thuần tuý.
+
+    Nó đi qua một LEFT JOIN mới thêm vào câu gom nhóm tag, và `srs_card` KHÔNG có cột
+    `user_id`: chủ sở hữu chỉ suy ra được qua `vocab_entry`. Hai người cùng gắn tag trùng tên
+    và cùng có một thẻ đạt ngưỡng, nên rơi mất bộ lọc sẽ ra `mastered = 2` trong khi
+    `count = 1` — tỉ lệ thành thạo 200%, và không có gì đỏ.
+    """
+    for vocab_id in (hai_nguoi.vocab_a, hai_nguoi.vocab_b):
+        db.execute(
+            text("UPDATE vocab_entry SET tags = ARRAY['Môi trường'] WHERE id = :i"),
+            {"i": vocab_id},
+        )
+        db.execute(
+            text("UPDATE srs_card SET repetitions = :r WHERE vocab_entry_id = :i"),
+            {"r": MASTERED_REPETITIONS, "i": vocab_id},
+        )
+    db.commit()
+
+    ra = client.get("/api/vocab/tags", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    assert ra.json()["tags"] == [{"tag": "Môi trường", "count": 1, "mastered": 1}]
+
+    rb = client.get("/api/vocab/tags", headers=hai_nguoi.b.headers)
+    assert rb.json()["tags"] == [{"tag": "Môi trường", "count": 1, "mastered": 1}]
+
+
+def test_dem_tu_chua_gan_the_chi_dem_so_tu_cua_minh(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """`untagged` đi qua một câu đếm KHÁC câu gom nhóm tag ở trên, nên nó cần chốt riêng.
+
+    A gắn thẻ cho từ của mình, B không — nếu câu đếm rơi mất `user_id` thì A vẫn thấy
+    "Chưa gắn 1" và bấm vào là một danh sách rỗng không giải thích được.
+    """
+    db.execute(
+        text("UPDATE vocab_entry SET tags = ARRAY['của A'] WHERE id = :i"),
+        {"i": hai_nguoi.vocab_a},
+    )
+    db.commit()
+
+    ra = client.get("/api/vocab/tags", headers=hai_nguoi.a.headers)
+    assert ra.status_code == 200
+    assert ra.json()["untagged"] == 0
+
+    rb = client.get("/api/vocab/tags", headers=hai_nguoi.b.headers)
+    assert rb.json()["untagged"] == 1
+
+
+def test_loc_chua_gan_the_chi_tra_tu_cua_minh(client: Any, hai_nguoi: HaiNguoi) -> None:
+    """`GET /api/vocab?untagged=true` là một đường đọc dữ liệu MỚI, nên nó phải có mặt ở đây.
+
+    Cả hai người đều có đúng một từ chưa gắn thẻ, trùng `term` — thiếu `user_id` trong điều
+    kiện lọc thì mỗi người thấy hai dòng "mitigate" và không biết dòng nào của mình.
+    """
+    ra = client.get("/api/vocab", headers=hai_nguoi.a.headers, params={"untagged": "true"})
+    assert ra.status_code == 200
+    assert ra.json()["totalElements"] == 1
+    assert ra.json()["content"][0]["meaningVi"] == "giảm nhẹ (của A)"
+
+    rb = client.get("/api/vocab", headers=hai_nguoi.b.headers, params={"untagged": "true"})
+    assert rb.status_code == 200
+    assert rb.json()["totalElements"] == 1
+    assert rb.json()["content"][0]["meaningVi"] == "giảm nhẹ (của B)"
+
+
+def test_sua_tu_cua_nguoi_khac_tra_404_va_du_lieu_khong_doi(
+    client: Any, db: Session, hai_nguoi: HaiNguoi
+) -> None:
+    """404 chứ không 403, và kiểm cả dữ liệu: trả 404 mà vẫn ghi đè là ca tệ nhất — người
+    kia mất nghĩa mình tự sửa mà không ai thấy gì."""
+    resp = client.patch(
+        f"/api/vocab/{hai_nguoi.vocab_b}",
+        headers=hai_nguoi.a.headers,
+        json={"meaningVi": "bị A ghi đè", "tags": ["A gắn vào"]},
+    )
+    assert resp.status_code == 404
+
+    db.expire_all()
+    hang = db.execute(
+        text("SELECT meaning_vi, tags FROM vocab_entry WHERE id = :i"),
+        {"i": hai_nguoi.vocab_b},
+    ).one()
+    assert hang[0] == "giảm nhẹ (của B)"
+    assert hang[1] == []
+
+
+>>>>>>> Stashed changes
 def test_export_csv_chi_chua_tu_cua_minh(client: Any, hai_nguoi: HaiNguoi) -> None:
     resp = client.get("/api/vocab/export.csv", headers=hai_nguoi.a.headers)
 
@@ -314,8 +436,29 @@ def test_stats_khong_dem_luot_on_va_quiz_cua_nguoi_khac(
     `learnedWords` là ca dễ lọt nhất: cả hai người đều có đúng một thẻ `repetitions = 3` (do
     fixture `hai_nguoi` dựng), nên thiếu bộ lọc sẽ ra 2 thay vì 1 — một con số trông vẫn rất
     hợp lý.
+
+    `avgBand` và `introducedLast7` là hai đường đọc MỚI: cái đầu quét thẳng `vocab_entry`,
+    cái sau đọc `review_log` qua hai lần join. Band của A và B đặt lệch hẳn nhau (6.0 và 9.0)
+    để một câu truy vấn rò sẽ ra 7.5 chứ không phải một con số đúng tình cờ.
+
+    `masteredWords`/`learningWords` là hai câu đếm MỚI nữa. Thẻ của B được đẩy lên đúng
+    ngưỡng thuộc còn thẻ của A giữ `repetitions = 3`, nên hai người rơi vào HAI nhóm khác
+    nhau: một câu rò sẽ làm A đột nhiên có một từ "đã thuộc" — đúng thứ không thể phát hiện
+    bằng mắt.
     """
     the_b = _the_cua(db, hai_nguoi.vocab_b)
+    db.execute(
+        text("UPDATE vocab_entry SET band_level = '6.0' WHERE id = :i"),
+        {"i": hai_nguoi.vocab_a},
+    )
+    db.execute(
+        text("UPDATE vocab_entry SET band_level = '9.0' WHERE id = :i"),
+        {"i": hai_nguoi.vocab_b},
+    )
+    db.execute(
+        text("UPDATE srs_card SET repetitions = :r WHERE id = :i"),
+        {"r": MASTERED_REPETITIONS, "i": the_b},
+    )
     for _ in range(3):
         db.execute(
             text(
@@ -340,6 +483,10 @@ def test_stats_khong_dem_luot_on_va_quiz_cua_nguoi_khac(
     assert a["totals"]["reviews"] == 0
     assert a["totals"]["activeDays"] == 0
     assert a["totals"]["learnedWords"] == 1
+    assert a["totals"]["masteredWords"] == 0
+    assert a["totals"]["learningWords"] == 1
+    assert a["totals"]["avgBand"] == 6.0
+    assert a["totals"]["introducedLast7"] == 0
     assert a["streak"]["current"] == 0
     assert a["streak"]["lastActiveDate"] is None
     assert a["recall"] == {"again": 0, "hard": 0, "good": 0, "easy": 0}
@@ -349,5 +496,12 @@ def test_stats_khong_dem_luot_on_va_quiz_cua_nguoi_khac(
     b = client.get("/api/stats", headers=hai_nguoi.b.headers).json()
     assert b["totals"]["reviews"] == 3
     assert b["totals"]["learnedWords"] == 1
+    assert b["totals"]["masteredWords"] == 1
+    assert b["totals"]["learningWords"] == 0
+    assert b["totals"]["avgBand"] == 9.0
+    # Ba dòng `prev_interval = 0` ở trên là dữ liệu dựng tay trên CÙNG một thẻ, mà đơn vị của
+    # `introducedLast7` là TỪ chứ không phải lượt — nên B thấy 1, không phải 3. Điều cần chốt
+    # ở đây vẫn là A không thấy dòng nào.
+    assert b["totals"]["introducedLast7"] == 1
     assert b["recall"]["good"] == 3
     assert sum(hang["attempts"] for hang in b["quiz"]) == 1
