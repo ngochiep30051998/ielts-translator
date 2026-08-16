@@ -53,13 +53,26 @@ export function createOperations(client: ApiClient, platform: OperationsPlatform
         return result;
       }
       case 'SEARCH_VOCAB':
-        return client.searchVocab({ query: request.query, tag: request.tag, page: request.page });
+        return client.searchVocab({
+          query: request.query, tag: request.tag,
+          untagged: request.untagged, page: request.page,
+        });
       case 'DELETE_VOCAB': {
         // Xoá từ là xoá luôn thẻ của nó (ON DELETE CASCADE) — badge phải bỏ số cũ đi.
         const result = await client.deleteVocab(request.id);
         void platform.onVocabChanged?.();
         return result;
       }
+      case 'GET_VOCAB_TAGS':
+        return client.vocabTags();
+      case 'UPDATE_VOCAB':
+        // KHÔNG báo đổi: sửa nghĩa hay đổi thẻ không thêm và không bớt thẻ ôn nào, nên
+        // số trên badge không thể đổi vì một lượt sửa.
+        return client.updateVocab({
+          id: request.id, meaningVi: request.meaningVi, tags: request.tags,
+        });
+      case 'EXPORT_VOCAB_CSV':
+        return client.exportVocabCsv();
       case 'GET_DUE_CARDS':
         return client.getDueCards({ limit: request.limit, newLimit: request.newLimit });
       case 'SUBMIT_REVIEW': {

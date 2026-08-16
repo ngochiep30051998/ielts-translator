@@ -216,6 +216,77 @@ describe('ReviewTab', () => {
     expect(sent.filter((s) => s.type === 'SUBMIT_PRACTICE')).toHaveLength(0);
   });
 
+  /* ================= Mặt thẻ theo thiết kế 1a ================= */
+
+  it('mặt thẻ nói rõ đang hỏi theo chiều nào', async () => {
+    // random 0.1 (< 0.5) đẩy buildQuestion sang chiều EN_VI.
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    mockQueue([card(1, 'mitigate')]);
+
+    render(<ReviewTab />);
+    await screen.findAllByRole('button', { name: /^\d/ });
+
+    expect(screen.getByText('Anh → Việt')).toBeInTheDocument();
+    randomSpy.mockRestore();
+  });
+
+  it('chiều ngược lại đổi luôn nhãn hướng', async () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    mockQueue([card(1, 'mitigate')]);
+
+    render(<ReviewTab />);
+    await screen.findAllByRole('button', { name: /^\d/ });
+
+    expect(screen.getByText('Việt → Anh')).toBeInTheDocument();
+    randomSpy.mockRestore();
+  });
+
+  it('chấm xong một lượt theo lịch thì nói lần ôn sau cách bao lâu', async () => {
+    // `intervalDays` chỉ có trong phản hồi SUBMIT_REVIEW — đây là chỗ DUY NHẤT panel biết
+    // được con số đó, nên hiện nó ngay lúc vừa chấm.
+    mockQueue([card(1, 'mitigate'), card(2, 'resilient')], {
+      ok: true, data: { nextDueDate: '2026-08-21', intervalDays: 6, easeFactor: 2.5 },
+    });
+
+    render(<ReviewTab />);
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
+    await userEvent.click(options.find((b) => isCorrectFor('mitigate', b))!);
+
+    expect(await screen.findByText(/Lần ôn sau/i)).toBeInTheDocument();
+    expect(screen.getByText('6 ngày')).toBeInTheDocument();
+  });
+
+  it('lượt luyện thêm KHÔNG hiện lần ôn sau — luyện không đụng lịch', async () => {
+    // SUBMIT_PRACTICE trả 204, không có `intervalDays` nào. Bịa một con số ở đây là nói với
+    // người dùng rằng buổi luyện vừa rồi đã dời lịch của thẻ.
+    mockWithLog([], [card(9, 'resilient'), card(10, 'coherent')]);
+    render(<ReviewTab />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Luyện thêm' }));
+
+    const nut = (await screen.findAllByRole('button')).find((b) => /^\d/.test(b.textContent ?? ''));
+    await userEvent.click(nut!);
+
+    expect(await screen.findByRole('button', { name: 'Tiếp' })).toBeInTheDocument();
+    expect(screen.queryByText(/Lần ôn sau/i)).not.toBeInTheDocument();
+  });
+
+  it('sang thẻ sau thì xoá con số lịch của thẻ trước', async () => {
+    // Giữ lại số cũ là gán lịch của thẻ vừa xong cho thẻ đang hiện — sai dữ liệu, không
+    // phải lỗi hiển thị.
+    mockQueue([card(1, 'mitigate'), card(2, 'resilient')], {
+      ok: true, data: { nextDueDate: '2026-08-21', intervalDays: 6, easeFactor: 2.5 },
+    });
+
+    render(<ReviewTab />);
+    const options = await screen.findAllByRole('button', { name: /^\d/ });
+    await userEvent.click(options.find((b) => isCorrectFor('mitigate', b))!);
+    await screen.findByText('6 ngày');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Tiếp' }));
+
+    expect(screen.queryByText(/Lần ôn sau/i)).not.toBeInTheDocument();
+  });
+
   it('hàng đợi rỗng hiện empty state', async () => {
     mockQueue([]);
 

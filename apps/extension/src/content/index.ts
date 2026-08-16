@@ -1,5 +1,5 @@
 import { extractContextSentence } from './selection';
-import { validateSelection, sendToBackground, shortMeaning, speak } from '@ielts/core';
+import { validateSelection, sendToBackground, bubbleSummary, shortMeaning, speak } from '@ielts/core';
 import type { TranslateResult } from '@ielts/core';
 import {
   showLoadingBubble, showResultBubble, showNoticeBubble, showErrorBubble, showIconBubble,
@@ -129,14 +129,10 @@ async function translateSnapshot(shot: SelectionSnapshot): Promise<void> {
   }
 
   currentResult = response.data;
-<<<<<<< Updated upstream
-  showResultBubble(shot.rect, shortMeaning(response.data), {
-=======
   // Đọc sau khi đã có kết quả, ngay trước lúc vẽ: service worker là chỗ đếm, và nó vừa có
   // thể đếm thêm vì một lượt lưu ở side panel trong lúc mình đang chờ Gemini.
   const savedToday = await readDailySaves();
   showResultBubble(shot.rect, bubbleSummary(response.data), {
->>>>>>> Stashed changes
     onSpeak: () => speak(spokenTextOf(response.data), settings.voiceName),
     onSave: () => void saveCurrent(shot.rect),
     onExpand: () => void sendToBackground({ type: 'OPEN_PANEL_WITH_RESULT', result: response.data }),

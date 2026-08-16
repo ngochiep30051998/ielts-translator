@@ -1,7 +1,7 @@
 import type {
   AnswerResult, ApiError, AuthUser, CardDto, PageResponse, QuizExplanation, QuizItemDto,
   QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, StatsDto, TranslateResult,
-  VocabEntryDto,
+  VocabEntryDto, VocabTagsResponse,
 } from './types';
 import type { CredentialsPort } from './ports';
 
@@ -67,11 +67,16 @@ export class ApiClient {
     return this.request('/api/vocab', { method: 'POST', body: JSON.stringify(payload) });
   }
 
-  async searchVocab(args: { query: string | null; tag: string | null; page: number }):
-      Promise<PageResponse<VocabEntryDto>> {
+  async searchVocab(args: {
+    query: string | null; tag: string | null; untagged: boolean; page: number;
+  }): Promise<PageResponse<VocabEntryDto>> {
     const params = new URLSearchParams();
     if (args.query) params.set('q', args.query);
     if (args.tag) params.set('tag', args.tag);
+    // Chỉ đặt khi true: `untagged=false` đã là mặc định của backend, và một tham số thừa
+    // trên mọi URL chỉ làm log khó đọc. `tag` và `untagged` không bao giờ đi cùng nhau —
+    // backend trả 400 cho cặp đó.
+    if (args.untagged) params.set('untagged', 'true');
     params.set('page', String(args.page));
     return this.request(`/api/vocab?${params.toString()}`, { method: 'GET' });
   }
@@ -79,6 +84,33 @@ export class ApiClient {
   async deleteVocab(id: number): Promise<null> {
     await this.request<null>(`/api/vocab/${id}`, { method: 'DELETE' });
     return null;
+  }
+
+  /**
+   * Dữ liệu hàng chip lọc: tổng KHÔNG lọc, số từ chưa gắn thẻ, và chủ đề kèm số từ.
+   *
+   * Sổ rỗng trả `{ total: 0, untagged: 0, tags: [] }` với HTTP 200 — đó KHÔNG phải lỗi.
+   */
+  async vocabTags(): Promise<VocabTagsResponse> {
+    return this.request('/api/vocab/tags', { method: 'GET' });
+  }
+
+  /**
+   * Sửa một mục sổ từ.
+   *
+   * PATCH chứ không PUT, và chỗ đó quyết định cả hình dạng body: field nào người dùng
+   * không sửa thì KHÔNG được có mặt trong JSON. Gửi `null` cho `tags` sẽ bị backend đọc
+   * là "thay thế toàn bộ bằng không có gì" — mất sạch thẻ mà không có lỗi nào nổ ra.
+   * `null` ở tham số là "đừng động tới", và đây là chỗ dịch nó thành "vắng mặt".
+   */
+  async updateVocab(args: { id: number; meaningVi: string | null; tags: string[] | null }):
+      Promise<VocabEntryDto> {
+    const body: Record<string, unknown> = {};
+    if (args.meaningVi !== null) body.meaningVi = args.meaningVi;
+    if (args.tags !== null) body.tags = args.tags;
+    return this.request(`/api/vocab/${args.id}`, {
+      method: 'PATCH', body: JSON.stringify(body),
+    });
   }
 
   /** Hàng đợi ôn hôm nay: thẻ đến hạn trước, rồi tới thẻ mới trong hạn mức `newLimit`. */
@@ -168,6 +200,19 @@ export class ApiClient {
     return null;
   }
 
+  /**
+   * Tải sổ từ dạng CSV.
+   *
+   * Đi qua đúng đường xác thực như mọi lời gọi khác, và ĐÓ LÀ ĐIỂM CHÍNH. Trước đây UI mở
+   * thẳng `window.open(backendUrl + '/api/vocab/export.csv')`, mà một lượt điều hướng thì
+   * không mang được token Bearer (extension) lẫn header `X-IELTS-Web` (web) — nút CSV luôn
+   * trả về một trang JSON 401 thay vì file.
+   */
+  async exportVocabCsv(): Promise<string> {
+    return this.request('/api/vocab/export.csv', { method: 'GET' },
+      DEFAULT_TIMEOUT_MS, true, 'text');
+  }
+
   async health(): Promise<HealthStatus> {
     const now = Date.now();
     if (this.healthCache && now - this.healthCache.at < HEALTH_CACHE_MS) {
@@ -187,7 +232,8 @@ export class ApiClient {
    */
   private async request<T>(path: string, init: RequestInit,
                            timeoutMs: number = DEFAULT_TIMEOUT_MS,
-                           authenticated = true): Promise<T> {
+                           authenticated = true,
+                           expect: 'json' | 'text' = 'json'): Promise<T> {
     const baseUrl = await this.baseUrlProvider();
 
     let authHeaders: Record<string, string> = {};
@@ -240,11 +286,20 @@ export class ApiClient {
       return null as T;
     }
 
+    // Đọc THÂN dưới dạng text trước rồi mới quyết định parse. Cần vậy vì `export.csv` trả
+    // CSV khi thành công nhưng vẫn trả JSON `{code, message, retryable}` khi lỗi — không thể
+    // chọn cách đọc trước khi biết status.
+    const body = await response.text();
+
     let parsed: unknown;
-    try {
-      parsed = await response.json();
-    } catch {
-      throw apiError('INTERNAL', `Backend trả phản hồi không đọc được (HTTP ${response.status})`, false);
+    if (response.ok && expect === 'text') {
+      parsed = body;
+    } else {
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        throw apiError('INTERNAL', `Backend trả phản hồi không đọc được (HTTP ${response.status})`, false);
+      }
     }
 
     if (response.status === 401 && authenticated) {

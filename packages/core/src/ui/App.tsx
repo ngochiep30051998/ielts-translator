@@ -27,10 +27,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'vocab', label: 'Sổ từ' },
   { id: 'review', label: 'Ôn tập' },
   { id: 'quiz', label: 'Quiz' },
-<<<<<<< Updated upstream
-  { id: 'stats', label: 'Thống kê' },
-=======
->>>>>>> Stashed changes
 ];
 
 /**
@@ -87,15 +83,12 @@ export function App({
     })();
   }, [auth, initialDraft]);
 
-<<<<<<< Updated upstream
-=======
   /** Đổi tab. Luôn đóng màn con của Hôm nay — nó là một lớp đè, không phải một tab. */
   function goTab(next: Tab) {
     setStatsOpen(false);
     setTab(next);
   }
 
->>>>>>> Stashed changes
   async function signOut() {
     await sendToBackground({ type: 'SIGN_OUT' });
     // Xoá sạch state phiên trước: giữ lại kết quả dịch của người vừa đăng xuất trên một
@@ -103,11 +96,8 @@ export function App({
     setResult(null);
     setDraft('');
     setLoaded(false);
-<<<<<<< Updated upstream
-=======
     setStatsOpen(false);
     setTab('home');
->>>>>>> Stashed changes
     setAuth(null);
   }
 
@@ -129,14 +119,6 @@ export function App({
 
   return (
     <div className="app">
-<<<<<<< Updated upstream
-      <header className="account">
-        <span className="account-email">{auth.email}</span>
-        <button type="button" className="account-signout" onClick={() => void signOut()}>
-          Đăng xuất
-        </button>
-      </header>
-=======
       <main
         className="content"
         id="tab-panel"
@@ -184,7 +166,6 @@ export function App({
         {tab === 'review' && <ReviewTab />}
         {tab === 'quiz' && <QuizTab />}
       </main>
->>>>>>> Stashed changes
 
       {/* Nav nằm SAU main trong DOM chứ không trước: nó dính đáy màn hình, và thứ tự đọc
           của bàn phím/trình đọc màn hình phải khớp thứ tự nhìn thấy. */}

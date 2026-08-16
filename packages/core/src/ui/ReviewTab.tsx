@@ -5,6 +5,7 @@ import { loadSettings } from '../settings';
 import { speak } from '../speech';
 import { buildQuestion, ratingFor, type Question } from '../mcq';
 import type { ApiError, Rating } from '../types';
+import { Spinner } from './Spinner';
 
 const QUEUE_LIMIT = 50;
 
@@ -15,8 +16,6 @@ type Mode = 'scheduled' | 'practice';
 const RELEARN_GAP = 3;
 const PRACTICE_LIMIT = 30;
 
-<<<<<<< Updated upstream
-=======
 const BAND_HINT = 'Band do AI ước lượng, chỉ mang tính tham khảo';
 
 /**
@@ -68,7 +67,6 @@ const DIRECTION_LABEL: Record<Question['direction'], string> = {
   VI_EN: 'Việt → Anh',
 };
 
->>>>>>> Stashed changes
 export function ReviewTab() {
   // Dựng câu hỏi MỘT LẦN lúc nạp hàng đợi, không phải useMemo: useMemo là gợi ý hiệu năng,
   // React được phép vứt cache. Vứt cache ở đây nghĩa là trộn lại đáp án giữa lúc người dùng
@@ -83,8 +81,6 @@ export function ReviewTab() {
   const [loading, setLoading] = useState(true);
   // Mức vừa chấm, để nút Thử lại gửi lại ĐÚNG mức đó chứ không đoán bừa.
   const [lastRating, setLastRating] = useState<Rating | null>(null);
-<<<<<<< Updated upstream
-=======
   /**
    * Số ngày tới lần ôn sau, lấy từ phản hồi SUBMIT_REVIEW của CHÍNH thẻ đang hiện.
    *
@@ -101,7 +97,6 @@ export function ReviewTab() {
    */
   const [combo, setCombo] = useState(0);
   const [scored, setScored] = useState<Scored | null>(null);
->>>>>>> Stashed changes
   // Mốc bắt đầu tính giờ, đặt lại mỗi khi câu hỏi đổi.
   const startedAt = useRef(Date.now());
   const container = useRef<HTMLDivElement>(null);
@@ -135,14 +130,11 @@ export function ReviewTab() {
       setIndex(0);
       setPicked(null);
       setError(null);
-<<<<<<< Updated upstream
-=======
       setNextInterval(null);
       // Nạp xấp mới = buổi mới. Giữ combo của buổi trước là nói dối: chuỗi đúng liên tiếp
       // đó thuộc về một xấp thẻ khác.
       setCombo(0);
       setScored(null);
->>>>>>> Stashed changes
       // `questions`, `mode` và `scheduledSent` phải đổi CÙNG NHAU, chỉ khi nạp THÀNH CÔNG.
       // Nạp lỗi (vd bấm "Quay lại" mà GET_DUE_CARDS rớt mạng) phải giữ nguyên cả ba — đổi
       // `mode` một mình trong khi xấp thẻ vẫn là xấp cũ làm `submit()` tính sai thẻ đang ôn
@@ -178,15 +170,24 @@ export function ReviewTab() {
     // lời đúng ở lần thứ hai xoá mất dấu vết đã quên.
     const laLuotOnDauTien = mode === 'scheduled' && !scheduledSent.current.has(cardId);
 
-    const response = laLuotOnDauTien
-      ? await sendToBackground({ type: 'SUBMIT_REVIEW', cardId, rating })
-      : await sendToBackground({ type: 'SUBMIT_PRACTICE', cardId, rating });
+    // Hai nhánh viết tách nhau chứ không gộp bằng toán tử ba ngôi: chỉ SUBMIT_REVIEW mới có
+    // `intervalDays` trong phản hồi, và gộp lại thì kiểu trả về là hợp của hai hình dạng,
+    // không đọc được field nào cả.
+    if (laLuotOnDauTien) {
+      const response = await sendToBackground({ type: 'SUBMIT_REVIEW', cardId, rating });
+      // Chỉ đánh dấu khi lượt SCHEDULED THẬT SỰ tới nơi. Đánh dấu vô điều kiện làm nút "Thử
+      // lại" gửi SUBMIT_PRACTICE thay vì gửi lại SUBMIT_REVIEW — lịch SM-2 của thẻ đó im
+      // lặng không bao giờ được cập nhật trong buổi ấy.
+      if (response.ok) {
+        scheduledSent.current.add(cardId);
+        setNextInterval(response.data.intervalDays);
+      }
+      setSubmitting(false);
+      setError(response.ok ? null : response.error);
+      return;
+    }
 
-    // Chỉ đánh dấu khi lượt SCHEDULED THẬT SỰ tới nơi. Đánh dấu vô điều kiện làm nút "Thử
-    // lại" gửi SUBMIT_PRACTICE thay vì gửi lại SUBMIT_REVIEW — lịch SM-2 của thẻ đó im lặng
-    // không bao giờ được cập nhật trong buổi ấy.
-    if (laLuotOnDauTien && response.ok) scheduledSent.current.add(cardId);
-
+    const response = await sendToBackground({ type: 'SUBMIT_PRACTICE', cardId, rating });
     setSubmitting(false);
     setError(response.ok ? null : response.error);
   }
@@ -221,13 +222,10 @@ export function ReviewTab() {
   function next() {
     setPicked(null);
     setError(null);
-<<<<<<< Updated upstream
-=======
     // Giữ lại con số của thẻ vừa xong là gán lịch của nó cho thẻ đang hiện — sai dữ liệu,
     // không phải một chi tiết hiển thị. Dải điểm cũng vậy: nó nói về câu vừa rồi.
     setNextInterval(null);
     setScored(null);
->>>>>>> Stashed changes
     setIndex((i) => i + 1);
   }
 
@@ -249,7 +247,7 @@ export function ReviewTab() {
     if (event.key === 'Enter') next();
   }
 
-  if (loading) return <p className="status">Đang tải…</p>;
+  if (loading) return <p className="status" aria-live="polite"><Spinner /> Đang tải…</p>;
 
   if (error && !question) {
     return (
@@ -329,18 +327,23 @@ export function ReviewTab() {
       )}
 
       <div className="review-card">
+        {/* Nhãn hướng: cùng một thẻ hỏi hai chiều khác nhau tuỳ lượt bốc, và không có dòng
+            này thì người dùng phải tự đoán mình đang được hỏi gì. */}
+        <p className="review-direction">{DIRECTION_LABEL[question.direction]}</p>
         <div className="review-front">
           {question.direction === 'EN_VI' ? (
             <>
               <strong>{card.term}</strong>
-              {card.ipa && <span className="meta">{card.ipa}</span>}
-              <button
-                type="button"
-                aria-label={`Phát âm ${card.term}`}
-                onClick={() => void speakTerm()}
-              >
-                🔊
-              </button>
+              <span className="review-ipa-row">
+                {card.ipa && <span className="meta">{card.ipa}</span>}
+                <button
+                  type="button"
+                  aria-label={`Phát âm ${card.term}`}
+                  onClick={() => void speakTerm()}
+                >
+                  🔊
+                </button>
+              </span>
             </>
           ) : (
             <strong>{card.meaningVi}</strong>
@@ -389,20 +392,21 @@ export function ReviewTab() {
       {picked !== null && (
         <>
           <div className="review-back">
-            {/* Hai dòng chứ không nối bằng gạch ngang: đây là hai trường dữ liệu khác
-                nhau, xếp chồng thì mắt tách được ngay mà không phải đọc qua dấu nối. */}
-            <p className="review-back-term">{card.term}</p>
-            <p className="vi">{card.meaningVi}</p>
-<<<<<<< Updated upstream
-            {card.pos && <span className="meta">{card.pos}</span>}
-            {card.cefr && <span className="meta">{card.cefr}</span>}
-            {card.bandLevel && (
-              <span className="band" title="Band do AI ước lượng, chỉ mang tính tham khảo">
-                {card.bandLevel}
+            {/* Từ và các nhãn phân loại nằm CÙNG một dòng chân chữ; nghĩa tiếng Việt xuống
+                dòng riêng. Ba nhóm dữ liệu, hai tầng — mắt tách được mà không cần dấu nối. */}
+            <div className="review-back-head">
+              <span className="review-back-term">{card.term}</span>
+              <span className="meta">
+                {card.pos}
+                {card.pos && card.cefr && ' · '}
+                {card.cefr}
+                {(card.pos || card.cefr) && card.bandLevel && ' · '}
+                {card.bandLevel && (
+                  <span className="band-inline" title={BAND_HINT}>band {card.bandLevel}</span>
+                )}
               </span>
-            )}
-=======
->>>>>>> Stashed changes
+            </div>
+            <p className="vi">{card.meaningVi}</p>
             {card.definitionEn && <p className="review-definition">{card.definitionEn}</p>}
           </div>
 

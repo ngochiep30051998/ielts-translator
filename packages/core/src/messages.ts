@@ -1,7 +1,7 @@
 import type {
   AnswerResult, ApiError, AuthUser, CardDto, PageResponse, QuizExplanation, QuizItemDto,
   QuizType, Rating, ReviewResponse, SaveVocabResponse, SrsStats, StatsDto, TranslateResult,
-  VocabEntryDto,
+  VocabEntryDto, VocabTagsResponse,
 } from './types';
 import { currentTransport } from './transport';
 
@@ -39,12 +39,47 @@ export interface SearchVocabRequest {
   type: 'SEARCH_VOCAB';
   query: string | null;
   tag: string | null;
+  /**
+   * true = CHỈ những từ chưa gắn thẻ nào (`tags` là mảng rỗng).
+   *
+   * KHÔNG đi cùng `tag`: hai điều kiện mâu thuẫn nhau và backend trả 400. UI đảm bảo điều
+   * đó bằng cách bấm chip nào thì xoá điều kiện của chip kia.
+   */
+  untagged: boolean;
   page: number;
 }
 
 export interface DeleteVocabRequest {
   type: 'DELETE_VOCAB';
   id: number;
+}
+
+/**
+ * Toàn bộ dữ liệu của hàng chip lọc ở tab Sổ từ: tổng không lọc, số từ chưa gắn thẻ, và
+ * danh sách chủ đề kèm số từ.
+ *
+ * Không tham số: phạm vi luôn là sổ từ của người đang đăng nhập, backend lấy user id từ
+ * `Depends(current_user_id)`. Sổ rỗng trả `{ total: 0, untagged: 0, tags: [] }` chứ không
+ * phải lỗi.
+ */
+export interface GetVocabTagsRequest {
+  type: 'GET_VOCAB_TAGS';
+}
+
+/**
+ * Sửa một mục sổ từ. Ánh xạ sang PATCH /api/vocab/{id}, và ngữ nghĩa PATCH được giữ
+ * nguyên tới tận đây: `null` nghĩa là KHÔNG ĐỘNG TỚI field đó.
+ *
+ * Với `tags`, `null` và `[]` là hai chuyện khác hẳn nhau — `null` giữ nguyên thẻ cũ, còn
+ * `[]` gỡ sạch thẻ. Gộp hai thứ đó lại thì không còn cách nào gỡ một thẻ gắn nhầm.
+ */
+export interface UpdateVocabRequest {
+  type: 'UPDATE_VOCAB';
+  id: number;
+  /** null = KHÔNG đổi field này (khớp ngữ nghĩa PATCH). */
+  meaningVi: string | null;
+  /** null = KHÔNG đổi. Mảng (kể cả rỗng) = THAY THẾ toàn bộ, không merge. */
+  tags: string[] | null;
 }
 
 export interface GetLastResultRequest {
@@ -153,6 +188,17 @@ export interface GetAuthStateRequest {
   type: 'GET_AUTH_STATE';
 }
 
+/**
+ * Tải sổ từ dạng CSV.
+ *
+ * Đi qua service worker như mọi luồng khác chứ KHÔNG mở `window.open` thẳng tới backend:
+ * một lượt điều hướng không mang được token Bearer lẫn header `X-IELTS-Web`, nên cách cũ
+ * luôn nhận 401. Ràng buộc #1 nói đúng chuyện này.
+ */
+export interface ExportVocabCsvRequest {
+  type: 'EXPORT_VOCAB_CSV';
+}
+
 export type ExtensionRequest =
   | TranslateSelectionRequest
   | TranslateTextRequest
@@ -160,6 +206,9 @@ export type ExtensionRequest =
   | SaveWordRequest
   | SearchVocabRequest
   | DeleteVocabRequest
+  | GetVocabTagsRequest
+  | UpdateVocabRequest
+  | ExportVocabCsvRequest
   | GetLastResultRequest
   | HealthRequest
   | GetDueCardsRequest
@@ -184,6 +233,10 @@ export interface ResponseMap {
   SAVE_WORD: SaveVocabResponse;
   SEARCH_VOCAB: PageResponse<VocabEntryDto>;
   DELETE_VOCAB: null;
+  GET_VOCAB_TAGS: VocabTagsResponse;
+  UPDATE_VOCAB: VocabEntryDto;
+  /** Nội dung file CSV, chưa tải xuống — UI tự dựng blob. */
+  EXPORT_VOCAB_CSV: string;
   GET_LAST_RESULT: TranslateResult | null;
   CHECK_HEALTH: { status: string; dbConnected: boolean; geminiConfigured: boolean };
   GET_DUE_CARDS: CardDto[];

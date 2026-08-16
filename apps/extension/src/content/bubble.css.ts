@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 /**
  * CSS của bubble, dạng chuỗi để nhét vào Shadow DOM (ràng buộc #11).
  *
@@ -10,13 +8,10 @@
  * (Không dùng dấu nháy ngược trong file này — cả CSS nằm trong một template literal, một
  * dấu lạc chỗ là đứt chuỗi.)
  */
->>>>>>> Stashed changes
 export const BUBBLE_CSS = `
 :host { all: initial; }
 
 .bubble {
-<<<<<<< Updated upstream
-=======
   /* Token cục bộ của shadow root. Chế độ tối chỉ cần định nghĩa lại đúng khối này thay vì
      lặp lại một quy tắc :host([data-theme="dark"]) cho từng phần tử. */
   --text: #12191b;
@@ -39,31 +34,19 @@ export const BUBBLE_CSS = `
   --font-display: 'Space Grotesk', 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: Lora, Georgia, 'Times New Roman', serif;
 
->>>>>>> Stashed changes
   position: fixed;
   z-index: 2147483647;
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  max-width: 340px;
+  max-width: 360px;
   padding: 7px 8px 7px 12px;
-<<<<<<< Updated upstream
-  border: 1px solid rgba(20, 22, 26, 0.12);
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(14px) saturate(1.6);
-  -webkit-backdrop-filter: blur(14px) saturate(1.6);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 10px 28px -8px rgba(16, 24, 40, .22);
-  color: #14161a;
-  font: 13.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-=======
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--card);
   box-shadow: var(--shadow);
   color: var(--text);
   font: 13.5px/1.45 var(--font-ui);
->>>>>>> Stashed changes
   -webkit-font-smoothing: antialiased;
 }
 
@@ -78,7 +61,7 @@ export const BUBBLE_CSS = `
   width: 1px;
   height: 17px;
   margin: 0 3px;
-  background: rgba(20, 22, 26, 0.12);
+  background: var(--line);
   flex-shrink: 0;
 }
 
@@ -91,18 +74,15 @@ button {
   width: 27px;
   height: 27px;
   border-radius: 7px;
-  color: #5b6270;
+  color: var(--text-3);
   cursor: pointer;
 }
-button:hover { background: rgba(20, 22, 26, 0.06); color: #14161a; }
-button:focus-visible { outline: 2px solid #4f46e5; outline-offset: -1px; }
-button[data-action="save"] { color: #4338ca; }
-button[data-action="retry"] { width: auto; padding: 0 9px; font-size: 12.5px; color: #b42318; }
+button:hover { background: rgba(26, 34, 36, 0.06); color: var(--text); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+button[data-action="retry"] { width: auto; padding: 0 9px; font-size: 12.5px; color: var(--danger); }
 
 svg { display: block; pointer-events: none; }
 
-<<<<<<< Updated upstream
-=======
 /* ---------- Trạng thái kết quả (thiết kế 1b) ----------
    Khối chữ ở TRÊN, thanh hành động nền xanh đặc ở DƯỚI, card không viền chỉ có bóng nổi.
    Bubble phải bỏ padding của chính nó (padding chuyển vào từng khối con) thì thanh dưới
@@ -217,10 +197,9 @@ svg { display: block; pointer-events: none; }
 }
 .bubble.result .bar svg { width: 13px; height: 13px; }
 
->>>>>>> Stashed changes
 /* trạng thái đầu: chỉ một icon, bám sát nội dung nên bỏ padding chữ */
 .bubble.icon-only { padding: 4px; gap: 0; }
-.bubble.icon-only button { width: 30px; height: 30px; color: #4338ca; }
+.bubble.icon-only button { width: 30px; height: 30px; color: var(--accent); }
 /* To hơn 15px mặc định: đây là nút DUY NHẤT trên màn hình và là thứ người dùng phải
    nhận ra rồi bấm trúng, không phải một nút phụ nằm cạnh dòng chữ. */
 .bubble.icon-only svg { width: 18px; height: 18px; }
@@ -229,7 +208,7 @@ svg { display: block; pointer-events: none; }
 .dots { display: inline-flex; gap: 3.5px; align-items: center; padding: 3px 2px; }
 .dots i {
   width: 5px; height: 5px; border-radius: 50%;
-  background: #8b93a1;
+  background: #879497;
   animation: ielts-blink 1.15s infinite ease-in-out;
 }
 .dots i:nth-child(2) { animation-delay: .17s; }
@@ -238,41 +217,28 @@ svg { display: block; pointer-events: none; }
   0%, 80%, 100% { opacity: .28; transform: translateY(0); }
   40%           { opacity: 1;   transform: translateY(-2.5px); }
 }
-.loading .text { color: #5b6270; }
+.loading .text { color: var(--text-2); }
 
 /* trạng thái lỗi */
 .bubble.error {
-  border-color: rgba(180, 35, 24, .35);
-  background: rgba(254, 243, 242, .95);
+  border-color: var(--danger-edge);
+  background: var(--danger-soft);
 }
-.bubble.error .text { color: #b42318; }
+.bubble.error .text { color: var(--danger); }
 
 /* trạng thái vừa lưu */
-.bubble.saved .text { color: #067647; }
+.bubble.saved .text { color: var(--ok); }
 
 /* Chế độ tối. Bám vào data-theme trên host chứ không hỏi prefers-color-scheme: người dùng
    chọn được Sáng/Tối/Theo hệ thống trong Options, và content/index.ts phân giải lựa chọn
-   đó rồi đặt lên host. (Không dùng dấu nháy ngược trong file này — cả CSS nằm trong một
-   template literal, một dấu lạc chỗ là đứt chuỗi.) */
+   đó rồi đặt lên host. Gần như mọi quy tắc ở trên đã dùng token nên chỉ cần định nghĩa
+   lại token ở đây.
+
+   NGOẠI LỆ: đúng hai quy tắc bên dưới khối token ("button:hover" và ".dots i") phải giữ
+   đồng bộ BẰNG TAY với bản sáng, vì chúng không suy được từ token — hover ở bản sáng tối
+   đi, ở bản tối phải sáng lên, tức hai hướng ngược nhau chứ không phải một màu đổi giá
+   trị. Đổi màu hover ở bản sáng mà quên hai dòng đó là hai chế độ lệch nhau âm thầm. */
 :host([data-theme="dark"]) .bubble {
-<<<<<<< Updated upstream
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(28, 31, 38, 0.92);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px -8px rgba(0, 0, 0, .55);
-  color: #e9ecf1;
-}
-:host([data-theme="dark"]) .sep { background: rgba(255, 255, 255, 0.14); }
-:host([data-theme="dark"]) button { color: #a3abb9; }
-:host([data-theme="dark"]) button:hover { background: rgba(255, 255, 255, 0.09); color: #e9ecf1; }
-:host([data-theme="dark"]) button[data-action="save"] { color: #b3aefb; }
-:host([data-theme="dark"]) button[data-action="retry"] { color: #ff9c92; }
-:host([data-theme="dark"]) .bubble.icon-only button { color: #b3aefb; }
-:host([data-theme="dark"]) .dots i { background: #79818f; }
-:host([data-theme="dark"]) .loading .text { color: #a3abb9; }
-:host([data-theme="dark"]) .bubble.error { border-color: rgba(255, 156, 146, .3); background: rgba(58, 31, 28, .95); }
-:host([data-theme="dark"]) .bubble.error .text { color: #ff9c92; }
-:host([data-theme="dark"]) .bubble.saved .text { color: #6ee7a8; }
-=======
   --text: #e8efef;
   --text-2: #aab8b9;
   --text-3: #7f8e90;
@@ -293,5 +259,4 @@ svg { display: block; pointer-events: none; }
 :host([data-theme="dark"]) .dots i { background: #7f8e90; }
 /* Trên thanh xanh đặc, "chồng thêm màu trắng mờ" đúng cho CẢ hai chế độ (nền tối thì
    accent sáng, nền sáng thì accent đậm) nên không cần quy tắc riêng ở đây. */
->>>>>>> Stashed changes
 `;

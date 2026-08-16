@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from app.common.errors import AppError, ErrorCode
 from app.srs import distractors
 from app.srs.card_creator import tao_the_khi_luu_tu
+from app.srs.models import CardState, SrsCard
 from app.vocabulary import repository
 from app.vocabulary.csv_export import to_csv
 from app.vocabulary.models import (
@@ -39,6 +40,9 @@ from app.vocabulary.models import (
     VocabEntry,
     VocabEntryDto,
     VocabPage,
+    VocabTagDto,
+    VocabTagsResponse,
+    VocabUpdateRequest,
 )
 
 
@@ -109,13 +113,21 @@ def _merge_tags(entry: VocabEntry, incoming: list[str] | None) -> None:
 
 
 def search(
-    db: Session, user_id: int, q: str | None, tag: str | None, page: int, size: int
+    db: Session,
+    user_id: int,
+    q: str | None,
+    tag: str | None,
+    untagged: bool,
+    page: int,
+    size: int,
 ) -> VocabPage:
     normalised_q = q if q is not None and q.strip() else None
     normalised_tag = tag if tag is not None and tag.strip() else None
 
-    rows, total = repository.search(db, user_id, normalised_q, normalised_tag, page, size)
-    content = [_to_dto(e) for e in rows]
+    rows, total = repository.search(
+        db, user_id, normalised_q, normalised_tag, untagged, page, size
+    )
+    content = [_to_dto(entry, card) for entry, card in rows]
     # Trần ở 1 để một sổ từ rỗng vẫn có 0 trang chứ không phải "0 phần tử, 1 trang"; đây là
     # cách Spring Data tính, và side panel hiển thị "trang x/y" thẳng từ con số này.
     total_pages = (total + size - 1) // size if size > 0 else 0
@@ -139,12 +151,9 @@ def find_by_id(db: Session, user_id: int, entry_id: int) -> VocabEntryDto:
     Trả NOT_FOUND chứ không FORBIDDEN khi từ thuộc về người khác: FORBIDDEN xác nhận "id này
     có tồn tại", tức là một kênh dò id.
     """
-    entry = repository.find_by_id_and_user(db, entry_id, user_id)
-    if entry is None:
+    hang = repository.find_by_id_and_user_with_card(db, entry_id, user_id)
+    if hang is None:
         raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy từ id={entry_id}")
-<<<<<<< Updated upstream
-    return _to_dto(entry)
-=======
     return _to_dto(*hang)
 
 
@@ -190,7 +199,6 @@ def list_tags(db: Session, user_id: int) -> VocabTagsResponse:
             for tag, count, mastered in repository.count_tags(db, user_id)
         ],
     )
->>>>>>> Stashed changes
 
 
 def delete(db: Session, user_id: int, entry_id: int) -> None:
@@ -211,5 +219,20 @@ def filter_owned_ids(db: Session, user_id: int, ids: list[int] | None) -> list[i
     return repository.find_owned_ids(db, user_id, ids)
 
 
-def _to_dto(entry: VocabEntry) -> VocabEntryDto:
-    return VocabEntryDto.model_validate(entry)
+def _to_dto(entry: VocabEntry, card: SrsCard | None) -> VocabEntryDto:
+    """`card is None` → cả ba field `srs*` giữ nguyên `None`, tức "từ này chưa có thẻ ôn".
+
+    Bù riêng ba field thay vì gắn `relationship` vào `VocabEntry`: quan hệ ORM sẽ nạp lười
+    từng thẻ một khi dựng DTO cho cả trang — đúng bài toán N+1 — và `search` đã lấy sẵn thẻ
+    trong cùng một câu.
+    """
+    dto = VocabEntryDto.model_validate(entry)
+    if card is None:
+        return dto
+    return dto.model_copy(
+        update={
+            "srs_state": CardState(card.state),
+            "srs_due_date": card.due_date,
+            "srs_repetitions": card.repetitions,
+        }
+    )

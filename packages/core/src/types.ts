@@ -76,8 +76,6 @@ export interface VocabEntryDto {
   collocations: unknown;
   examples: unknown;
   createdAt: string;
-<<<<<<< Updated upstream
-=======
   /**
    * Ba field dưới đến từ `srs_card` qua LEFT JOIN, KHÔNG từ `vocab_entry`.
    *
@@ -128,7 +126,6 @@ export interface VocabTagsResponse {
   /** Số từ có `tags` là mảng RỖNG. Chip "Chưa gắn" chỉ hiện khi số này > 0. */
   untagged: number;
   tags: VocabTag[];
->>>>>>> Stashed changes
 }
 
 export interface PageResponse<T> {

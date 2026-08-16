@@ -25,7 +25,11 @@ body {
    màn hình khi đang dùng giao diện tối. */
 body {
   background: var(--bg);
-  color: var(--fg);
+  /* `--text` chứ không `--fg`: token đó chưa bao giờ tồn tại, và một custom property không
+     xác định làm cả khai báo `color` hỏng ở bước tính giá trị — màu chữ rơi về đen mặc
+     định, tức chữ đen trên nền tối ở chế độ Tối. Dòng này nạp SAU core styles nên nó ghi
+     đè `body { color: var(--text) }` bên đó, chính vì vậy lỗi mới hiện ra. */
+  color: var(--text);
 }
 
 .app {

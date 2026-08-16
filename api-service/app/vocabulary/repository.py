@@ -10,13 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, Select, distinct, func, or_, select, true
 from sqlalchemy.orm import Session
 
-<<<<<<< Updated upstream
-=======
 from app.srs.models import MASTERED_REPETITIONS, SrsCard
->>>>>>> Stashed changes
 from app.vocabulary.models import VocabEntry
 
 
@@ -41,8 +38,6 @@ def find_by_id_and_user(db: Session, entry_id: int, user_id: int) -> VocabEntry 
     ).first()
 
 
-<<<<<<< Updated upstream
-=======
 def _select_kem_the() -> Select[tuple[VocabEntry, SrsCard]]:
     """`vocab_entry LEFT JOIN srs_card` — nguồn của ba field `srs*` trong `VocabEntryDto`.
 
@@ -155,7 +150,6 @@ def count_total_and_untagged(db: Session, user_id: int) -> tuple[int, int]:
     return int(hang[0]), int(hang[1])
 
 
->>>>>>> Stashed changes
 def find_all_by_user_newest_first(db: Session, user_id: int) -> Sequence[VocabEntry]:
     return db.scalars(
         select(VocabEntry)
@@ -197,13 +191,15 @@ def find_by_id_unscoped(db: Session, entry_id: int) -> VocabEntry | None:
 
 
 def _search_conditions(
-    user_id: int, q: str | None, tag: str | None
+    user_id: int, q: str | None, tag: str | None, untagged: bool
 ) -> list[ColumnElement[bool]]:
     """Điều kiện dùng chung cho câu lấy dữ liệu VÀ câu đếm.
 
     Dùng chung là bắt buộc, không phải gọn gàng: bản Java phải chép tay `user_id = :userId`
     vào cả `value` lẫn `countQuery`, và quên ở câu đếm thì danh sách đúng nhưng
     `totalElements` đếm cả sổ từ người khác — phân trang sai và lộ kích thước dữ liệu của họ.
+    Lý do đó áp dụng y nguyên cho `untagged`: chỉ nhét vào câu lấy dữ liệu thì `content` đúng
+    còn `totalElements` đếm cả sổ, và side panel vẽ ra những trang không tồn tại.
     """
     conditions: list[ColumnElement[bool]] = [VocabEntry.user_id == user_id]
     if q is not None:
@@ -215,17 +211,32 @@ def _search_conditions(
     if tag is not None:
         # `@>` (mảng chứa phần tử) — khớp index GIN `idx_vocab_tags`.
         conditions.append(VocabEntry.tags.contains([tag]))
+    if untagged:
+        # Loại trừ nhau với `tag` — router chặn từ trước, ở đây không cần đoán ý lần nữa.
+        conditions.append(_untagged_condition())
     return conditions
 
 
 def search(
-    db: Session, user_id: int, q: str | None, tag: str | None, page: int, size: int
-) -> tuple[Sequence[VocabEntry], int]:
-    """Một trang sổ từ cùng TỔNG số bản ghi khớp — trả cả hai vì `Page<T>` bên Java trả cả hai."""
-    conditions = _search_conditions(user_id, q, tag)
+    db: Session,
+    user_id: int,
+    q: str | None,
+    tag: str | None,
+    untagged: bool,
+    page: int,
+    size: int,
+) -> tuple[list[tuple[VocabEntry, SrsCard | None]], int]:
+    """Một trang sổ từ (kèm thẻ ôn nếu có) cùng TỔNG số bản ghi khớp — trả cả hai vì
+    `Page<T>` bên Java trả cả hai.
+
+    Câu đếm KHÔNG join `srs_card` và không được join: nó chỉ đếm `vocab_entry`, còn LEFT
+    JOIN với một khoá UNIQUE thì không đổi số hàng. Thêm join vào đây là mở đúng cánh cửa
+    làm `totalElements` lệch khỏi `content`.
+    """
+    conditions = _search_conditions(user_id, q, tag, untagged)
 
     rows = (
-        select(VocabEntry)
+        _select_kem_the()
         .where(*conditions)
         # Tiêu chí phụ `id DESC` không có trong bản Java và cố ý thêm: bên đó `created_at`
         # do Java gán bằng `Instant.now()` nên hai hàng khó trùng, còn ở đây nó là
@@ -237,7 +248,7 @@ def search(
         .limit(size)
     )
     total = db.scalar(select(func.count()).select_from(VocabEntry).where(*conditions))
-    return db.scalars(rows).all(), int(total or 0)
+    return [(hang[0], hang[1]) for hang in db.execute(rows).all()], int(total or 0)
 
 
 def insert(db: Session, entry: VocabEntry) -> None:

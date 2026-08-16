@@ -2,35 +2,78 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { VocabTab } from './VocabTab';
-import type { VocabEntryDto } from '../types';
+import type { VocabEntryDto, VocabTag, VocabTagsResponse } from '../types';
 import { transportSend } from '../../vitest.setup';
 
-function entry(id: number, term: string, meaningVi: string): VocabEntryDto {
+function entry(
+  id: number, term: string, meaningVi: string, patch: Partial<VocabEntryDto> = {},
+): VocabEntryDto {
   return {
     id, term, lemma: term, lang: 'en', pos: 'adj', ipa: '/test/', meaningVi,
     definitionEn: null, cefr: 'B2', bandLevel: '6.5', tags: ['environment'],
     sourceUrl: 'https://example.com', sourceSentence: null,
     collocations: [], examples: [], createdAt: '2026-08-03T10:00:00Z',
+    // Mặc định: từ ĐÃ có thẻ ôn. Ca "chưa có thẻ" (cả ba null) phải viết ra tường minh
+    // vì nó là một trạng thái riêng, không phải giá trị mặc định.
+    srsState: 'REVIEW', srsDueDate: '2099-01-01', srsRepetitions: 2,
+    ...patch,
   };
 }
 
-/** Giả lập server phân trang: trả đúng trang mà request hỏi, kèm tổng đếm trên MỌI trang. */
-function mockSearchPages(pages: VocabEntryDto[][]) {
-  const totalElements = pages.reduce((sum, p) => sum + p.length, 0);
+/**
+ * Giả lập server phân trang có LỌC THẬT theo `tag` và `untagged`.
+ *
+ * Lọc thật chứ không trả một `totalElements` cố định, và đó là điểm chính: mock cố định làm
+ * chip "Tất cả" trông đúng NGAY CẢ KHI nó đang đọc con số của lượt tìm kiếm đã lọc — tức là
+ * nó không bao giờ bắt được đúng cái lỗi hàng chip cần bắt.
+ *
+ * `tagInfo` là phản hồi của GET_VOCAB_TAGS và CỐ Ý độc lập với `pages`: `total` ở đó là tổng
+ * bất biến của cả sổ, không phải tổng của lượt tìm kiếm đang hiển thị.
+ */
+function mockSearchPages(pages: VocabEntryDto[][], tagInfo: Partial<VocabTagsResponse> = {}) {
+  const all = pages.flat();
+  const pageSize = Math.max(1, ...pages.map((p) => p.length));
+  const info: VocabTagsResponse = {
+    total: all.length,
+    untagged: all.filter((e) => e.tags.length === 0).length,
+    tags: [],
+    ...tagInfo,
+  };
+
   transportSend.mockImplementation(
-    async (request: { type: string; page?: number }) => {
+    async (request: { type: string; tag?: string | null; untagged?: boolean; page?: number }) => {
       if (request.type === 'SEARCH_VOCAB') {
+        const matched = all.filter((e) => {
+          if (request.untagged) return e.tags.length === 0;
+          if (request.tag) return e.tags.includes(request.tag);
+          return true;
+        });
         const page = request.page ?? 0;
         return { ok: true, data: {
-          content: pages[page] ?? [], totalElements, totalPages: pages.length, number: page } };
+          content: matched.slice(page * pageSize, (page + 1) * pageSize),
+          totalElements: matched.length,
+          totalPages: Math.ceil(matched.length / pageSize),
+          number: page,
+        } };
       }
+      if (request.type === 'GET_VOCAB_TAGS') return { ok: true, data: info };
       return { ok: true, data: null };
     },
   );
 }
 
-function mockSearch(entries: VocabEntryDto[]) {
-  mockSearchPages([entries]);
+function mockSearch(entries: VocabEntryDto[], tagInfo: Partial<VocabTagsResponse> = {}) {
+  mockSearchPages([entries], tagInfo);
+}
+
+/** Lượt SEARCH_VOCAB gần nhất — dùng để kiểm tham số lọc mà không phải đếm thứ tự gọi. */
+function lastSearch(): {
+  query: string | null; tag: string | null; untagged: boolean; page: number;
+} {
+  const calls = transportSend.mock.calls
+    .map((call) => call[0] as { type: string })
+    .filter((request) => request.type === 'SEARCH_VOCAB');
+  return calls[calls.length - 1] as never;
 }
 
 describe('VocabTab', () => {
@@ -198,8 +241,6 @@ describe('VocabTab', () => {
     ));
   });
 
-<<<<<<< Updated upstream
-=======
   /* ================= Hàng chip chủ đề ================= */
 
   describe('lọc theo chủ đề', () => {
@@ -629,7 +670,6 @@ describe('VocabTab', () => {
     });
   });
 
->>>>>>> Stashed changes
   it('xoá từ cuối cùng của trang cuối sẽ lùi về trang trước', async () => {
     mockSearchPages([
       [entry(1, 'renewable', 'tái tạo')],

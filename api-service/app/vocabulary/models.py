@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, date, datetime
+from typing import Any, Literal
 
 from pydantic import Field, field_serializer, field_validator
 from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.common.schema import ApiModel
 from app.db import Base
+from app.srs.models import CardState
 
 
 class VocabEntry(Base):
@@ -84,8 +85,6 @@ class SaveVocabResponse(ApiModel):
     already_exists: bool
 
 
-<<<<<<< Updated upstream
-=======
 class VocabUpdateRequest(ApiModel):
     """Body của `PATCH /api/vocab/{id}` — PATCH chứ không PUT.
 
@@ -158,7 +157,6 @@ class VocabTagsResponse(ApiModel):
     tags: list[VocabTagDto]
 
 
->>>>>>> Stashed changes
 class VocabEntryDto(ApiModel):
     id: int
     term: str
@@ -176,6 +174,16 @@ class VocabEntryDto(ApiModel):
     collocations: Any
     examples: Any
     created_at: datetime
+
+    #: Trạng thái ôn tập, lấy từ `srs_card` qua LEFT JOIN — `vocab_entry` không giữ bản sao
+    #: nào của ba con số này (một nguồn sự thật, ràng buộc #13 áp dụng cho cả dữ liệu SRS).
+    #:
+    #: CẢ BA cùng `None` nghĩa là "từ này chưa có thẻ ôn" — trạng thái thật và bình thường
+    #: (từ `pos = 'phrase'` không được tạo thẻ). Đó KHÔNG phải "chưa tải xong", và UI phải
+    #: phân biệt được: vẽ thanh thành thạo rỗng khác hẳn vẽ khung chờ.
+    srs_state: CardState | None = None
+    srs_due_date: date | None = None
+    srs_repetitions: int | None = None
 
     @field_serializer("created_at", when_used="json")
     def _created_at_utc(self, value: datetime) -> datetime:

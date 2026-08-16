@@ -1,5 +1,5 @@
 import { BUBBLE_CSS } from './bubble.css';
-import type { ResolvedTheme } from '@ielts/core';
+import type { BubbleSummary, ResolvedTheme } from '@ielts/core';
 
 export const BUBBLE_HOST_ID = 'ielts-translator-bubble-host';
 
@@ -152,9 +152,6 @@ export function showLoadingBubble(rect: DOMRect): void {
   root.appendChild(container);
 }
 
-<<<<<<< Updated upstream
-export function showResultBubble(rect: DOMRect, meaning: string, handlers: BubbleHandlers): void {
-=======
 /**
  * Bubble kết quả theo thiết kế 1b: khối chữ ở trên, thanh hành động nền xanh đặc ở dưới,
  * card không viền chỉ có bóng nổi.
@@ -167,17 +164,9 @@ export function showResultBubble(rect: DOMRect, meaning: string, handlers: Bubbl
 export function showResultBubble(
   rect: DOMRect, summary: BubbleSummary, handlers: BubbleHandlers, savedToday = 0,
 ): void {
->>>>>>> Stashed changes
   const root = mountShadow();
-  const container = positionedContainer(rect);
+  const container = positionedContainer(rect, 'result');
 
-<<<<<<< Updated upstream
-  container.appendChild(textNode(meaning));
-  container.appendChild(separator());
-  container.appendChild(button('speak', 'Phát âm', handlers.onSpeak, ICONS.speak));
-  container.appendChild(button('save', 'Lưu vào sổ từ', handlers.onSave, ICONS.save));
-  container.appendChild(button('expand', 'Mở side panel', handlers.onExpand, ICONS.expand));
-=======
   const body = document.createElement('div');
   body.className = 'body';
 
@@ -231,7 +220,6 @@ export function showResultBubble(
   // là mất tính năng, không phải gọn hơn.
   bar.appendChild(button('expand', 'Mở side panel', handlers.onExpand, ICONS.expand));
   container.appendChild(bar);
->>>>>>> Stashed changes
 
   root.appendChild(container);
 }

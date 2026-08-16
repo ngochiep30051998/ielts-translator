@@ -136,8 +136,6 @@ def test_xoa_tu_cua_nguoi_khac_tra_404_va_hang_do_van_con(
     assert con_lai == 1
 
 
-<<<<<<< Updated upstream
-=======
 def test_danh_sach_tag_chi_chua_tag_cua_chinh_minh(
     client: Any, db: Session, hai_nguoi: HaiNguoi
 ) -> None:
@@ -256,7 +254,6 @@ def test_sua_tu_cua_nguoi_khac_tra_404_va_du_lieu_khong_doi(
     assert hang[1] == []
 
 
->>>>>>> Stashed changes
 def test_export_csv_chi_chua_tu_cua_minh(client: Any, hai_nguoi: HaiNguoi) -> None:
     resp = client.get("/api/vocab/export.csv", headers=hai_nguoi.a.headers)
 

@@ -3,6 +3,7 @@ import {
   showLoadingBubble, showResultBubble, showErrorBubble, showIconBubble, hideBubble,
   setBubbleTheme, BUBBLE_HOST_ID,
 } from './bubble';
+import type { BubbleSummary } from '@ielts/core';
 
 const rect = { left: 100, top: 200, bottom: 220, width: 80, height: 20 } as DOMRect;
 
@@ -14,6 +15,11 @@ function shadow(): ShadowRoot {
 
 function handlers() {
   return { onSpeak: vi.fn(), onSave: vi.fn(), onExpand: vi.fn(), onRetry: vi.fn() };
+}
+
+/** Các mảnh chữ của bubble kết quả. Mặc định là ca EN→VI tra từ. */
+function summary(patch: Partial<BubbleSummary> = {}): BubbleSummary {
+  return { term: 'renewable', band: '6.5', meaning: 'tái tạo', meaningLang: 'vi', ...patch };
 }
 
 describe('bubble', () => {
@@ -29,7 +35,7 @@ describe('bubble', () => {
   });
 
   it('bubble kết quả hiện nghĩa và 3 nút', () => {
-    showResultBubble(rect, 'tái tạo', handlers());
+    showResultBubble(rect, summary(), handlers());
 
     const root = shadow();
     expect(root.textContent).toContain('tái tạo');
@@ -38,8 +44,6 @@ describe('bubble', () => {
     expect(root.querySelector('[data-action="expand"]')).not.toBeNull();
   });
 
-<<<<<<< Updated upstream
-=======
   it('bubble kết quả hiện từ tiếng Anh và chip band cùng dòng', () => {
     showResultBubble(rect, summary(), handlers());
 
@@ -85,10 +89,9 @@ describe('bubble', () => {
     expect(root.textContent).toContain('tái tạo');
   });
 
->>>>>>> Stashed changes
   it('bấm nút gọi đúng handler', () => {
     const h = handlers();
-    showResultBubble(rect, 'tái tạo', h);
+    showResultBubble(rect, summary(), h);
 
     (shadow().querySelector('[data-action="save"]') as HTMLElement).click();
     (shadow().querySelector('[data-action="expand"]') as HTMLElement).click();
@@ -100,8 +103,8 @@ describe('bubble', () => {
 
   it('chỉ tồn tại một bubble dù gọi nhiều lần', () => {
     showLoadingBubble(rect);
-    showResultBubble(rect, 'tái tạo', handlers());
-    showResultBubble(rect, 'khác', handlers());
+    showResultBubble(rect, summary(), handlers());
+    showResultBubble(rect, summary({ meaning: 'khác' }), handlers());
 
     expect(document.querySelectorAll(`#${BUBBLE_HOST_ID}`)).toHaveLength(1);
     expect(shadow().textContent).toContain('khác');
@@ -161,14 +164,14 @@ describe('bubble', () => {
   });
 
   it('hideBubble gỡ hẳn host khỏi DOM', () => {
-    showResultBubble(rect, 'tái tạo', handlers());
+    showResultBubble(rect, summary(), handlers());
     hideBubble();
 
     expect(document.getElementById(BUBBLE_HOST_ID)).toBeNull();
   });
 
   it('nội dung nằm trong shadow root, không lọt ra document', () => {
-    showResultBubble(rect, 'tái tạo', handlers());
+    showResultBubble(rect, summary(), handlers());
 
     expect(document.body.textContent).not.toContain('tái tạo');
   });

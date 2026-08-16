@@ -2,13 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
-import type { AuthUser, TranslateResult } from '../types';
+import type { AuthUser, DailyPoint, StatsDto, TranslateResult } from '../types';
 import { transportSend } from '../../vitest.setup';
 
 const USER: AuthUser = { email: 'hiep@test.local', displayName: 'Hiep', pictureUrl: null };
 
-<<<<<<< Updated upstream
-=======
 function day(date: string, reviews: number, practice = 0): DailyPoint {
   return { date, reviews, practice };
 }
@@ -27,7 +25,6 @@ function stats(): StatsDto {
   };
 }
 
->>>>>>> Stashed changes
 const lastResult: TranslateResult = {
   direction: 'EN_VI', mode: 'WORD', cached: false, sourceText: 'was resiliented',
   payload: {
@@ -63,8 +60,6 @@ function mockBackend(last: TranslateResult | null, auth: AuthUser | null = USER)
           return { ok: true, data: last };
         case 'SEARCH_VOCAB':
           return { ok: true, data: { content: [], totalElements: 0, totalPages: 0, number: 0 } };
-<<<<<<< Updated upstream
-=======
         case 'GET_VOCAB_TAGS':
           return { ok: true, data: { total: 128, untagged: 41, tags: [] } };
         case 'GET_SRS_STATS':
@@ -75,7 +70,6 @@ function mockBackend(last: TranslateResult | null, auth: AuthUser | null = USER)
         case 'GET_DUE_CARDS':
         case 'GET_PRACTICE_CARDS':
           return { ok: true, data: [] };
->>>>>>> Stashed changes
         default:
           return { ok: true, data: null };
       }
@@ -433,17 +427,4 @@ describe('App', () => {
       expect(alert).not.toHaveTextContent('thử lại');
     });
   });
-<<<<<<< Updated upstream
-
-  it('có tab Thống kê và bấm vào thì chuyển sang đó', async () => {
-    mockBackend(null);
-    render(<App />);
-
-    const tab = await screen.findByRole('tab', { name: 'Thống kê' });
-    await userEvent.click(tab);
-
-    expect(tab).toHaveAttribute('aria-selected', 'true');
-  });
-=======
->>>>>>> Stashed changes
 });

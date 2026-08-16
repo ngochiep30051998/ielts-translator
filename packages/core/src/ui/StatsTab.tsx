@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { sendToBackground } from '../messages';
 import type { ApiError, StatsDto } from '../types';
 import { Accuracy, DailyBars, Heatmap, StatRow } from './StatsCharts';
+import { Spinner } from './Spinner';
 
 export function StatsTab() {
   const [data, setData] = useState<StatsDto | null>(null);
@@ -22,7 +23,7 @@ export function StatsTab() {
 
   useEffect(() => { void load(); }, [load]);
 
-  if (loading) return <p className="status">Đang tải…</p>;
+  if (loading) return <p className="status" aria-live="polite"><Spinner /> Đang tải…</p>;
 
   if (error) {
     return (
