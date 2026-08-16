@@ -264,7 +264,10 @@ body {
 .quiz-setup > button:disabled,
 .options-actions button:disabled { opacity: 0.45; cursor: default; }
 
-/* ---------- Nút phụ: có mặt nhưng không mời gọi ---------- */
+/* ---------- Nút phụ: có mặt nhưng không mời gọi ----------
+   `.actions button + button` là nút "Lưu N từ đáng học" của tab Dịch. Nó nằm cạnh "Lưu từ"
+   và hai nút KHÔNG cùng hạng: lưu cả câu là việc mặc định, lưu mẻ từ là lựa chọn thứ hai.
+   Hai khối màu accent sát nhau thì không nút nào còn dẫn mắt. */
 .empty button,
 .vocab-toolbar button,
 .vocab-pager button,
@@ -272,6 +275,7 @@ body {
 .review-next,
 .quiz-submit,
 .quiz-next,
+.actions button + button,
 .options-actions button + button {
   padding: 9px 14px;
   border: 1px solid var(--border-strong);
@@ -292,6 +296,7 @@ body {
 .review-next:hover:not(:disabled),
 .quiz-submit:hover:not(:disabled),
 .quiz-next:hover:not(:disabled),
+.actions button + button:hover:not(:disabled),
 .options-actions button + button:hover:not(:disabled) {
   background: var(--surface-2);
   border-color: var(--border-strong);
@@ -312,6 +317,7 @@ body {
 .review-next:focus-visible,
 .quiz-submit:focus-visible,
 .quiz-next:focus-visible,
+.actions button + button:focus-visible,
 .options-actions button + button:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .empty button:disabled,

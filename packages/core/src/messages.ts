@@ -35,6 +35,37 @@ export interface SaveWordRequest {
   tags: string[];
 }
 
+/**
+ * Lưu CẢ MẺ "từ đáng học" của một câu EN→VI vào sổ từ.
+ *
+ * Tách khỏi `SAVE_WORD` chứ không tái dùng: `SAVE_WORD` lưu ĐÚNG MỘT mục dựng từ chính kết
+ * quả dịch (với chế độ CÂU thì mục đó là cả câu), còn cái này lưu N mục dựng từ mảng
+ * `key_vocab` bên trong payload. Hai việc khác nhau, và kết quả trả về cũng khác hình dạng.
+ *
+ * Gửi cả `result` thay vì gửi sẵn danh sách từ: nơi rút danh sách là `keyVocabOf`, và để
+ * đúng một chỗ làm việc đó thì UI không được phép gửi lên một danh sách nó tự lọc.
+ */
+export interface SaveKeyVocabRequest {
+  type: 'SAVE_KEY_VOCAB';
+  result: TranslateResult;
+  tags: string[];
+}
+
+/**
+ * Kết quả một mẻ lưu từ đáng học.
+ *
+ * Ba con số tách bạch chứ không phải một cờ thành/bại: mẻ lưu 5 từ có thể vừa thêm mới, vừa
+ * đụng từ đã có, vừa hỏng vài từ — gộp lại thành "đã lưu" hay "có lỗi" đều là nói dối một nửa.
+ */
+export interface SaveKeyVocabResult {
+  /** Số từ MỚI được thêm. */
+  saved: number;
+  /** Số từ backend báo `alreadyExists` — đã có sẵn trong sổ. */
+  existed: number;
+  /** Những từ không lưu được. Rỗng = trọn vẹn. */
+  failures: { term: string; error: ApiError }[];
+}
+
 export interface SearchVocabRequest {
   type: 'SEARCH_VOCAB';
   query: string | null;
@@ -204,6 +235,7 @@ export type ExtensionRequest =
   | TranslateTextRequest
   | OpenPanelRequest
   | SaveWordRequest
+  | SaveKeyVocabRequest
   | SearchVocabRequest
   | DeleteVocabRequest
   | GetVocabTagsRequest
@@ -231,6 +263,7 @@ export interface ResponseMap {
   TRANSLATE_TEXT: TranslateResult;
   OPEN_PANEL_WITH_RESULT: null;
   SAVE_WORD: SaveVocabResponse;
+  SAVE_KEY_VOCAB: SaveKeyVocabResult;
   SEARCH_VOCAB: PageResponse<VocabEntryDto>;
   DELETE_VOCAB: null;
   GET_VOCAB_TAGS: VocabTagsResponse;

@@ -137,10 +137,20 @@ const handle = createOperations(client, {
  * được từ nào mới trong hôm nay.
  */
 async function noteVocabSaved(request: ExtensionRequest, data: unknown): Promise<void> {
-  if (request.type !== 'SAVE_WORD') return;
-  const saved = data as { alreadyExists?: boolean } | null;
-  if (saved?.alreadyExists) return;
-  await bumpDailySaves();
+  if (request.type === 'SAVE_WORD') {
+    const saved = data as { alreadyExists?: boolean } | null;
+    if (saved?.alreadyExists) return;
+    await bumpDailySaves();
+    return;
+  }
+
+  // Một mẻ "Lưu N từ đáng học" thêm NHIỀU từ trong một message. Cộng theo `saved` — con số
+  // đã trừ sẵn những từ `alreadyExists` và những từ lưu hỏng, nên nó đúng bằng số từ mới
+  // thật sự vào sổ. Quên nhánh này thì chip đứng yên sau khi vừa lưu cả nắm từ.
+  if (request.type === 'SAVE_KEY_VOCAB') {
+    const batch = data as { saved?: number } | null;
+    await bumpDailySaves(new Date(), batch?.saved ?? 0);
+  }
 }
 
 chrome.runtime.onMessage.addListener((request: ExtensionRequest, sender, sendResponse) => {

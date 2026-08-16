@@ -1,5 +1,7 @@
 import type { ApiClient } from './api-client';
-import type { ExtensionRequest } from './messages';
+import { keyVocabOf } from './key-vocab';
+import type { KeyVocabItem } from './key-vocab';
+import type { ExtensionRequest, SaveKeyVocabResult } from './messages';
 import type { OperationsPlatform } from './ports';
 import type { TranslateResult } from './types';
 import type { ApiError } from './types';
@@ -51,6 +53,29 @@ export function createOperations(client: ApiClient, platform: OperationsPlatform
         const result = await client.saveVocab(buildVocabPayload(request.result, request.tags));
         void platform.onVocabChanged?.();
         return result;
+      }
+      case 'SAVE_KEY_VOCAB': {
+        const items = keyVocabOf(request.result);
+        const outcome: SaveKeyVocabResult = { saved: 0, existed: 0, failures: [] };
+
+        for (const item of items) {
+          // TUẦN TỰ chứ không `Promise.all`: cùng một người dùng, và hai lượt POST song song
+          // cho hai từ giống nhau sau chuẩn hoá là một cuộc đua không cần thiết.
+          try {
+            const saved = await client.saveVocab(buildKeyVocabPayload(request.result, item, request.tags));
+            if (saved.alreadyExists) outcome.existed += 1;
+            else outcome.saved += 1;
+          } catch (error) {
+            // Đi HẾT danh sách kể cả khi có lỗi: lưu được 3 trong 5 từ vẫn hơn bỏ cả 5 vì
+            // từ thứ hai hỏng. Người dùng thấy đúng từ nào hỏng, không phải "có lỗi xảy ra".
+            outcome.failures.push({ term: item.term, error: toApiError(error) });
+          }
+        }
+
+        // ĐÚNG MỘT LẦN cho cả mẻ, và chỉ khi có từ mới: badge đếm thẻ đến hạn, mẻ không
+        // thêm từ nào thì con số không thể đổi.
+        if (outcome.saved > 0) void platform.onVocabChanged?.();
+        return outcome;
       }
       case 'SEARCH_VOCAB':
         return client.searchVocab({
@@ -174,5 +199,44 @@ export function buildVocabPayload(result: TranslateResult, tags: string[]) {
     sourceSentence: result.sourceSentence ?? null,
     collocations: payload.collocations ?? [],
     examples: payload.examples ?? [],
+  };
+}
+
+/**
+ * Dựng body POST /api/vocab cho MỘT từ đáng học của một câu EN→VI.
+ *
+ * Cùng hình dạng với `buildVocabPayload`, khác ở chỗ nguồn dữ liệu là một phần tử
+ * `key_vocab` chứ không phải cả payload — mà phần tử đó chỉ mang đúng ba thứ: `term`,
+ * `meaning_vi`, `band_level`. Mọi field còn lại để `null`/rỗng chứ KHÔNG bịa.
+ */
+export function buildKeyVocabPayload(
+  result: TranslateResult, item: KeyVocabItem, tags: string[],
+) {
+  return {
+    term: item.term,
+    // Không biết dạng nguyên thể — `key_vocab` không trả lemma. Dùng chính nó.
+    lemma: item.term,
+    lang: 'en',
+    // Chuỗi rỗng, KHÔNG phải 'phrase' như nhánh câu: đây là TỪ, và `key_vocab` không trả
+    // từ loại. Cột `vocab_entry.pos` là VARCHAR(16) NOT NULL DEFAULT '' nên `null` không
+    // dùng được ở đây.
+    //
+    // LƯU Ý về trùng lặp: khoá chống trùng phía backend là `(user_id, term, pos)`, mà cùng
+    // một từ lưu qua bubble EN→VI chế độ TỪ sẽ mang `pos` thật ('verb', 'noun'...). Nên
+    // `pos: ''` KHÔNG gộp được hai đường lưu — sổ từ vẫn có thể có hai hàng cho cùng một
+    // term, khác `pos`. Đó là hành vi hiện tại, không phải chuyện đã được xử lý.
+    pos: '',
+    ipa: null,
+    meaningVi: item.meaningVi,
+    definitionEn: null,
+    cefr: null,
+    bandLevel: item.bandLevel,
+    tags,
+    sourceUrl: result.sourceUrl ?? null,
+    // Với một từ đáng học, chính câu đang dịch LÀ ngữ cảnh của nó. `sourceSentence` null khi
+    // người dùng gõ tay vào ô Dịch — lúc đó `sourceText` chính là câu đó.
+    sourceSentence: result.sourceSentence ?? result.sourceText,
+    collocations: [],
+    examples: [],
   };
 }

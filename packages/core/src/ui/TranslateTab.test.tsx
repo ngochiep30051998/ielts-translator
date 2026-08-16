@@ -174,6 +174,214 @@ describe('TranslateTab', () => {
   });
 });
 
+/* ================= Nút "Lưu N từ đáng học" ================= */
+
+/** Kết quả EN→VI chế độ CÂU — tổ hợp DUY NHẤT có `key_vocab`. */
+function enViSentence(
+  keyVocab: { term: string; meaning_vi: string; band_level: string }[],
+): TranslateResult {
+  return {
+    direction: 'EN_VI', mode: 'SENTENCE', cached: false,
+    sourceText: 'The government should allocate more funding.',
+    payload: {
+      translation_vi: 'Chính phủ nên phân bổ nhiều ngân sách hơn.',
+      key_vocab: keyVocab,
+      structure_note: 'Câu dùng mệnh đề quan hệ.',
+    },
+  };
+}
+
+const THREE_VOCAB = enViSentence([
+  { term: 'allocate', meaning_vi: 'phân bổ', band_level: '7.0' },
+  { term: 'funding', meaning_vi: 'ngân sách', band_level: '6.5' },
+  { term: 'mitigate', meaning_vi: 'giảm nhẹ', band_level: '7.5' },
+]);
+
+const KEY_VOCAB_BUTTON = /từ đáng học/i;
+
+/** Phản hồi cho SAVE_KEY_VOCAB; mọi message khác trả ok rỗng. */
+function mockKeyVocabSave(data: {
+  saved: number; existed: number; failures: { term: string; error: unknown }[];
+}) {
+  transportSend.mockImplementation(async (request: { type: string }) =>
+    request.type === 'SAVE_KEY_VOCAB' ? { ok: true, data } : { ok: true, data: null });
+}
+
+describe('nút Lưu từ đáng học', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('hiện với EN→VI chế độ CÂU, nhãn đếm đúng số từ', async () => {
+    mockKeyVocabSave({ saved: 3, existed: 0, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    expect(await screen.findByRole('button', { name: 'Lưu 3 từ đáng học' })).toBeInTheDocument();
+  });
+
+  it('nhãn đếm số từ THẬT sau khi bỏ trùng và lọc phần tử rỗng', async () => {
+    mockKeyVocabSave({ saved: 2, existed: 0, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} onResult={() => {}} loaded result={enViSentence([
+      { term: 'allocate', meaning_vi: 'phân bổ', band_level: '7.0' },
+      { term: 'Allocate', meaning_vi: 'cấp phát', band_level: '7.5' },
+      { term: '   ', meaning_vi: 'rỗng', band_level: '6.0' },
+      { term: 'funding', meaning_vi: 'ngân sách', band_level: '6.5' },
+    ])} />);
+
+    // 4 phần tử thô, nhưng chỉ 2 từ thật sự gửi đi được.
+    expect(await screen.findByRole('button', { name: 'Lưu 2 từ đáng học' })).toBeInTheDocument();
+  });
+
+  it('KHÔNG hiện với EN→VI chế độ TỪ — nút "Lưu từ" đã làm đúng việc đó', async () => {
+    mockKeyVocabSave({ saved: 0, existed: 0, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={enViWord} onResult={() => {}} loaded />);
+
+    expect(await screen.findByRole('button', { name: /Lưu từ/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: KEY_VOCAB_BUTTON })).not.toBeInTheDocument();
+  });
+
+  it('KHÔNG hiện với VI→EN chế độ CÂU — key_phrases không có nghĩa tiếng Việt', async () => {
+    mockKeyVocabSave({ saved: 0, existed: 0, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} onResult={() => {}} loaded result={{
+      direction: 'VI_EN', mode: 'SENTENCE', cached: false, sourceText: 'câu tiếng Việt',
+      payload: {
+        band65_version: 'The government should allocate more funding.',
+        why_notes: [], key_phrases: ['allocate funding'], avoid: [],
+      },
+    }} />);
+
+    expect(screen.queryByRole('button', { name: KEY_VOCAB_BUTTON })).not.toBeInTheDocument();
+  });
+
+  it('KHÔNG hiện khi câu không có từ đáng học nào dùng được', async () => {
+    mockKeyVocabSave({ saved: 0, existed: 0, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} onResult={() => {}} loaded
+      result={enViSentence([{ term: '  ', meaning_vi: '  ', band_level: '7.0' }])} />);
+
+    expect(screen.queryByRole('button', { name: KEY_VOCAB_BUTTON })).not.toBeInTheDocument();
+  });
+
+  it('bấm thì gửi SAVE_KEY_VOCAB kèm cả kết quả dịch', async () => {
+    mockKeyVocabSave({ saved: 3, existed: 0, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    await waitFor(() => expect(transportSend).toHaveBeenCalledWith(
+      { type: 'SAVE_KEY_VOCAB', result: THREE_VOCAB, tags: [] },
+    ));
+  });
+
+  it('lưu trọn vẹn toàn từ mới: báo số từ đã lưu', async () => {
+    mockKeyVocabSave({ saved: 3, existed: 0, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    expect(await screen.findByText('Đã lưu 3 từ vào sổ')).toBeInTheDocument();
+  });
+
+  it('có từ đã tồn tại: nói rõ bao nhiêu mới, bao nhiêu đã có', async () => {
+    mockKeyVocabSave({ saved: 2, existed: 1, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    expect(await screen.findByText('Đã lưu 2 từ, 1 từ đã có sẵn')).toBeInTheDocument();
+  });
+
+  it('tất cả đều đã có: nói thẳng, KHÔNG báo "đã lưu 0 từ"', async () => {
+    mockKeyVocabSave({ saved: 0, existed: 3, failures: [] });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    expect(await screen.findByText('Cả 3 từ đều đã có trong sổ')).toBeInTheDocument();
+  });
+
+  it('có từ lỗi: kind bad, nêu số lưu được kèm thông điệp lỗi đầu tiên', async () => {
+    mockKeyVocabSave({
+      saved: 1, existed: 0, failures: [
+        { term: 'funding', error: { code: 'GEMINI_QUOTA', message: 'Hết quota hôm nay', retryable: false } },
+        { term: 'mitigate', error: { code: 'INTERNAL', message: 'Lỗi khác', retryable: false } },
+      ],
+    });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    const status = await screen.findByText('Đã lưu 1 từ, 2 từ lỗi: Hết quota hôm nay');
+    expect(status).toHaveClass('bad');
+  });
+
+  it('transport hỏng: hiện thông điệp lỗi của transport', async () => {
+    transportSend.mockResolvedValue({
+      ok: false, error: { code: 'BACKEND_DOWN', message: 'Backend chưa chạy', retryable: true },
+    });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    expect(await screen.findByText('Backend chưa chạy')).toBeInTheDocument();
+  });
+
+  it('đang lưu thì nút đổi nhãn, bị disable, và chặn lượt gửi thứ hai', async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    transportSend.mockImplementation(async () => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    const button = await screen.findByRole('button', { name: 'Đang lưu…' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(transportSend).toHaveBeenCalledTimes(1);
+
+    resolveSave({ ok: true, data: { saved: 3, existed: 0, failures: [] } });
+    await screen.findByText('Đã lưu 3 từ vào sổ');
+  });
+
+  it('hai nút khoá ĐỘC LẬP: đang lưu mẻ từ đáng học thì nút "Lưu từ" vẫn bấm được', async () => {
+    // Dùng chung một cờ `saving` sẽ khoá cả hai nút cùng lúc — người dùng bấm nhầm một nút
+    // là mất luôn nút kia cho tới khi mẻ chạy xong.
+    let resolveBatch: (value: unknown) => void = () => {};
+    transportSend.mockImplementation(async (request: { type: string }) =>
+      request.type === 'SAVE_KEY_VOCAB'
+        ? new Promise((resolve) => { resolveBatch = resolve; })
+        : { ok: true, data: { id: 1, alreadyExists: false } });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: KEY_VOCAB_BUTTON }));
+
+    const saveWord = screen.getByRole('button', { name: 'Lưu từ' });
+    expect(saveWord).toBeEnabled();
+
+    await userEvent.click(saveWord);
+    expect(transportSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'SAVE_WORD' }));
+
+    resolveBatch({ ok: true, data: { saved: 3, existed: 0, failures: [] } });
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Lưu 3 từ đáng học' }),
+    ).toBeEnabled());
+  });
+
+  it('ngược lại: đang lưu cả câu thì nút từ đáng học vẫn bấm được', async () => {
+    let resolveWord: (value: unknown) => void = () => {};
+    transportSend.mockImplementation(async (request: { type: string }) =>
+      request.type === 'SAVE_WORD'
+        ? new Promise((resolve) => { resolveWord = resolve; })
+        : { ok: true, data: { saved: 3, existed: 0, failures: [] } });
+    render(<TranslateTab draft="" onDraftChange={() => {}} result={THREE_VOCAB} onResult={() => {}} loaded />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Lưu từ' }));
+
+    expect(screen.getByRole('button', { name: 'Lưu 3 từ đáng học' })).toBeEnabled();
+
+    resolveWord({ ok: true, data: { id: 1, alreadyExists: false } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lưu từ' })).toBeEnabled());
+  });
+});
+
 describe('ô nhập text trong tab Dịch', () => {
   beforeEach(() => {
     vi.clearAllMocks();

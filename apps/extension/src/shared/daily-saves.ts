@@ -52,15 +52,21 @@ export async function readDailySaves(now: Date = new Date()): Promise<number> {
 }
 
 /**
- * Ghi nhận thêm một từ vừa lưu, trả về số mới của ngày hôm nay.
+ * Ghi nhận `amount` từ vừa lưu, trả về số mới của ngày hôm nay.
  *
  * Bản ghi của ngày cũ bị GHI ĐÈ chứ không cộng dồn — đó chính là cách chip về 0 lúc sang
  * ngày, không cần alarm hay dọn dẹp gì.
+ *
+ * `amount` có tham số vì một lượt "Lưu N từ đáng học" thêm nhiều từ trong MỘT message: gọi
+ * hàm này N lần là N lượt đọc–ghi `chrome.storage.local` chồng nhau, và vì đọc rồi mới ghi
+ * nên chúng ghi đè lẫn nhau và chip đếm thiếu.
  */
-export async function bumpDailySaves(now: Date = new Date()): Promise<number> {
+export async function bumpDailySaves(now: Date = new Date(), amount = 1): Promise<number> {
+  // Mẻ không lưu được từ nào thì không có gì để đếm — và cũng không nên ghi đè bản ghi cũ.
+  if (amount <= 0) return readDailySaves(now);
   const today = todayKey(now);
   const saved = await readRaw();
-  const next = (saved && saved.date === today ? saved.count : 0) + 1;
+  const next = (saved && saved.date === today ? saved.count : 0) + amount;
   try {
     await chrome.storage.local.set({ [STORAGE_KEY]: { date: today, count: next } satisfies DailySaves });
   } catch {

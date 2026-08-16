@@ -50,6 +50,22 @@ const RESULT: TranslateResult = {
   sourceText: 'mitigate',
 };
 
+/** EN→VI chế độ CÂU — tổ hợp DUY NHẤT mang `key_vocab`. */
+const SENTENCE_RESULT: TranslateResult = {
+  direction: 'EN_VI',
+  mode: 'SENTENCE',
+  cached: false,
+  payload: {
+    translation_vi: 'Chính phủ nên phân bổ nhiều ngân sách hơn.',
+    key_vocab: [
+      { term: 'allocate', meaning_vi: 'phân bổ', band_level: '7.0' },
+      { term: 'funding', meaning_vi: 'ngân sách', band_level: '6.5' },
+    ],
+    structure_note: '',
+  } as unknown as TranslatePayload,
+  sourceText: 'The government should allocate more funding.',
+};
+
 /** Import lại service worker để top-level code (đăng ký listener, alarm) chạy lại từ đầu. */
 async function loadServiceWorker(): Promise<void> {
   vi.resetModules();
@@ -243,6 +259,39 @@ describe('service worker', () => {
 
       expect(refreshBadge).not.toHaveBeenCalled();
     });
+
+    it('SAVE_KEY_VOCAB gọi saveVocab một lượt cho MỖI từ đáng học', async () => {
+      await loadServiceWorker();
+
+      const response = await send({ type: 'SAVE_KEY_VOCAB', result: SENTENCE_RESULT, tags: [] });
+
+      expect(api.saveVocab).toHaveBeenCalledTimes(2);
+      expect(api.saveVocab).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        term: 'allocate', meaningVi: 'phân bổ', bandLevel: '7.0',
+      }));
+      expect(api.saveVocab).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        term: 'funding', meaningVi: 'ngân sách', bandLevel: '6.5',
+      }));
+      expect(response).toEqual({ ok: true, data: { saved: 2, existed: 0, failures: [] } });
+    });
+
+    it('SAVE_KEY_VOCAB cập nhật badge ĐÚNG MỘT LẦN cho cả mẻ', async () => {
+      await loadServiceWorker();
+
+      await send({ type: 'SAVE_KEY_VOCAB', result: SENTENCE_RESULT, tags: [] });
+
+      expect(refreshBadge).toHaveBeenCalledTimes(1);
+    });
+
+    it('SAVE_KEY_VOCAB với kết quả không có từ đáng học: KHÔNG gọi backend lần nào', async () => {
+      await loadServiceWorker();
+
+      const response = await send({ type: 'SAVE_KEY_VOCAB', result: RESULT, tags: [] });
+
+      // RESULT là EN→VI chế độ TỪ — nút "Lưu từ" sẵn có đã lo tổ hợp đó.
+      expect(api.saveVocab).not.toHaveBeenCalled();
+      expect(response).toEqual({ ok: true, data: { saved: 0, existed: 0, failures: [] } });
+    });
   });
 
   describe('định tuyến message dịch', () => {
@@ -368,6 +417,31 @@ describe('service worker', () => {
       await send({ type: 'SAVE_WORD', result: RESULT, tags: [] });
 
       expect(await readDailySaves()).toBe(2);
+    });
+
+    it('mẻ "Lưu từ đáng học" đếm ĐỦ N từ, không phải một', async () => {
+      // Một message thêm NHIỀU hàng vocab_entry. Bỏ qua nhánh này thì chip đứng yên sau khi
+      // vừa lưu cả nắm từ; cộng 1 thì nó nói ít hơn sự thật.
+      await chrome.storage.local.clear();
+      api.saveVocab.mockResolvedValue({ id: 1, alreadyExists: false });
+      await loadServiceWorker();
+
+      await send({ type: 'SAVE_KEY_VOCAB', result: SENTENCE_RESULT, tags: [] });
+
+      expect(api.saveVocab).toHaveBeenCalledTimes(2);
+      expect(await readDailySaves()).toBe(2);
+    });
+
+    it('mẻ toàn từ đã có sẵn thì KHÔNG cộng gì', async () => {
+      // `saved` đã trừ sẵn phần `alreadyExists` — chip nói "từ hôm nay", mà lưu lại từ cũ
+      // không thêm từ nào vào sổ.
+      await chrome.storage.local.clear();
+      api.saveVocab.mockResolvedValue({ id: 1, alreadyExists: true });
+      await loadServiceWorker();
+
+      await send({ type: 'SAVE_KEY_VOCAB', result: SENTENCE_RESULT, tags: [] });
+
+      expect(await readDailySaves()).toBe(0);
     });
   });
 

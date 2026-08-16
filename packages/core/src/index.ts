@@ -21,6 +21,7 @@ export {
   setSettingsProvider, type Settings, type TriggerMode,
 } from './settings';
 
+export * from './key-vocab';
 export * from './mcq';
 export * from './heatmap';
 export * from './vocab-progress';
