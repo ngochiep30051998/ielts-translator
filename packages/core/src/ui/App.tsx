@@ -8,6 +8,7 @@ import { VocabTab } from './VocabTab';
 import { ReviewTab } from './ReviewTab';
 import { QuizTab } from './QuizTab';
 import { StatsTab } from './StatsTab';
+import { TabIcon } from './TabIcons';
 
 type Tab = 'home' | 'translate' | 'vocab' | 'review' | 'quiz';
 
@@ -15,15 +16,19 @@ type Tab = 'home' | 'translate' | 'vocab' | 'review' | 'quiz';
 const SUBSCREEN_TITLE_ID = 'subscreen-title';
 
 /**
- * Bottom nav của thiết kế 1b — ĐÚNG năm mục, "Hôm nay" đứng đầu và là tab mở sẵn.
+ * Bottom nav — ĐÚNG năm mục, "Dịch" đứng đầu.
+ *
+ * Vị trí đầu KHÔNG kéo theo tab mở sẵn: panel vẫn mở ở "Hôm nay" (`useState<Tab>('home')`
+ * bên dưới). Hai thứ đó độc lập — thứ tự nav nói cái nào dùng nhiều nhất, tab mở sẵn nói
+ * cái nào đáng nhìn trước khi bắt đầu một phiên học.
  *
  * "Tiến độ" không còn ở đây, nhưng `StatsTab` vẫn nguyên vẹn: nó thành màn con của Hôm nay,
  * mở bằng nút "Xem chi tiết tiến độ". Bỏ hẳn tab đi mà không làm gì là xoá heatmap 91 ngày,
  * biểu đồ cột và phân rã tỉ lệ nhớ — xoá tính năng, không phải đổi giao diện.
  */
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'home', label: 'Hôm nay' },
   { id: 'translate', label: 'Dịch' },
+  { id: 'home', label: 'Hôm nay' },
   { id: 'vocab', label: 'Sổ từ' },
   { id: 'review', label: 'Ôn tập' },
   { id: 'quiz', label: 'Quiz' },
@@ -181,9 +186,9 @@ export function App({
             aria-controls="tab-panel"
             onClick={() => goTab(t.id)}
           >
-            {/* Ô vuông bo góc thay cho icon, đúng như khung 1b vẽ. Nó không mang thông tin
-                nào ngoài chữ ngay dưới nên aria-hidden. */}
-            <i className="tab-icon" aria-hidden="true" />
+            {/* Mỗi tab một hình riêng (xem `TabIcons.tsx`). Icon tự lấy màu của nút qua
+                `currentColor`, nên trạng thái active không cần thêm quy tắc nào. */}
+            <TabIcon name={t.id} />
             {t.label}
           </button>
         ))}

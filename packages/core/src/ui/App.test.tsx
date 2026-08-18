@@ -200,14 +200,34 @@ describe('App', () => {
   /* ================= Bottom nav của 1b ================= */
 
   describe('bottom nav', () => {
-    it('đúng năm mục, theo thứ tự của thiết kế 1b', async () => {
+    it('đúng năm mục, "Dịch" đứng đầu', async () => {
       mockBackend(null);
       render(<App />);
 
       const tabs = await screen.findAllByRole('tab');
       expect(tabs.map((t) => t.textContent)).toEqual([
-        'Hôm nay', 'Dịch', 'Sổ từ', 'Ôn tập', 'Quiz',
+        'Dịch', 'Hôm nay', 'Sổ từ', 'Ôn tập', 'Quiz',
       ]);
+    });
+
+    it('mỗi tab một icon RIÊNG, không phải năm ô vuông giống nhau', async () => {
+      mockBackend(null);
+      render(<App />);
+
+      const tabs = await screen.findAllByRole('tab');
+      const icons = tabs.map((t) => t.querySelector('svg')?.dataset.icon);
+
+      expect(icons).toEqual(['translate', 'home', 'vocab', 'review', 'quiz']);
+      // Năm hình khác nhau thật, không phải một hình dán năm chỗ.
+      expect(new Set(icons).size).toBe(icons.length);
+    });
+
+    it('icon không lọt vào tên tab mà trình đọc màn hình đọc lên', async () => {
+      mockBackend(null);
+      render(<App />);
+
+      const tab = await screen.findByRole('tab', { name: 'Dịch' });
+      expect(tab.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     });
 
     it('mở panel là vào thẳng Hôm nay, không phải tab Dịch', async () => {
