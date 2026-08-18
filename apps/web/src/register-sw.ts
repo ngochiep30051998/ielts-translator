@@ -1,3 +1,5 @@
+import { startUpdateChecks, updateSignal } from './sw-update';
+
 /** Đường dẫn service worker. `public/sw.js` được Vite chép nguyên xi ra gốc `dist/`. */
 const SW_PATH = '/sw.js';
 
@@ -18,9 +20,17 @@ export function registerServiceWorker(): void {
   // Đợi `load`: đăng ký SW tranh băng thông với chính những asset đang cần để vẽ màn hình
   // đầu tiên.
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register(SW_PATH).catch(() => {
-      /* Không có offline thì thôi, app vẫn chạy. */
-    });
+    void navigator.serviceWorker
+      .register(SW_PATH)
+      .then((reg) => {
+        // Web app cài vào màn hình chính gần như không bao giờ được đóng, nên nếu không
+        // theo dõi ở đây thì người dùng chạy bundle của lần mở đầu tiên cho tới hết đời máy.
+        updateSignal.watch(reg, navigator.serviceWorker);
+        startUpdateChecks(reg);
+      })
+      .catch(() => {
+        /* Không có offline thì thôi, app vẫn chạy. */
+      });
   });
 }
 

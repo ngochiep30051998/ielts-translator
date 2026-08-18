@@ -2,6 +2,8 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
+import { swBuildId } from './build/sw-build-id';
+
 /**
  * Web app chạy CÙNG ORIGIN với backend, nên bundle không có khái niệm "địa chỉ backend":
  * mọi lời gọi dùng đường dẫn tương đối `/api/...`. Đó là lý do ở đây không có
@@ -28,7 +30,7 @@ export default defineConfig(({ mode }) => {
   const backend = env.VITE_DEV_BACKEND?.trim() || BACKEND_MAC_DINH;
 
   return {
-    plugins: [react()],
+    plugins: [react(), swBuildId()],
     server: {
       port,
       // Báo lỗi thay vì lặng lẽ nhảy sang cổng khác: người dùng đã khai một cổng cụ thể thì

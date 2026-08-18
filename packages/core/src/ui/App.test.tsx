@@ -77,9 +77,20 @@ function mockBackend(last: TranslateResult | null, auth: AuthUser | null = USER)
   );
 }
 
-/** Sang tab Dịch. 1b mở ở "Hôm nay", nên mọi test của ô dịch phải đi qua đây trước. */
+/** Sang tab Dịch. Đây đã là tab mở sẵn, nhưng click cho tường minh khi test nói về nó. */
 async function moTabDich() {
   await userEvent.click(await screen.findByRole('tab', { name: 'Dịch' }));
+}
+
+/**
+ * Sang tab Hôm nay.
+ *
+ * App mở sẵn ở tab Dịch, mà `HomeTab` tuy vẫn mounted thì cũng đang `hidden` — tức nằm
+ * ngoài cây a11y. Mọi test chạm vào Hôm nay phải đi qua đây trước, không thì query theo vai
+ * trò không thấy gì.
+ */
+async function moTabHomNay() {
+  await userEvent.click(await screen.findByRole('tab', { name: 'Hôm nay' }));
 }
 
 describe('App', () => {
@@ -200,13 +211,13 @@ describe('App', () => {
   /* ================= Bottom nav của 1b ================= */
 
   describe('bottom nav', () => {
-    it('đúng năm mục, "Dịch" đứng đầu', async () => {
+    it('đúng năm mục, "Hôm nay" đứng đầu', async () => {
       mockBackend(null);
       render(<App />);
 
       const tabs = await screen.findAllByRole('tab');
       expect(tabs.map((t) => t.textContent)).toEqual([
-        'Dịch', 'Hôm nay', 'Sổ từ', 'Ôn tập', 'Quiz',
+        'Hôm nay', 'Dịch', 'Sổ từ', 'Ôn tập', 'Quiz',
       ]);
     });
 
@@ -217,7 +228,7 @@ describe('App', () => {
       const tabs = await screen.findAllByRole('tab');
       const icons = tabs.map((t) => t.querySelector('svg')?.dataset.icon);
 
-      expect(icons).toEqual(['translate', 'home', 'vocab', 'review', 'quiz']);
+      expect(icons).toEqual(['home', 'translate', 'vocab', 'review', 'quiz']);
       // Năm hình khác nhau thật, không phải một hình dán năm chỗ.
       expect(new Set(icons).size).toBe(icons.length);
     });
@@ -230,12 +241,17 @@ describe('App', () => {
       expect(tab.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     });
 
-    it('mở panel là vào thẳng Hôm nay, không phải tab Dịch', async () => {
+    it('mở panel là vào thẳng Dịch, dù "Hôm nay" đứng đầu nav', async () => {
+      // Thứ tự nav và tab mở sẵn là HAI quyết định khác nhau: "Hôm nay" đứng đầu vì đó là
+      // chỗ nhìn tổng quan, còn màn mở ra đầu tiên là Dịch vì đó là việc người dùng tới đây
+      // để làm.
       mockBackend(null);
       render(<App />);
 
-      expect(await screen.findByRole('tab', { name: 'Hôm nay' }))
+      expect(await screen.findByRole('tab', { name: 'Dịch' }))
         .toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'Hôm nay' }))
+        .toHaveAttribute('aria-selected', 'false');
     });
 
     it('KHÔNG còn tab "Tiến độ" trên nav', async () => {
@@ -267,6 +283,7 @@ describe('App', () => {
       // ngày, biểu đồ cột và phân rã tỉ lệ nhớ chỉ có ở màn này.
       mockBackend(null);
       render(<App />);
+      await moTabHomNay();
 
       await userEvent.click(await screen.findByRole('button', { name: /Xem chi tiết/i }));
 
@@ -284,6 +301,7 @@ describe('App', () => {
       // đọc màn hình đọc sai tên vùng người dùng vừa mở.
       mockBackend(null);
       render(<App />);
+      await moTabHomNay();
       await userEvent.click(await screen.findByRole('button', { name: /Xem chi tiết/i }));
       await screen.findByText('kỷ lục');
 
@@ -296,6 +314,7 @@ describe('App', () => {
     it('đổi tab thì đóng luôn màn con, không để nó treo lại ở lần sau', async () => {
       mockBackend(null);
       render(<App />);
+      await moTabHomNay();
       await userEvent.click(await screen.findByRole('button', { name: /Xem chi tiết/i }));
       await screen.findByText('kỷ lục');
 
@@ -316,6 +335,7 @@ describe('App', () => {
       // vừa làm được gì.
       mockBackend(null);
       render(<App />);
+      await moTabHomNay();
       await screen.findByText('hiep@test.local');
       expect(countOf('GET_STATS')).toBe(1);
 
@@ -339,6 +359,7 @@ describe('App', () => {
       // nạp của Hôm nay ra khỏi lượt nạp của màn con. GET_SRS_STATS chỉ Hôm nay gọi.
       mockBackend(null);
       render(<App />);
+      await moTabHomNay();
       await screen.findByText('hiep@test.local');
       expect(countOf('GET_SRS_STATS')).toBe(1);
 

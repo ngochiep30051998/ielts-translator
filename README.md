@@ -217,6 +217,7 @@ Cài được vào màn hình chính và nhận text chia sẻ từ app khác:
 | Service worker | `apps/web/public/sw.js` — viết tay, **không thêm dependency** (Workbox là một dependency mới) |
 | Share Target | `share_target` trong manifest → route `/share` → `apps/web/src/share-target.ts` |
 | Icon | `npm -w ielts-translator-web run icons` — dùng chung `scripts/make-icons.mjs` với extension |
+| Báo bản mới | `apps/web/src/sw-update.ts` (phát hiện) + `UpdateBanner.tsx` (dải báo) + `apps/web/build/sw-build-id.js` (đóng dấu lúc build) |
 
 **Offline chỉ-đọc.** `GET /api/vocab` và `GET /api/stats` dùng stale-while-revalidate; mọi
 `/api/*` còn lại là network-only. Cố ý: dịch, ôn và quiz đều đổi trạng thái hoặc tốn quota
@@ -230,6 +231,30 @@ với HMR: sửa code mà màn hình không đổi.
 
 **Share Target chỉ có trên Android.** Safari bỏ qua `share_target` một cách im lặng; trên
 iOS vẫn cài được vào màn hình chính và vẫn dán tay được.
+
+#### Báo bản mới
+
+App cài vào màn hình chính gần như không bao giờ bị đóng, nên nếu không làm gì thì người
+dùng chạy bundle của lần mở đầu tiên **mãi mãi** — sửa lỗi xong deploy mà họ vẫn gặp đúng
+lỗi đó. Luồng xử lý:
+
+1. `vite build` tính một `BUILD_ID` từ tên các asset đã build (tên có content hash) rồi
+   **thay vào `dist/sw.js`**. Đây là mắt xích dễ mất nhất: `public/sw.js` là file tĩnh, không
+   đóng dấu thì mọi bản deploy đều cho ra file giống hệt nhau, trình duyệt không thấy gì
+   khác và **không có sự kiện nào nổ**. Code không đổi → id không đổi → không báo gì cả.
+2. Service worker mới **không** gọi `skipWaiting()` lúc install, nó nằm chờ ở `waiting`.
+3. Trang phát hiện bản đang chờ (`updatefound`, hoặc `registration.waiting` có sẵn lúc mở),
+   và tự hỏi lại mỗi 30 phút + mỗi lần người dùng quay lại tab — trình duyệt chỉ tự hỏi khi
+   có lượt điều hướng, mà app dạng tab thì chẳng bao giờ điều hướng.
+4. Dải "Đã có bản mới" hiện ở đỉnh màn hình. **Không tự tải lại**: bản nháp đang gõ ở tab
+   Dịch và câu quiz đang làm dở chỉ nằm trong bộ nhớ. Bấm "Tải lại" → gửi message
+   `SKIP_WAITING` → đợi `controllerchange` → `location.reload()`.
+
+`sw.js` được backend trả kèm `Cache-Control: no-cache` (`app/web_static.py`). Thiếu header
+đó, lượt kiểm tra bản mới có thể đem bản cache cũ so với chính nó và không bao giờ thấy khác.
+
+Cache vỏ mang `BUILD_ID` nên mỗi bản dọn sạch asset cũ; cache `/api/*` thì **không** — xoá
+nó theo mỗi lần deploy là lấy mất phần đọc offline của người đang không có mạng.
 
 ### Web app (`apps/web/.env`)
 

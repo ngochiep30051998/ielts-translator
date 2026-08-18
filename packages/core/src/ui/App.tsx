@@ -16,23 +16,32 @@ type Tab = 'home' | 'translate' | 'vocab' | 'review' | 'quiz';
 const SUBSCREEN_TITLE_ID = 'subscreen-title';
 
 /**
- * Bottom nav — ĐÚNG năm mục, "Dịch" đứng đầu.
+ * Bottom nav — ĐÚNG năm mục, "Hôm nay" đứng đầu.
  *
- * Vị trí đầu KHÔNG kéo theo tab mở sẵn: panel vẫn mở ở "Hôm nay" (`useState<Tab>('home')`
- * bên dưới). Hai thứ đó độc lập — thứ tự nav nói cái nào dùng nhiều nhất, tab mở sẵn nói
- * cái nào đáng nhìn trước khi bắt đầu một phiên học.
+ * Thứ tự nav và tab mở sẵn là HAI quyết định tách rời, đừng suy cái này ra cái kia:
+ * "Hôm nay" đứng đầu vì nó là màn tổng quan, còn `TAB_MO_SAN` bên dưới là "Dịch" vì đó là
+ * việc người dùng mở app ra để làm.
  *
  * "Tiến độ" không còn ở đây, nhưng `StatsTab` vẫn nguyên vẹn: nó thành màn con của Hôm nay,
  * mở bằng nút "Xem chi tiết tiến độ". Bỏ hẳn tab đi mà không làm gì là xoá heatmap 91 ngày,
  * biểu đồ cột và phân rã tỉ lệ nhớ — xoá tính năng, không phải đổi giao diện.
  */
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'translate', label: 'Dịch' },
   { id: 'home', label: 'Hôm nay' },
+  { id: 'translate', label: 'Dịch' },
   { id: 'vocab', label: 'Sổ từ' },
   { id: 'review', label: 'Ôn tập' },
   { id: 'quiz', label: 'Quiz' },
 ];
+
+/**
+ * Tab mở ra đầu tiên mỗi lần mở app, và cũng là tab quay về sau khi đăng xuất.
+ *
+ * Một hằng số chứ không phải hai chữ `'translate'` rải hai chỗ: hai chỗ đó PHẢI bằng nhau —
+ * đăng xuất rồi đăng nhập lại mà rơi vào một tab khác lúc mới mở là hai trạng thái khác
+ * nhau cho cùng một hành động "bắt đầu dùng app".
+ */
+const TAB_MO_SAN: Tab = 'translate';
 
 /**
  * `undefined` = ĐANG ĐỌC trạng thái, `null` = chưa đăng nhập.
@@ -54,7 +63,7 @@ export function App({
   initialDraft?: string;
 } = {}) {
   const [auth, setAuth] = useState<AuthState>(undefined);
-  const [tab, setTab] = useState<Tab>('home');
+  const [tab, setTab] = useState<Tab>(TAB_MO_SAN);
   /** Màn thống kê đầy đủ đang mở đè lên Hôm nay. */
   const [statsOpen, setStatsOpen] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
@@ -102,7 +111,7 @@ export function App({
     setDraft('');
     setLoaded(false);
     setStatsOpen(false);
-    setTab('home');
+    setTab(TAB_MO_SAN);
     setAuth(null);
   }
 

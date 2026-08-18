@@ -11,10 +11,29 @@
  * File nằm ở `public/` nên Vite chép nguyên xi, không transpile. Viết JS thuần, không import.
  */
 
-// Bump khi đổi chiến lược cache. `activate` xoá mọi cache mang version khác.
-const VERSION = 'v1';
-const CACHE_SHELL = `ielts-shell-${VERSION}`;
-const CACHE_API = `ielts-api-${VERSION}`;
+/**
+ * Vân tay của bản build, do `build/sw-build-id.ts` thay vào lúc `vite build`.
+ *
+ * Đây là thứ làm cho việc báo bản mới chạy được: trình duyệt so TỪNG BYTE file này với bản
+ * đã đăng ký để biết có bản mới hay không. File tĩnh không đổi = deploy bao nhiêu lần cũng
+ * không ai được báo. Id sinh từ tên các asset đã build (tên có content hash), nên nó chỉ đổi
+ * khi code thật sự đổi.
+ *
+ * Ở `npm run dev` chuỗi này giữ nguyên chữ giữ chỗ — không sao, service worker chỉ đăng ký
+ * ở bản production.
+ */
+const BUILD_ID = '__BUILD_ID__';
+
+/** Vỏ (HTML + asset) dọn theo TỪNG BẢN: bản mới ăn asset cũ là hỏng theo kiểu khó lần nhất. */
+const CACHE_SHELL = `ielts-shell-${BUILD_ID}`;
+/**
+ * Cache API thì CỐ Ý không mang `BUILD_ID`.
+ *
+ * Nó là dữ liệu đã tải về của người dùng (sổ từ, thống kê) để đọc lúc mất mạng. Xoá nó theo
+ * mỗi lần deploy là mỗi lần phát hành lại lấy mất phần offline của người đang không có mạng.
+ * Nó chỉ bị xoá khi ĐĂNG XUẤT — xem handler message bên dưới.
+ */
+const CACHE_API = 'ielts-api-v1';
 
 /** Endpoint đọc-thuần, an toàn để phục vụ từ cache trong lúc gọi lại nền. */
 const API_DOC_DUOC = [/^\/api\/vocab(\?|$)/, /^\/api\/stats(\?|$)/];
@@ -24,8 +43,14 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_SHELL).then((cache) => cache.addAll(['/', '/manifest.webmanifest'])),
   );
-  // Không đợi tab cũ đóng: người dùng vừa cài xong app thì mong nó chạy ngay.
-  self.skipWaiting();
+  // CỐ Ý KHÔNG gọi `skipWaiting()` ở đây.
+  //
+  // Gọi thì worker mới nhảy vào cầm lái ngay và không bao giờ ở trạng thái `waiting`, nên
+  // phía trang không có gì để phát hiện — banner "đã có bản mới" sẽ không bao giờ hiện, và
+  // trang đang mở vẫn chạy bundle JS cũ vì bản thân trang không tự tải lại.
+  //
+  // Nhường chỗ là việc của người dùng: họ bấm "Tải lại", trang gửi message SKIP_WAITING.
+  // Lần cài ĐẦU TIÊN không bị chậm vì lúc đó không có worker nào đang giữ chỗ để mà chờ.
 });
 
 self.addEventListener('activate', (event) => {
@@ -34,8 +59,10 @@ self.addEventListener('activate', (event) => {
       .keys()
       .then((ten) =>
         Promise.all(
+          // CHỈ dọn cache vỏ của các bản cũ. Đụng vào `ielts-api-*` ở đây là xoá dữ liệu
+          // offline của người dùng mỗi lần phát hành.
           ten
-            .filter((t) => t.startsWith('ielts-') && !t.endsWith(VERSION))
+            .filter((t) => t.startsWith('ielts-shell-') && t !== CACHE_SHELL)
             .map((t) => caches.delete(t)),
         ),
       )
@@ -51,8 +78,16 @@ self.addEventListener('activate', (event) => {
  * trước hiện ra từ cache trước khi request thật kịp trả về.
  */
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'XOA_CACHE_API') {
+  if (!event.data) return;
+
+  if (event.data.type === 'XOA_CACHE_API') {
     event.waitUntil(caches.delete(CACHE_API));
+  }
+
+  // Người dùng vừa bấm "Tải lại" trên banner bản mới. Đây là chỗ DUY NHẤT được nhường chỗ —
+  // xem ghi chú ở handler `install`.
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 });
 

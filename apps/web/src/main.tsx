@@ -9,6 +9,7 @@ import { readSharedText } from './share-target';
 import { bootTheme } from './theme-boot';
 import { registerServiceWorker } from './register-sw';
 import { installWebRuntime } from './runtime';
+import { UpdateBanner } from './UpdateBanner';
 
 // Thứ tự có ý nghĩa:
 //
@@ -29,6 +30,10 @@ const authError = readAuthError(window.location, window.history);
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App initialAuthError={authError} initialDraft={sharedText ?? ''} />
+    {/* Anh em với `App`, không nằm trong nó: `App` là khung cao đúng 100dvh của UI dùng
+        chung, còn banner là một lớp nổi chỉ web mới có. Nhét vào trong là bắt `packages/core`
+        biết tới một khái niệm chỉ tồn tại ở một surface. */}
+    <UpdateBanner />
   </StrictMode>,
 );
 

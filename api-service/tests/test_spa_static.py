@@ -33,6 +33,7 @@ def spa_client(tmp_path: Path, db: Session, monkeypatch: pytest.MonkeyPatch) -> 
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "index-abc123.js").write_text("console.log(1)", encoding="utf-8")
     (tmp_path / "manifest.webmanifest").write_text('{"name":"x"}', encoding="utf-8")
+    (tmp_path / "sw.js").write_text("self.addEventListener('install', () => {});", encoding="utf-8")
 
     monkeypatch.setenv("WEB_STATIC_DIR", str(tmp_path))
     # `get_settings` có lru_cache nên phải dọn TRƯỚC khi dựng app, và dọn lại sau — bỏ bước
@@ -175,6 +176,21 @@ def test_index_html_khong_duoc_cache(spa_client: Any) -> None:
     xoá sau một lần deploy — trang trắng, không lỗi nào giải thích."""
     resp = spa_client.get("/")
 
+    assert "no-cache" in resp.headers.get("cache-control", "")
+
+
+def test_service_worker_khong_duoc_cache(spa_client: Any) -> None:
+    """`sw.js` là thứ trình duyệt tải về để BIẾT có bản mới hay không.
+
+    Nó không có hash trong tên, nên nếu trình duyệt phục vụ lại bản đã cache thì lượt kiểm
+    tra bản mới so bản cũ với chính bản cũ — luôn thấy giống nhau, và banner "đã có bản mới"
+    không bao giờ hiện. Không có header này, FastAPI chỉ gửi ETag/Last-Modified và trình
+    duyệt được tự quyết cache bao lâu.
+    """
+    resp = spa_client.get("/sw.js")
+
+    assert resp.status_code == 200
+    assert "self.addEventListener" in resp.text
     assert "no-cache" in resp.headers.get("cache-control", "")
 
 

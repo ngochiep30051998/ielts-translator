@@ -69,3 +69,80 @@ body {
     min-height: 44px;
   }
 }
+
+/* ============================================================
+   Dải báo "đã có bản mới"
+   ============================================================
+   Neo ở ĐỈNH màn hình, không phải đáy: đáy là chỗ của bottom nav, và một lớp nổi đè lên nav
+   sẽ chặn mất đường đi lại giữa các tab trong đúng lúc người dùng chưa muốn tải lại.
+
+   `position: fixed` chứ không dính trong `.app`: `.app` cao đúng 100dvh và `.content` mới là
+   phần cuộn, nên một phần tử nằm trong đó sẽ trôi mất theo nội dung. */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  /* Cùng bề ngang tối đa với `.app` để trên màn rộng nó không kéo dài hết màn hình. */
+  width: min(560px, 100%);
+  /* Chừa tai thỏ: cộng vào padding chứ không dùng `top`, để nền của dải phủ kín cả vùng đó
+     thay vì để lộ một vạch nền trang phía trên. */
+  padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 var(--r-card) var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  color: var(--text);
+  animation: update-banner-vao 0.18s var(--ease);
+}
+
+.update-banner-text { flex: 1; }
+
+.update-banner button {
+  flex: none;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--r-control);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.update-banner-later {
+  background: none;
+  color: var(--text-3);
+}
+.update-banner-later:hover { color: var(--text-2); }
+
+/* Nút chính dùng màu mực như mọi nút chính khác của thiết kế 1b, không phải màu nhấn. */
+.update-banner-apply {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.update-banner-apply:hover { opacity: 0.9; }
+
+.update-banner button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+@keyframes update-banner-vao {
+  from { transform: translate(-50%, -100%); }
+  to { transform: translate(-50%, 0); }
+}
+
+/* Tôn trọng "giảm chuyển động": dải này tự hiện ra chứ không do người dùng bấm, nên nó là
+   đúng loại chuyển động gây khó chịu nhất với người nhạy cảm tiền đình. */
+@media (prefers-reduced-motion: reduce) {
+  .update-banner { animation: none; }
+}
+
+@media (hover: none) {
+  .update-banner button { min-height: 44px; }
+}

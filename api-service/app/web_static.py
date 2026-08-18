@@ -36,6 +36,13 @@ log = logging.getLogger(__name__)
 #: Đường dẫn thuộc về API. Catch-all của SPA KHÔNG được chạm vào chúng.
 API_PREFIX = "/api/"
 
+#: File PHẢI luôn hỏi lại máy chủ trước khi dùng lại bản đã tải.
+#:
+#: `sw.js` là thứ trình duyệt tải về để biết CÓ BẢN MỚI HAY KHÔNG, và tên nó không mang
+#: hash. Để trình duyệt tự quyết cache bao lâu thì lượt kiểm tra bản mới đem bản cũ so với
+#: chính bản cũ — không bao giờ khác nhau, nên người dùng không bao giờ được báo.
+KHONG_CACHE = frozenset({"sw.js"})
+
 
 def thu_muc_static() -> Path | None:
     """Thư mục SPA đã build, hoặc `None` nếu chưa build.
@@ -93,6 +100,8 @@ def gan_web_app(app: FastAPI) -> None:
         if duong_dan:
             ung_vien = (goc / duong_dan).resolve()
             if ung_vien.is_file() and goc.resolve() in ung_vien.parents:
+                if duong_dan in KHONG_CACHE:
+                    return FileResponse(ung_vien, headers={"Cache-Control": "no-cache"})
                 return FileResponse(ung_vien)
 
         # `no-cache` chứ không `no-store`: trình duyệt vẫn giữ bản sao nhưng luôn hỏi lại
