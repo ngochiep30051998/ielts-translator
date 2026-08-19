@@ -11,10 +11,10 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 
-def _seed_the(
+def _seed_card(
     db: Session, user_id: int, term: str, repetitions: int = 2, interval_days: int = 6
 ) -> int:
     """Một từ kèm thẻ SRS. Trả `srs_card.id`. `repetitions = 0` cho thẻ NEW."""
@@ -42,7 +42,7 @@ def _seed_the(
     return card_id
 
 
-def _chup_the(db: Session, card_id: int) -> tuple[Any, ...]:
+def _snapshot_card(db: Session, card_id: int) -> tuple[Any, ...]:
     db.expire_all()
     return tuple(
         db.execute(
@@ -55,15 +55,15 @@ def _chup_the(db: Session, card_id: int) -> tuple[Any, ...]:
     )
 
 
-def test_luyen_nam_lan_khong_doi_mot_cot_nao_cua_the(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_practicing_five_times_changes_no_column_of_the_card(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Bất biến trung tâm của cả spec.
 
     Năm lượt chứ không một: nếu ai đó vô ý gọi `next_schedule` trong `practice()`, một lượt
     có thể trùng giá trị cũ do làm tròn, năm lượt thì không."""
-    card_id = _seed_the(db, owner.id, "mitigate")
-    truoc = _chup_the(db, card_id)
+    card_id = _seed_card(db, owner.id, "mitigate")
+    before = _snapshot_card(db, card_id)
 
     for rating in ("AGAIN", "HARD", "GOOD", "EASY", "GOOD"):
         resp = client.post(
@@ -73,39 +73,41 @@ def test_luyen_nam_lan_khong_doi_mot_cot_nao_cua_the(
         )
         assert resp.status_code == 204
 
-    assert _chup_the(db, card_id) == truoc
+    assert _snapshot_card(db, card_id) == before
 
 
-def test_luyen_ghi_dung_mot_dong_mode_practice(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_practice_writes_exactly_one_row_with_mode_practice(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
-    card_id = _seed_the(db, owner.id, "mitigate", interval_days=6)
+    card_id = _seed_card(db, owner.id, "mitigate", interval_days=6)
 
     client.post(
         "/api/srs/practice", headers=owner.headers, json={"cardId": card_id, "rating": "GOOD"}
     )
 
-    mode, prev, moi = db.execute(
+    mode, prev, new_interval = db.execute(
         text("SELECT mode, prev_interval, new_interval FROM review_log WHERE card_id = :c"),
         {"c": card_id},
     ).one()
     assert mode == "PRACTICE"
     # Không phải số giả: lịch thật sự không đổi nên hai con số thật sự bằng nhau.
-    assert (prev, moi) == (6, 6)
+    assert (prev, new_interval) == (6, 6)
 
 
-def test_hang_luyen_loai_the_new(client: Any, db: Session, owner: NguoiDungTest) -> None:
+def test_practice_queue_excludes_new_cards(client: Any, db: Session, owner: UserFixture) -> None:
     """Lượt đầu đời của một thẻ phải đi đường có lịch, nếu không nó mắc kẹt ở NEW vĩnh viễn."""
-    _seed_the(db, owner.id, "mitigate", repetitions=2)
-    _seed_the(db, owner.id, "brandnew", repetitions=0, interval_days=0)
+    _seed_card(db, owner.id, "mitigate", repetitions=2)
+    _seed_card(db, owner.id, "brandnew", repetitions=0, interval_days=0)
 
-    ra = client.get("/api/srs/practice", headers=owner.headers)
+    response = client.get("/api/srs/practice", headers=owner.headers)
 
-    assert ra.status_code == 200
-    assert [c["term"] for c in ra.json()] == ["mitigate"]
+    assert response.status_code == 200
+    assert [c["term"] for c in response.json()] == ["mitigate"]
 
 
-def test_hang_luyen_gom_the_vua_quen(client: Any, db: Session, owner: NguoiDungTest) -> None:
+def test_practice_queue_includes_just_forgotten_cards(
+    client: Any, db: Session, owner: UserFixture
+) -> None:
     """Thẻ RELEARNING (vừa bấm "Lại") phải có mặt trong hàng luyện.
 
     Trạng thái đúng như `next_schedule()` sinh ra cho rating AGAIN: `repetitions = 0`,
@@ -132,14 +134,14 @@ def test_hang_luyen_gom_the_vua_quen(client: Any, db: Session, owner: NguoiDungT
     )
     db.commit()
 
-    ra = client.get("/api/srs/practice", headers=owner.headers)
+    response = client.get("/api/srs/practice", headers=owner.headers)
 
-    assert ra.status_code == 200
-    assert [c["term"] for c in ra.json()] == ["forgotten"]
+    assert response.status_code == 200
+    assert [c["term"] for c in response.json()] == ["forgotten"]
 
 
-def test_hang_luyen_van_chua_the_dang_den_han(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_practice_queue_still_contains_due_cards(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Cố ý: luật "mọi từ đã học" giải thích được bằng một câu, và luyện một thẻ đang đến hạn
     không làm nó biến mất khỏi hàng ôn thật."""
@@ -166,13 +168,13 @@ def test_hang_luyen_van_chua_the_dang_den_han(
     ]
 
 
-def test_luyen_the_khong_ton_tai_tra_404(client: Any, owner: NguoiDungTest) -> None:
+def test_practicing_nonexistent_card_returns_404(client: Any, owner: UserFixture) -> None:
     resp = client.post(
         "/api/srs/practice", headers=owner.headers, json={"cardId": 999999, "rating": "GOOD"}
     )
     assert resp.status_code == 404
 
 
-def test_chua_dang_nhap_tra_401(client: Any) -> None:
+def test_not_logged_in_returns_401(client: Any) -> None:
     assert client.get("/api/srs/practice").status_code == 401
     assert client.post("/api/srs/practice", json={"cardId": 1, "rating": "GOOD"}).status_code == 401

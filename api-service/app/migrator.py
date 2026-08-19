@@ -53,9 +53,9 @@ def discover(directory: Path = MIGRATIONS_DIR) -> list[Migration]:
         found.append(Migration(int(matched.group(1)), matched.group(2), path))
 
     versions = [m.version for m in found]
-    trung = {v for v in versions if versions.count(v) > 1}
-    if trung:
-        raise ValueError(f"Trùng version migration: {sorted(trung)}")
+    duplicate_versions = {v for v in versions if versions.count(v) > 1}
+    if duplicate_versions:
+        raise ValueError(f"Trùng version migration: {sorted(duplicate_versions)}")
     return sorted(found, key=lambda m: m.version)
 
 
@@ -74,26 +74,26 @@ def render_all(bootstrap_email: str, directory: Path = MIGRATIONS_DIR) -> str:
             "AUTH_BOOTSTRAP_EMAIL rỗng. V6 dùng nó để gán chủ sở hữu cho toàn bộ sổ từ cũ."
         )
     email = bootstrap_email.strip().lower()
-    phan: list[str] = [
+    parts: list[str] = [
         "-- Sinh bởi `python -m app.migrator`. KHÔNG sửa tay ở đây —",
         "-- nguồn là api-service/migrations/V*.sql (append-only, ràng buộc #8).",
         "",
     ]
     for mig in discover(directory):
-        phan.append(f"-- ═══ V{mig.version}__{mig.description}.sql ═══")
-        phan.append(mig.sql.replace("${bootstrap_email}", email))
-        phan.append("")
+        parts.append(f"-- ═══ V{mig.version}__{mig.description}.sql ═══")
+        parts.append(mig.sql.replace("${bootstrap_email}", email))
+        parts.append("")
     # Ghi lại lịch sử để api-service biết đừng chạy lại — vai trò của flyway_schema_history.
-    phan.append(_SCHEMA_HISTORY.strip() + ";")
-    phan.append("")
-    gia_tri = ", ".join(
+    parts.append(_SCHEMA_HISTORY.strip() + ";")
+    parts.append("")
+    values_sql = ", ".join(
         f"({m.version}, '{m.description}', '{m.checksum()}')" for m in discover(directory)
     )
-    phan.append(
+    parts.append(
         "INSERT INTO api_schema_history (version, description, checksum) VALUES\n"
-        f"{gia_tri}\nON CONFLICT (version) DO NOTHING;"
+        f"{values_sql}\nON CONFLICT (version) DO NOTHING;"
     )
-    return "\n".join(phan)
+    return "\n".join(parts)
 
 
 def _cli() -> int:
@@ -130,17 +130,17 @@ CREATE TABLE IF NOT EXISTS api_schema_history (
 """
 
 
-def _versions_da_chay(engine: Engine) -> set[int]:
+def _applied_versions(engine: Engine) -> set[int]:
     with engine.connect() as conn:
         applied = {
             row[0] for row in conn.execute(text("SELECT version FROM api_schema_history"))
         }
 
         # Flyway ghi version dạng chuỗi ('1', '2'...). `success` phân biệt lần chạy hỏng.
-        flyway_ton_tai = conn.execute(
+        flyway_table_exists = conn.execute(
             text("SELECT to_regclass('public.flyway_schema_history') IS NOT NULL")
         ).scalar()
-        if flyway_ton_tai:
+        if flyway_table_exists:
             applied |= {
                 int(row[0])
                 for row in conn.execute(
@@ -169,11 +169,11 @@ def migrate(engine: Engine, *, bootstrap_email: str, directory: Path = MIGRATION
     with engine.begin() as conn:
         conn.execute(text(_SCHEMA_HISTORY))
 
-    da_chay = _versions_da_chay(engine)
-    vua_chay: list[int] = []
+    already_applied = _applied_versions(engine)
+    newly_applied_versions: list[int] = []
 
     for mig in discover(directory):
-        if mig.version in da_chay:
+        if mig.version in already_applied:
             continue
         sql = mig.sql.replace("${bootstrap_email}", bootstrap_email.strip().lower())
         # Một transaction cho mỗi migration: hỏng ở giữa thì file đó không để lại gì,
@@ -187,9 +187,9 @@ def migrate(engine: Engine, *, bootstrap_email: str, directory: Path = MIGRATION
                 ),
                 {"v": mig.version, "d": mig.description, "c": mig.checksum()},
             )
-        vua_chay.append(mig.version)
+        newly_applied_versions.append(mig.version)
 
-    return vua_chay
+    return newly_applied_versions
 
 
 if __name__ == "__main__":

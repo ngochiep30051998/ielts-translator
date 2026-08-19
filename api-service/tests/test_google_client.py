@@ -17,10 +17,10 @@ from app.common.errors import AppError, ErrorCode
 from app.config import Settings
 
 REDIRECT = "https://testextensionid.chromiumapp.org/"
-BI_MAT = "SIEU-BI-MAT"
+CLIENT_SECRET = "SIEU-BI-MAT"
 
 
-class _Ghi(httpx.BaseTransport):
+class _RecordingTransport(httpx.BaseTransport):
     def __init__(self, response: httpx.Response) -> None:
         self.response = response
         self.requests: list[httpx.Request] = []
@@ -31,17 +31,17 @@ class _Ghi(httpx.BaseTransport):
         return self.response
 
 
-def _client(response: httpx.Response) -> tuple[GoogleTokenClient, _Ghi]:
+def _client(response: httpx.Response) -> tuple[GoogleTokenClient, _RecordingTransport]:
     settings = Settings(
         AUTH_GOOGLE_CLIENT_ID="client-id",
-        AUTH_GOOGLE_CLIENT_SECRET=BI_MAT,
+        AUTH_GOOGLE_CLIENT_SECRET=CLIENT_SECRET,
         AUTH_GOOGLE_TOKEN_URL="http://google.test",
         EXTENSION_ID="testextensionid",
     )
     client = GoogleTokenClient(settings)
-    ghi = _Ghi(response)
-    client._client = httpx.Client(base_url=settings.auth_google_token_url, transport=ghi)
-    return client, ghi
+    recorder = _RecordingTransport(response)
+    client._client = httpx.Client(base_url=settings.auth_google_token_url, transport=recorder)
+    return client, recorder
 
 
 def _base64url(json_text: str) -> str:
@@ -54,7 +54,7 @@ def _id_token(payload_json: str) -> httpx.Response:
     return httpx.Response(200, json={"id_token": f"header.{_base64url(payload_json)}.chu-ky-rac"})
 
 
-def test_doc_sub_va_email_tu_payload_khong_verify_chu_ky() -> None:
+def test_reads_sub_and_email_from_payload_without_verifying_signature() -> None:
     """Chữ ký "rác" là CỐ Ý.
 
     Token đến thẳng từ token endpoint qua TLS và mình đã xác thực với Google bằng
@@ -65,17 +65,17 @@ def test_doc_sub_va_email_tu_payload_khong_verify_chu_ky() -> None:
         _id_token('{"sub":"1234567890","email":"A@B.com","email_verified":true,"name":"A B"}')
     )
 
-    danh_tinh = client.exchange("code-abc", REDIRECT)
+    identity = client.exchange("code-abc", REDIRECT)
 
-    assert danh_tinh.sub == "1234567890"
+    assert identity.sub == "1234567890"
     # Email hạ về chữ thường ngay tại đây: allowlist so bằng chuỗi, và Google có thể trả về
     # hoa thường bất kỳ.
-    assert danh_tinh.email == "a@b.com"
-    assert danh_tinh.email_verified is True
-    assert danh_tinh.name == "A B"
+    assert identity.email == "a@b.com"
+    assert identity.email_verified is True
+    assert identity.name == "A B"
 
 
-def test_payload_thieu_dem_base64_van_doc_duoc() -> None:
+def test_payload_missing_base64_padding_still_decodes() -> None:
     """Bẫy riêng của Python mà Java không có.
 
     `Base64.getUrlDecoder()` chấp nhận chuỗi thiếu đệm; `base64.urlsafe_b64decode` thì ném
@@ -83,14 +83,14 @@ def test_payload_thieu_dem_base64_van_doc_duoc() -> None:
     nhập hỏng — và hỏng với thông điệp "Không đọc được id_token của Google", nghe như lỗi
     phía Google.
     """
-    for do_dai in range(1, 8):
-        goc = '{"sub":"' + "x" * do_dai + '","email":"a@b.com"}'
-        khong_dem = _base64url(goc)
-        assert len(khong_dem) % 4 != 0 or True  # chỉ cần giải mã ra đúng chuỗi ban đầu
-        assert _decode_segment(khong_dem).decode("utf-8") == goc
+    for length in range(1, 8):
+        original = '{"sub":"' + "x" * length + '","email":"a@b.com"}'
+        unpadded = _base64url(original)
+        assert len(unpadded) % 4 != 0 or True  # chỉ cần giải mã ra đúng chuỗi ban đầu
+        assert _decode_segment(unpadded).decode("utf-8") == original
 
 
-def test_code_het_han_tra_unauthorized_chu_khong_auth_unavailable() -> None:
+def test_expired_code_returns_unauthorized_not_auth_unavailable() -> None:
     """Lỗi của REQUEST, không phải của Google — trả AUTH_UNAVAILABLE ở đây sẽ mời người
     dùng thử lại một việc không bao giờ thành công."""
     client, _ = _client(httpx.Response(400, json={"error": "invalid_grant"}))
@@ -103,7 +103,7 @@ def test_code_het_han_tra_unauthorized_chu_khong_auth_unavailable() -> None:
 
 
 @pytest.mark.parametrize("status", [500, 502, 503, 429])
-def test_google_chet_tra_auth_unavailable_va_retry_duoc(status: int) -> None:
+def test_google_down_returns_auth_unavailable_and_retryable(status: int) -> None:
     client, _ = _client(httpx.Response(status, text=""))
 
     with pytest.raises(AppError) as ex:
@@ -113,7 +113,7 @@ def test_google_chet_tra_auth_unavailable_va_retry_duoc(status: int) -> None:
     assert ex.value.retryable is True
 
 
-def test_thieu_id_token_tra_unauthorized() -> None:
+def test_missing_id_token_returns_unauthorized() -> None:
     """Không được nổ AttributeError."""
     client, _ = _client(httpx.Response(200, json={"access_token": "chi-co-access-token"}))
 
@@ -123,7 +123,7 @@ def test_thieu_id_token_tra_unauthorized() -> None:
     assert ex.value.code is ErrorCode.UNAUTHORIZED
 
 
-def test_id_token_khong_du_ba_phan_tra_unauthorized() -> None:
+def test_id_token_without_three_parts_returns_unauthorized() -> None:
     client, _ = _client(httpx.Response(200, json={"id_token": "khong-phai-jwt"}))
 
     with pytest.raises(AppError) as ex:
@@ -132,7 +132,7 @@ def test_id_token_khong_du_ba_phan_tra_unauthorized() -> None:
     assert ex.value.code is ErrorCode.UNAUTHORIZED
 
 
-def test_payload_thieu_sub_hoac_email_tra_unauthorized() -> None:
+def test_payload_missing_sub_or_email_returns_unauthorized() -> None:
     client, _ = _client(_id_token('{"email":"a@b.com"}'))
 
     with pytest.raises(AppError) as ex:
@@ -141,7 +141,7 @@ def test_payload_thieu_sub_hoac_email_tra_unauthorized() -> None:
     assert ex.value.code is ErrorCode.UNAUTHORIZED
 
 
-def test_client_secret_khong_lot_vao_thong_diep_loi() -> None:
+def test_client_secret_does_not_leak_into_error_message() -> None:
     """Thông điệp lỗi đi thẳng ra response cho extension. Một client HTTP nhét nguyên
     request body vào message là đủ để secret rời khỏi server."""
     client, _ = _client(httpx.Response(400, json={"error": "invalid_grant"}))
@@ -150,34 +150,34 @@ def test_client_secret_khong_lot_vao_thong_diep_loi() -> None:
         client.exchange("code-abc", REDIRECT)
 
     assert ex.value.message
-    assert BI_MAT not in ex.value.message
-    assert BI_MAT not in repr(ex.value)
+    assert CLIENT_SECRET not in ex.value.message
+    assert CLIENT_SECRET not in repr(ex.value)
 
 
-def test_gui_dung_form_va_grant_type() -> None:
-    client, ghi = _client(_id_token('{"sub":"s","email":"a@b.com","email_verified":true}'))
+def test_sends_correct_form_and_grant_type() -> None:
+    client, recorder = _client(_id_token('{"sub":"s","email":"a@b.com","email_verified":true}'))
 
     client.exchange("code-abc", REDIRECT)
 
-    req = ghi.requests[0]
+    req = recorder.requests[0]
     assert req.url.path == "/token"
     assert req.headers["content-type"].startswith("application/x-www-form-urlencoded")
     form: dict[str, Any] = dict(
-        phan.split("=", 1) for phan in req.content.decode().split("&")  # type: ignore[misc,arg-type]
+        part.split("=", 1) for part in req.content.decode().split("&")  # type: ignore[misc,arg-type]
     )
     assert form["grant_type"] == "authorization_code"
     assert form["code"] == "code-abc"
     assert form["client_id"] == "client-id"
 
 
-def test_loi_mang_tra_auth_unavailable() -> None:
-    class _Chet(httpx.BaseTransport):
+def test_network_error_returns_auth_unavailable() -> None:
+    class _FailingTransport(httpx.BaseTransport):
         def handle_request(self, request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("không nối được", request=request)
 
     settings = Settings(AUTH_GOOGLE_TOKEN_URL="http://google.test")
     client = GoogleTokenClient(settings)
-    client._client = httpx.Client(transport=_Chet())
+    client._client = httpx.Client(transport=_FailingTransport())
 
     with pytest.raises(AppError) as ex:
         client.exchange("code-abc", REDIRECT)

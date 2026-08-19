@@ -4,7 +4,7 @@ Chạy ĐỒNG BỘ trong cùng transaction với lệnh lưu, nên từ và th�
 không — không có trạng thái từ đã lưu mà thiếu thẻ.
 
 Bên Java đây là `@EventListener` (đồng bộ) của `VocabEntrySavedEvent`. Ở đây không có
-event bus: context vocabulary gọi thẳng `tao_the_khi_luu_tu(db, entry)` ngay sau khi tạo
+event bus: context vocabulary gọi thẳng `create_card_on_vocab_saved(db, entry)` ngay sau khi tạo
 từ mới. Gọi thẳng đúng hơn với ngữ nghĩa cần có ở đây — cùng transaction, cùng luồng.
 """
 
@@ -21,7 +21,7 @@ from app.vocabulary.models import VocabEntry
 PHRASE_POS = "phrase"
 
 
-def tao_the_khi_luu_tu(db: Session, entry: VocabEntry) -> None:
+def create_card_on_vocab_saved(db: Session, entry: VocabEntry) -> None:
     """Bỏ qua câu (`pos == "phrase"` — câu không làm flashcard được) và từ đã có thẻ."""
     if entry.pos == PHRASE_POS:
         return

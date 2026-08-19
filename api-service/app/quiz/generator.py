@@ -113,18 +113,18 @@ def build_items(
         return []
 
     prompt_version = prompt_version_for(quiz_type)
-    theo_tu = _reusable_by_entry(db, user_id, entries, quiz_type, prompt_version)
+    items_by_entry = _reusable_by_entry(db, user_id, entries, quiz_type, prompt_version)
 
-    can_sinh = [entry for entry in entries if entry.id not in theo_tu]
-    if can_sinh:
-        theo_tu.update(_generate(db, user_id, can_sinh, quiz_type, prompt_version))
+    to_generate = [entry for entry in entries if entry.id not in items_by_entry]
+    if to_generate:
+        items_by_entry.update(_generate(db, user_id, to_generate, quiz_type, prompt_version))
 
-    ket_qua = [(theo_tu[entry.id], entry) for entry in entries if entry.id in theo_tu]
-    if not ket_qua:
+    results = [(items_by_entry[entry.id], entry) for entry in entries if entry.id in items_by_entry]
+    if not results:
         raise AppError.of(
             ErrorCode.PARSE_ERROR, "Gemini không trả được câu hỏi nào hợp lệ, thử tạo đề lại"
         )
-    return ket_qua
+    return results
 
 
 def _reusable_by_entry(
@@ -140,10 +140,10 @@ def _reusable_by_entry(
     lực — đề đã nằm sẵn đó lâu nhất được dùng trước, thay vì để nó tồn đọng mãi.
     """
     ids = [entry.id for entry in entries]
-    theo_tu: dict[int, QuizItem] = {}
+    items_by_entry: dict[int, QuizItem] = {}
     for item in repository.find_reusable(db, user_id, ids, [quiz_type], prompt_version):
-        theo_tu.setdefault(item.vocab_entry_id, item)
-    return theo_tu
+        items_by_entry.setdefault(item.vocab_entry_id, item)
+    return items_by_entry
 
 
 def _generate(
@@ -184,14 +184,14 @@ def _build_free_write(
     db: Session, entries: Sequence[VocabEntry], prompt_version: int
 ) -> dict[int, QuizItem]:
     """FREE_WRITE dựng thẳng từ sổ từ — không tốn call Gemini nào lúc sinh đề."""
-    da_dung: dict[int, QuizItem] = {}
+    built: dict[int, QuizItem] = {}
     for entry in entries:
         payload = {
             "question": f'Viết một câu tiếng Anh dùng từ "{entry.term}" '
             f"({_none_to_empty(entry.meaning_vi)})."
         }
-        da_dung[entry.id] = _save(db, entry, QuizType.FREE_WRITE, payload, prompt_version)
-    return da_dung
+        built[entry.id] = _save(db, entry, QuizType.FREE_WRITE, payload, prompt_version)
+    return built
 
 
 def _call_gemini(
@@ -210,18 +210,18 @@ def _call_gemini(
 
     # Ghép item Gemini trả về với từ trong sổ bằng chính field `term`. Deque vì hai bản ghi
     # khác pos vẫn có thể trùng term ("record" danh từ và động từ).
-    cho_ghep: dict[str, deque[VocabEntry]] = {}
+    pending_by_term: dict[str, deque[VocabEntry]] = {}
     for entry in entries:
-        cho_ghep.setdefault(_normalise(entry.term), deque()).append(entry)
+        pending_by_term.setdefault(_normalise(entry.term), deque()).append(entry)
 
-    da_dung: dict[int, QuizItem] = {}
+    built: dict[int, QuizItem] = {}
     for node in _items_of(payload):
         term = _opt_str(node, "term") or ""
-        hang_doi = cho_ghep.get(_normalise(term))
-        if not hang_doi:
+        entry_queue = pending_by_term.get(_normalise(term))
+        if not entry_queue:
             log.warning("Gemini trả câu hỏi cho từ không nằm trong lô: '%s'", term)
             continue
-        entry = hang_doi[0]
+        entry = entry_queue[0]
         item_payload = _to_payload(quiz_type, node)
         if item_payload is None:
             # Loại TỪNG item hỏng rồi đi tiếp — khác bộ kiểm mồi nhử (loại cả bộ). Người dùng
@@ -229,9 +229,9 @@ def _call_gemini(
             # còn 9 câu kia vẫn dùng được.
             log.warning("Bỏ câu hỏi %s hỏng cho từ '%s'", quiz_type.value, entry.term)
             continue
-        hang_doi.popleft()
-        da_dung[entry.id] = _save(db, entry, quiz_type, item_payload, prompt_version)
-    return da_dung
+        entry_queue.popleft()
+        built[entry.id] = _save(db, entry, quiz_type, item_payload, prompt_version)
+    return built
 
 
 def _to_payload(quiz_type: QuizType, node: dict[str, Any]) -> dict[str, Any] | None:
@@ -259,7 +259,7 @@ def _fill_blank_payload(node: dict[str, Any]) -> dict[str, Any] | None:
 def _collocation_payload(node: dict[str, Any]) -> dict[str, Any] | None:
     raw = node.get("options")
     options: list[str | None] = (
-        [tung_cum if isinstance(tung_cum, str) else None for tung_cum in raw]
+        [option if isinstance(option, str) else None for option in raw]
         if isinstance(raw, list)
         else []
     )
@@ -269,19 +269,19 @@ def _collocation_payload(node: dict[str, Any]) -> dict[str, Any] | None:
     # Qua được validator nghĩa là: đúng 4 lựa chọn, không phần tử None, index trong 0..3.
     # Hai dòng thu hẹp kiểu dưới đây chỉ để mypy biết điều đó, không phải kiểm tra thứ hai.
     assert correct_index is not None
-    da_xao = [cum for cum in options if cum is not None]
-    cum_dung = da_xao[correct_index]
+    shuffled_options = [phrase for phrase in options if phrase is not None]
+    correct_option = shuffled_options[correct_index]
 
     # Xáo ĐÚNG MỘT LẦN, ngay tại đây. Gemini có xu hướng đặt đáp án đúng ở vị trí 0 nên giữ
     # nguyên thứ tự của nó là làm quiz đoán được mà không cần biết từ. Sau dòng này thứ tự là
     # bất biến: không xáo lúc dựng response, panel không xáo — câu trả lời gửi lên là index
     # trong CHÍNH mảng đang lưu ở đây.
-    _random.shuffle(da_xao)
+    _random.shuffle(shuffled_options)
 
     return {
         "question": _opt_str(node, "question") or "",
-        "options": da_xao,
-        "correct_index": da_xao.index(cum_dung),
+        "options": shuffled_options,
+        "correct_index": shuffled_options.index(correct_option),
     }
 
 
@@ -354,7 +354,7 @@ def payload_str_list(value: Any) -> list[str]:
     `correct_index` trỏ vào chính mảng này, lọc bớt một phần tử là chấm sai câu đó."""
     if not isinstance(value, list):
         return []
-    return [cum if isinstance(cum, str) else str(cum) for cum in value]
+    return [phrase if isinstance(phrase, str) else str(phrase) for phrase in value]
 
 
 def payload_int(value: Any) -> int:

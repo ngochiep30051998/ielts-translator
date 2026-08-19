@@ -11,7 +11,7 @@ import re
 from app.translation.models import Direction
 
 #: Ký tự chỉ xuất hiện trong tiếng Việt — thấy một cái là chắc chắn tiếng Việt.
-_KY_TU_VIET = re.compile(
+_VI_CHARS = re.compile(
     "[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]",
     re.IGNORECASE,
 )
@@ -42,7 +42,7 @@ _EN_STOPWORDS = frozenset(
 
 #: Tách token bằng "mọi thứ không phải a-z". Cắt luôn cả dấu câu lẫn chữ số, và vì đã hạ
 #: chữ thường trước đó nên chữ hoa không lọt ra ngoài.
-_NGOAI_CHU_CAI = re.compile("[^a-z]+")
+_NON_LETTERS = re.compile("[^a-z]+")
 
 
 def detect(text: str | None) -> Direction:
@@ -50,10 +50,10 @@ def detect(text: str | None) -> Direction:
     tiếng Anh, nên đoán sai về phía EN_VI ít gây khó chịu hơn."""
     if text is None or not text.strip():
         return Direction.EN_VI
-    if _KY_TU_VIET.search(text):
+    if _VI_CHARS.search(text):
         return Direction.VI_EN
 
-    tokens = _NGOAI_CHU_CAI.split(text.lower())
+    tokens = _NON_LETTERS.split(text.lower())
     vi_hits = sum(1 for token in tokens if token in _VI_STOPWORDS)
     en_hits = sum(1 for token in tokens if token in _EN_STOPWORDS)
     # Hoà thì về EN_VI, đúng như bản Java (`>` chứ không phải `>=`).

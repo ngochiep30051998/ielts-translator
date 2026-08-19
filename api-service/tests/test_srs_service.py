@@ -23,9 +23,9 @@ from app.srs import distractors
 from app.srs import service as srs_service
 from app.srs.models import CardState, Rating, ReviewLog, SrsCard, SrsDistractor
 from app.vocabulary.models import VocabEntry
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
-HOM_NAY = date.today
+TODAY_FN = date.today
 
 
 def _card(
@@ -68,7 +68,7 @@ def _card(
     return card
 
 
-def _luu_moi_nhu(db: Session, card: SrsCard, prompt_version: int) -> None:
+def _save_distractors(db: Session, card: SrsCard, prompt_version: int) -> None:
     db.add(
         SrsDistractor(
             vocab_entry_id=card.vocab_entry_id,
@@ -87,8 +87,8 @@ def _due(db: Session, user_id: int, limit: int, new_limit: int) -> list:
 # ── hàng đợi ──────────────────────────────────────────────────────────────────
 
 
-def test_hang_doi_gop_the_den_han_roi_moi_toi_the_moi(
-    db: Session, owner: NguoiDungTest
+def test_queue_merges_due_cards_first_then_new_cards(
+    db: Session, owner: UserFixture
 ) -> None:
     """Thẻ đến hạn đứng TRƯỚC thẻ mới trong cùng một hàng đợi.
 
@@ -107,15 +107,15 @@ def test_hang_doi_gop_the_den_han_roi_moi_toi_the_moi(
     assert queue[0].meaning_vi == "nghĩa của alpha"
 
 
-def test_the_chua_toi_han_khong_nam_trong_hang_doi(db: Session, owner: NguoiDungTest) -> None:
+def test_card_not_yet_due_is_not_in_queue(db: Session, owner: UserFixture) -> None:
     """Thẻ due sau hôm nay không được lôi ra sớm — nếu không thì khoảng lặp SM-2 vô nghĩa."""
     _card(db, owner.id, "later", CardState.REVIEW, date.today() + timedelta(days=3), 2)
 
     assert _due(db, owner.id, 50, 30) == []
 
 
-def test_gioi_han_tu_moi_chan_dung_so_the_new_the_den_han_khong_bi_chan(
-    db: Session, owner: NguoiDungTest
+def test_new_word_limit_caps_new_cards_while_due_cards_are_not_capped(
+    db: Session, owner: UserFixture
 ) -> None:
     """`newLimit` chỉ áp cho thẻ NEW. Thẻ đã đến hạn là nợ phải trả, không có hạn mức."""
     for i in range(5):
@@ -129,8 +129,8 @@ def test_gioi_han_tu_moi_chan_dung_so_the_new_the_den_han_khong_bi_chan(
     assert len([c for c in queue if c.state is CardState.NEW]) == 2
 
 
-def test_so_tu_moi_da_hoc_hom_nay_bi_tru_khoi_han_muc_con_lai(
-    db: Session, owner: NguoiDungTest
+def test_new_words_already_learned_today_are_subtracted_from_remaining_limit(
+    db: Session, owner: UserFixture
 ) -> None:
     """Hạn mức là "mỗi NGÀY", không phải "mỗi lần mở tab".
 
@@ -145,8 +145,8 @@ def test_so_tu_moi_da_hoc_hom_nay_bi_tru_khoi_han_muc_con_lai(
     assert _due(db, owner.id, 50, 1) == []
 
 
-def test_new_limit_bang_0_la_khong_gioi_han(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_new_limit_zero_means_unlimited(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """`0` là cách người dùng tắt hẳn hạn mức từ ô "Từ mới mỗi ngày" ở Options.
 
@@ -155,23 +155,25 @@ def test_new_limit_bang_0_la_khong_gioi_han(
     for i in range(7):
         _card(db, owner.id, f"word{i}", CardState.NEW, date.today(), 0)
 
-    ra = client.get("/api/srs/due?limit=50&newLimit=0", headers=owner.headers)
+    http_response = client.get("/api/srs/due?limit=50&newLimit=0", headers=owner.headers)
 
-    assert ra.status_code == 200
-    assert len(ra.json()) == 7
+    assert http_response.status_code == 200
+    assert len(http_response.json()) == 7
 
 
-def test_new_limit_duong_van_chan_dung(client: Any, db: Session, owner: NguoiDungTest) -> None:
+def test_positive_new_limit_still_caps_correctly(
+    client: Any, db: Session, owner: UserFixture
+) -> None:
     for i in range(7):
         _card(db, owner.id, f"word{i}", CardState.NEW, date.today(), 0)
 
-    ra = client.get("/api/srs/due?limit=50&newLimit=3", headers=owner.headers)
+    http_response = client.get("/api/srs/due?limit=50&newLimit=3", headers=owner.headers)
 
-    assert len(ra.json()) == 3
+    assert len(http_response.json()) == 3
 
 
-def test_luot_practice_khong_tinh_vao_han_muc_tu_moi(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_practice_reviews_do_not_count_against_new_word_limit(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """`count_introduced_since` nhận diện lượt đầu đời bằng `prev_interval == 0`. Dòng
     PRACTICE không được lọt vào phép đếm đó, nếu không luyện thêm sẽ ăn mất hạn mức từ mới
@@ -187,18 +189,18 @@ def test_luot_practice_khong_tinh_vao_han_muc_tu_moi(
     for i in range(3):
         _card(db, owner.id, f"word{i}", CardState.NEW, date.today(), 0)
 
-    ra = client.get("/api/srs/due?limit=50&newLimit=3", headers=owner.headers)
+    http_response = client.get("/api/srs/due?limit=50&newLimit=3", headers=owner.headers)
 
     # 3 thẻ mới + 1 thẻ đã học nếu nó đến hạn; điều đang kiểm là hạn mức từ mới KHÔNG bị
     # dòng PRACTICE ăn mất, tức vẫn đủ 3 thẻ NEW.
-    assert sum(1 for c in ra.json() if c["state"] == "NEW") == 3
+    assert sum(1 for c in http_response.json() if c["state"] == "NEW") == 3
 
 
 # ── review ────────────────────────────────────────────────────────────────────
 
 
-def test_review_cap_nhat_the_ghi_review_log_va_tra_lich_ke_tiep(
-    db: Session, owner: NguoiDungTest
+def test_review_updates_card_writes_review_log_and_returns_next_schedule(
+    db: Session, owner: UserFixture
 ) -> None:
     """Một lượt ôn phải để lại BA dấu vết: response, thẻ đã cập nhật, và một dòng nhật ký.
 
@@ -225,20 +227,20 @@ def test_review_cap_nhat_the_ghi_review_log_va_tra_lich_ke_tiep(
     assert logs[0].rating == Rating.GOOD.value
 
 
-def test_review_the_khong_ton_tai_nem_not_found(db: Session, owner: NguoiDungTest) -> None:
+def test_review_nonexistent_card_raises_not_found(db: Session, owner: UserFixture) -> None:
     """NOT_FOUND kèm chính id đã hỏi — thông điệp mơ hồ ở đây là thứ khiến gỡ lỗi phải mò."""
-    with pytest.raises(AppError) as loi:
+    with pytest.raises(AppError) as error:
         srs_service.review(db, owner.id, 999_999, Rating.GOOD)
 
-    assert loi.value.code is ErrorCode.NOT_FOUND
-    assert "999999" in loi.value.message
+    assert error.value.code is ErrorCode.NOT_FOUND
+    assert "999999" in error.value.message
 
 
 # ── stats ─────────────────────────────────────────────────────────────────────
 
 
-def test_stats_due_count_khop_dung_do_dai_hang_doi_nguoi_dung_se_thay(
-    db: Session, owner: NguoiDungTest
+def test_stats_due_count_matches_length_of_queue_user_will_see(
+    db: Session, owner: UserFixture
 ) -> None:
     """Badge và hàng đợi phải nói cùng một con số khi `limit` chưa phải ràng buộc chặn."""
     for i in range(3):
@@ -253,7 +255,9 @@ def test_stats_due_count_khop_dung_do_dai_hang_doi_nguoi_dung_se_thay(
     assert stats.learned_count == 1
 
 
-def test_due_count_dem_theo_han_khong_bi_limit_cat(db: Session, owner: NguoiDungTest) -> None:
+def test_due_count_counts_by_due_date_and_is_not_truncated_by_limit(
+    db: Session, owner: UserFixture
+) -> None:
     """Ghim lại ranh giới của bất biến "dueCount == độ dài hàng đợi".
 
     Nó chỉ đúng khi `limit` CHƯA phải ràng buộc chặn. Vượt limit thì badge cố tình báo tổng
@@ -270,14 +274,16 @@ def test_due_count_dem_theo_han_khong_bi_limit_cat(db: Session, owner: NguoiDung
 # ── mồi nhử gộp vào DTO ───────────────────────────────────────────────────────
 
 
-def test_moi_nhu_da_sinh_di_vao_dung_mang_cua_no(db: Session, owner: NguoiDungTest) -> None:
+def test_generated_distractors_go_into_their_correct_array(
+    db: Session, owner: UserFixture
+) -> None:
     """vi ra `viDistractors`, en ra `enDistractors`.
 
     Ca rỗng ở test router không phân biệt được hai mảng bị map ngược nhau; chỉ ca có dữ liệu
     thật mới ghim được chiều nào ra field nào.
     """
     card = _card(db, owner.id, "mitigate", CardState.REVIEW, date.today(), 3)
-    _luu_moi_nhu(db, card, distractors.current_prompt_version())
+    _save_distractors(db, card, distractors.current_prompt_version())
 
     dto = _due(db, owner.id, 50, 30)[0]
 
@@ -285,14 +291,16 @@ def test_moi_nhu_da_sinh_di_vao_dung_mang_cua_no(db: Session, owner: NguoiDungTe
     assert dto.en_distractors == ["aggravate", "exaggerate", "postpone"]
 
 
-def test_bo_qua_moi_nhu_sinh_bang_version_prompt_cu(db: Session, owner: NguoiDungTest) -> None:
+def test_ignores_distractors_generated_with_old_prompt_version(
+    db: Session, owner: UserFixture
+) -> None:
     """Bản ghi version cũ coi như không có, và trả MẢNG RỖNG chứ không phải null.
 
     Đây là cơ chế duy nhất làm mồi nhử cũ hết hiệu lực khi tăng `version:` trong prompt
     (ràng buộc #5). Trả null thay vì mảng rỗng thì side panel vỡ ngay ở `.length`.
     """
     card = _card(db, owner.id, "mitigate", CardState.REVIEW, date.today(), 3)
-    _luu_moi_nhu(db, card, distractors.current_prompt_version() - 1)
+    _save_distractors(db, card, distractors.current_prompt_version() - 1)
 
     dto = _due(db, owner.id, 50, 30)[0]
 
@@ -305,7 +313,9 @@ def test_bo_qua_moi_nhu_sinh_bang_version_prompt_cu(db: Session, owner: NguoiDun
 # `@MockitoBean GeminiClient` trong SrsControllerIT.
 
 
-def test_the_thieu_moi_nhu_duoc_xep_mot_luot_sinh_nen(db: Session, owner: NguoiDungTest) -> None:
+def test_card_missing_distractors_is_queued_for_one_background_generation(
+    db: Session, owner: UserFixture
+) -> None:
     """Thẻ chưa có mồi nhử còn hiệu lực thì `due()` xếp một lượt sinh nền cho nó."""
     _card(db, owner.id, "mitigate", CardState.REVIEW, date.today(), 3)
     tasks = BackgroundTasks()
@@ -315,12 +325,12 @@ def test_the_thieu_moi_nhu_duoc_xep_mot_luot_sinh_nen(db: Session, owner: NguoiD
     assert len(tasks.tasks) == 1
 
 
-def test_the_da_co_moi_nhu_con_hieu_luc_khong_bi_sinh_lai(
-    db: Session, owner: NguoiDungTest
+def test_card_that_already_has_valid_distractors_is_not_regenerated(
+    db: Session, owner: UserFixture
 ) -> None:
     """Sinh lại bộ đã có là đốt quota Gemini cho một kết quả y hệt."""
     card = _card(db, owner.id, "mitigate", CardState.REVIEW, date.today(), 3)
-    _luu_moi_nhu(db, card, distractors.current_prompt_version())
+    _save_distractors(db, card, distractors.current_prompt_version())
     tasks = BackgroundTasks()
 
     srs_service.due(db, owner.id, 50, 30, tasks)
@@ -328,23 +338,23 @@ def test_the_da_co_moi_nhu_con_hieu_luc_khong_bi_sinh_lai(
     assert tasks.tasks == []
 
 
-def test_so_luot_sinh_nen_chan_o_muc_toi_da_moi_lan_goi(
-    db: Session, owner: NguoiDungTest
+def test_background_generation_count_is_capped_at_max_per_call(
+    db: Session, owner: UserFixture
 ) -> None:
     """Trần `MAX_BACKFILL_PER_CALL`: một sổ lớn không được bắn cả trăm call mỗi lần mở tab."""
-    tong = srs_service.MAX_BACKFILL_PER_CALL + 5
-    for i in range(tong):
+    total = srs_service.MAX_BACKFILL_PER_CALL + 5
+    for i in range(total):
         _card(db, owner.id, f"due{i}", CardState.REVIEW, date.today(), 3)
     tasks = BackgroundTasks()
 
     queue = srs_service.due(db, owner.id, 50, 30, tasks)
 
-    assert len(queue) == tong
+    assert len(queue) == total
     assert len(tasks.tasks) == srs_service.MAX_BACKFILL_PER_CALL
 
 
-def test_hang_doi_chi_chua_the_cua_chinh_minh_khong_can_loc_lai_o_tang_moi_nhu(
-    db: Session, owner: NguoiDungTest
+def test_queue_contains_only_own_cards_so_distractor_layer_need_not_filter_again(
+    db: Session, owner: UserFixture
 ) -> None:
     """`find_fresh_distractors` cố ý không lọc `user_id` — an toàn vì id luôn đến từ hàng đợi
     của chính user, không bao giờ từ client.
@@ -352,7 +362,7 @@ def test_hang_doi_chi_chua_the_cua_chinh_minh_khong_can_loc_lai_o_tang_moi_nhu(
     Test này ghim tiền đề đó: hàng đợi trả về đúng thẻ của user, nên tập id truyền xuống
     tầng mồi nhử đã sạch.
     """
-    nguoi_khac = int(
+    other_user_id = int(
         db.execute(
             text(
                 "INSERT INTO app_user (email, display_name) "
@@ -361,7 +371,7 @@ def test_hang_doi_chi_chua_the_cua_chinh_minh_khong_can_loc_lai_o_tang_moi_nhu(
         ).scalar_one()
     )
     _card(db, owner.id, "cua-toi", CardState.REVIEW, date.today(), 3)
-    _card(db, nguoi_khac, "cua-nguoi-khac", CardState.REVIEW, date.today(), 3)
+    _card(db, other_user_id, "cua-nguoi-khac", CardState.REVIEW, date.today(), 3)
 
     queue = _due(db, owner.id, 50, 30)
 

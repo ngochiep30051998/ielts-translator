@@ -13,7 +13,7 @@ thẻ ôn" phải đi tìm người nghe trong cả codebase.
 `VocabEntrySavedEvent` bên Java có ĐÚNG HAI người nghe, và cả hai phải có mặt ở đây:
 
 * `SrsCardCreator` — `@EventListener` thường, tức đồng bộ trong cùng transaction
-  → `tao_the_khi_luu_tu(db, entry)`;
+  → `create_card_on_vocab_saved(db, entry)`;
 * `DistractorGenerator` — `@TransactionalEventListener(AFTER_COMMIT)` + `@Async`, tức chạy
   sau khi commit và không ai đứng chờ → `distractors.schedule(tasks, id)`, vì
   `BackgroundTasks` của FastAPI chạy sau khi dependency `get_db` đã commit và response đã
@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import AppError, ErrorCode
 from app.srs import distractors
-from app.srs.card_creator import tao_the_khi_luu_tu
+from app.srs.card_creator import create_card_on_vocab_saved
 from app.srs.models import CardState, SrsCard
 from app.vocabulary import repository
 from app.vocabulary.csv_export import to_csv
@@ -80,7 +80,7 @@ def save(
     # Chỉ chạy ở nhánh lưu MỚI, y như bản Java chỉ phát `VocabEntrySavedEvent` ở đây. Nhánh
     # alreadyExists đã return sớm ở trên, nên không có chuyện lưu lại một từ cũ mà lịch ôn
     # của nó bị đặt lại từ đầu, cũng không có chuyện tốn thêm một lượt gọi Gemini.
-    tao_the_khi_luu_tu(db, entry)
+    create_card_on_vocab_saved(db, entry)
 
     # `schedule` tự commit trước khi xếp tác vụ — đó là phần "AFTER_COMMIT" của bản Java và
     # lý do nó phải nhận `db`. Chi tiết của FastAPI dễ hiểu sai nằm ở đây: `BackgroundTasks`
@@ -90,7 +90,7 @@ def save(
     # nhìn thấy hàng chưa commit: hàm thoát êm, không lỗi, không log, không test nào đỏ —
     # mồi nhử đơn giản là không bao giờ được sinh.
     #
-    # Gọi SAU `tao_the_khi_luu_tu` để giữ nguyên bất biến "từ và thẻ ôn hoặc cùng có, hoặc
+    # Gọi SAU `create_card_on_vocab_saved` để giữ nguyên bất biến "từ và thẻ ôn hoặc cùng có, hoặc
     # cùng không": commit gói cả hai. `get_db` vẫn commit lần nữa khi handler trả về — một
     # commit rỗng.
     #
@@ -151,10 +151,10 @@ def find_by_id(db: Session, user_id: int, entry_id: int) -> VocabEntryDto:
     Trả NOT_FOUND chứ không FORBIDDEN khi từ thuộc về người khác: FORBIDDEN xác nhận "id này
     có tồn tại", tức là một kênh dò id.
     """
-    hang = repository.find_by_id_and_user_with_card(db, entry_id, user_id)
-    if hang is None:
+    row = repository.find_by_id_and_user_with_card(db, entry_id, user_id)
+    if row is None:
         raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy từ id={entry_id}")
-    return _to_dto(*hang)
+    return _to_dto(*row)
 
 
 def update(
@@ -170,16 +170,16 @@ def update(
     Tra theo `(id, user_id)` trong MỘT bước và trả NOT_FOUND khi không khớp — 403 xác nhận
     id đó tồn tại, tức một kênh dò id (ràng buộc #13).
     """
-    hang = repository.find_by_id_and_user_with_card(db, entry_id, user_id)
-    if hang is None:
+    row = repository.find_by_id_and_user_with_card(db, entry_id, user_id)
+    if row is None:
         raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy từ id={entry_id}")
 
-    entry, card = hang
+    entry, card = row
     # Vế `is not None` thứ hai là để mypy thu hẹp kiểu, không phải điều kiện nghiệp vụ thứ
-    # hai — `co_gui` đã bao hàm nó rồi.
-    if request.co_gui("meaning_vi") and request.meaning_vi is not None:
+    # hai — `was_sent` đã bao hàm nó rồi.
+    if request.was_sent("meaning_vi") and request.meaning_vi is not None:
         entry.meaning_vi = request.meaning_vi.strip()
-    if request.co_gui("tags") and request.tags is not None:
+    if request.was_sent("tags") and request.tags is not None:
         # GÁN LẠI chứ không sửa list tại chỗ — cùng lý do như `_merge_tags`: SQLAlchemy theo
         # dõi cột mảng qua phép gán. Bỏ thẻ rỗng và thẻ trùng vì cả hai đều lọt được từ ô
         # nhập tự do, và mỗi cái đẻ ra một chip vô nghĩa ở `GET /api/vocab/tags`.

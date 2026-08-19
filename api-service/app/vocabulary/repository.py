@@ -38,11 +38,11 @@ def find_by_id_and_user(db: Session, entry_id: int, user_id: int) -> VocabEntry 
     ).first()
 
 
-def _select_kem_the() -> Select[tuple[VocabEntry, SrsCard]]:
+def _select_with_card() -> Select[tuple[VocabEntry, SrsCard]]:
     """`vocab_entry LEFT JOIN srs_card` — nguồn của ba field `srs*` trong `VocabEntryDto`.
 
     LEFT chứ không INNER, và đây là chỗ dễ đổi nhầm nhất: từ có `pos = 'phrase'` KHÔNG được
-    tạo thẻ ôn (`card_creator.tao_the_khi_luu_tu`), nên INNER JOIN sẽ lặng lẽ làm chúng biến
+    tạo thẻ ôn (`card_creator.create_card_on_vocab_saved`), nên INNER JOIN sẽ lặng lẽ làm chúng biến
     mất khỏi sổ từ trong khi `totalElements` — đến từ một câu đếm riêng, không join — vẫn
     đếm chúng. Triệu chứng là phân trang lệch, không phải lỗi.
 
@@ -61,10 +61,10 @@ def find_by_id_and_user_with_card(
     db: Session, entry_id: int, user_id: int
 ) -> tuple[VocabEntry, SrsCard | None] | None:
     """Như `find_by_id_and_user` nhưng kèm thẻ ôn, để dựng `VocabEntryDto` đủ field."""
-    hang = db.execute(
-        _select_kem_the().where(VocabEntry.id == entry_id, VocabEntry.user_id == user_id)
+    row = db.execute(
+        _select_with_card().where(VocabEntry.id == entry_id, VocabEntry.user_id == user_id)
     ).first()
-    return (hang[0], hang[1]) if hang is not None else None
+    return (row[0], row[1]) if row is not None else None
 
 
 def count_tags(db: Session, user_id: int) -> list[tuple[str, int, int]]:
@@ -98,29 +98,29 @@ def count_tags(db: Session, user_id: int) -> list[tuple[str, int, int]]:
     # báo thật.
     #
     # `render_derived` là bắt buộc, không phải trang trí — thiếu nó thì SQLAlchemy sinh
-    # `AS tag_bung` trần, Postgres đặt tên cột kết quả theo TÊN HÀM (`unnest`), và câu chạy
-    # thẳng vào lỗi "column tag_bung.tag does not exist".
-    bung = (
+    # `AS tag_unnested` trần, Postgres đặt tên cột kết quả theo TÊN HÀM (`unnest`), và câu chạy
+    # thẳng vào lỗi "column tag_unnested.tag does not exist".
+    unnested_tags = (
         func.unnest(VocabEntry.tags)
         .table_valued("tag")
-        .render_derived(name="tag_bung", with_types=False)
+        .render_derived(name="tag_unnested", with_types=False)
         .lateral()
     )
-    so_tu = func.count(distinct(VocabEntry.id))
-    so_tu_thuoc = func.count(distinct(VocabEntry.id)).filter(
+    entry_count = func.count(distinct(VocabEntry.id))
+    mastered_count = func.count(distinct(VocabEntry.id)).filter(
         SrsCard.repetitions >= MASTERED_REPETITIONS
     )
     stmt = (
-        select(bung.c.tag, so_tu, so_tu_thuoc)
+        select(unnested_tags.c.tag, entry_count, mastered_count)
         .select_from(VocabEntry)
         .outerjoin(SrsCard, SrsCard.vocab_entry_id == VocabEntry.id)
-        .join(bung, true())
+        .join(unnested_tags, true())
         .where(VocabEntry.user_id == user_id)
-        .group_by(bung.c.tag)
-        .order_by(so_tu.desc(), bung.c.tag.asc())
+        .group_by(unnested_tags.c.tag)
+        .order_by(entry_count.desc(), unnested_tags.c.tag.asc())
     )
     return [
-        (str(hang[0]), int(hang[1]), int(hang[2])) for hang in db.execute(stmt).all()
+        (str(row[0]), int(row[1]), int(row[2])) for row in db.execute(stmt).all()
     ]
 
 
@@ -142,12 +142,12 @@ def count_total_and_untagged(db: Session, user_id: int) -> tuple[int, int]:
     lượt xoá từ chen vào giữa cho ra `untagged > total`. Con số đó không sai đủ để ai nghi
     ngờ, chỉ đủ để hàng chip cộng lại không khớp.
     """
-    hang = db.execute(
+    row = db.execute(
         select(func.count(), func.count().filter(_untagged_condition()))
         .select_from(VocabEntry)
         .where(VocabEntry.user_id == user_id)
     ).one()
-    return int(hang[0]), int(hang[1])
+    return int(row[0]), int(row[1])
 
 
 def find_all_by_user_newest_first(db: Session, user_id: int) -> Sequence[VocabEntry]:
@@ -236,7 +236,7 @@ def search(
     conditions = _search_conditions(user_id, q, tag, untagged)
 
     rows = (
-        _select_kem_the()
+        _select_with_card()
         .where(*conditions)
         # Tiêu chí phụ `id DESC` không có trong bản Java và cố ý thêm: bên đó `created_at`
         # do Java gán bằng `Instant.now()` nên hai hàng khó trùng, còn ở đây nó là
@@ -248,7 +248,7 @@ def search(
         .limit(size)
     )
     total = db.scalar(select(func.count()).select_from(VocabEntry).where(*conditions))
-    return [(hang[0], hang[1]) for hang in db.execute(rows).all()], int(total or 0)
+    return [(row[0], row[1]) for row in db.execute(rows).all()], int(total or 0)
 
 
 def insert(db: Session, entry: VocabEntry) -> None:

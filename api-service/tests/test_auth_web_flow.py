@@ -20,33 +20,33 @@ from app.config import get_settings
 from tests.conftest import OWNER_EMAIL
 
 
-class GoogleGia:
+class FakeGoogleTokenClient:
     """Thay `GoogleTokenClient`. Đếm số lần bị gọi để chứng minh chốt chặn state nằm TRƯỚC
     lượt gọi mạng."""
 
     def __init__(self) -> None:
-        self.tra_ve: GoogleIdentity | None = None
-        self.so_lan_goi = 0
-        self.redirect_uri_nhan_duoc: str | None = None
+        self.identity_to_return: GoogleIdentity | None = None
+        self.call_count = 0
+        self.received_redirect_uri: str | None = None
 
     def exchange(self, code: str, redirect_uri: str) -> GoogleIdentity:
-        self.so_lan_goi += 1
-        self.redirect_uri_nhan_duoc = redirect_uri
-        assert self.tra_ve is not None, "Test quên đặt danh tính trả về"
-        return self.tra_ve
+        self.call_count += 1
+        self.received_redirect_uri = redirect_uri
+        assert self.identity_to_return is not None, "Test quên đặt danh tính trả về"
+        return self.identity_to_return
 
 
 @pytest.fixture
-def google(client: Any) -> Iterator[GoogleGia]:
+def google(client: Any) -> Iterator[FakeGoogleTokenClient]:
     from app.auth.service import get_auth_service
 
-    gia = GoogleGia()
-    client.app.dependency_overrides[get_auth_service] = lambda: AuthService(google=gia)  # type: ignore[arg-type]
-    yield gia
+    fake = FakeGoogleTokenClient()
+    client.app.dependency_overrides[get_auth_service] = lambda: AuthService(google=fake)  # type: ignore[arg-type]
+    yield fake
     client.app.dependency_overrides.pop(get_auth_service, None)
 
 
-def _danh_tinh(email: str = OWNER_EMAIL, verified: bool = True) -> GoogleIdentity:
+def _identity(email: str = OWNER_EMAIL, verified: bool = True) -> GoogleIdentity:
     return GoogleIdentity(
         sub=f"sub-{email}", email=email, email_verified=verified, name="A", picture=None
     )
@@ -56,7 +56,7 @@ def _start(client: Any) -> Any:
     return client.get("/api/auth/google/start", follow_redirects=False)
 
 
-def _state_dang_giu(client: Any) -> str:
+def _held_state(client: Any) -> str:
     return client.cookies[state_cookie_name(get_settings())]
 
 
@@ -71,14 +71,14 @@ def _auth_error(resp: Any) -> str | None:
 # ── /start ───────────────────────────────────────────────────────────────────
 
 
-def test_start_chuyen_huong_sang_google_kem_state(client: Any) -> None:
+def test_start_redirects_to_google_with_state(client: Any) -> None:
     resp = _start(client)
 
     assert resp.status_code == 302
-    dich = urlparse(resp.headers["location"])
-    assert dich.netloc == "accounts.google.com"
+    destination = urlparse(resp.headers["location"])
+    assert destination.netloc == "accounts.google.com"
 
-    q = parse_qs(dich.query)
+    q = parse_qs(destination.query)
     assert q["response_type"] == ["code"]
     assert q["prompt"] == ["select_account"]
     assert q["state"][0]
@@ -88,7 +88,7 @@ def test_start_chuyen_huong_sang_google_kem_state(client: Any) -> None:
     assert q["redirect_uri"] == [get_settings().web_redirect_uri]
 
 
-def test_start_phat_cookie_state_httponly_samesite_lax(client: Any) -> None:
+def test_start_issues_state_cookie_httponly_samesite_lax(client: Any) -> None:
     resp = _start(client)
 
     set_cookie = resp.headers["set-cookie"]
@@ -100,29 +100,29 @@ def test_start_phat_cookie_state_httponly_samesite_lax(client: Any) -> None:
     assert "Secure" in set_cookie
 
 
-def test_state_moi_lan_mot_khac(client: Any) -> None:
+def test_state_differs_on_every_start(client: Any) -> None:
     _start(client)
-    dau = _state_dang_giu(client)
+    first_state = _held_state(client)
     _start(client)
 
-    assert _state_dang_giu(client) != dau
+    assert _held_state(client) != first_state
 
 
 # ── /callback: các đường từ chối ─────────────────────────────────────────────
 
 
-def test_callback_khong_co_state_thi_tu_choi_va_khong_cham_google(
-    client: Any, google: GoogleGia
+def test_callback_without_state_is_rejected_and_does_not_touch_google(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
     resp = _callback(client, code="c")
 
     assert resp.status_code == 302
     assert _auth_error(resp) == "UNAUTHORIZED"
-    assert google.so_lan_goi == 0
+    assert google.call_count == 0
 
 
-def test_callback_state_rong_ca_hai_ben_van_bi_tu_choi(
-    client: Any, google: GoogleGia
+def test_callback_empty_state_on_both_sides_is_still_rejected(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
     """Bẫy `None == None`: viết `if state != cookie` trần thì cả hai cùng vắng sẽ CHO QUA."""
     client.cookies.clear()
@@ -130,20 +130,20 @@ def test_callback_state_rong_ca_hai_ben_van_bi_tu_choi(
     resp = _callback(client, code="c", state="")
 
     assert _auth_error(resp) == "UNAUTHORIZED"
-    assert google.so_lan_goi == 0
+    assert google.call_count == 0
 
 
-def test_callback_state_khong_khop_thi_tu_choi(client: Any, google: GoogleGia) -> None:
+def test_callback_mismatched_state_is_rejected(client: Any, google: FakeGoogleTokenClient) -> None:
     _start(client)
 
     resp = _callback(client, code="c", state="state-cua-ke-khac")
 
     assert _auth_error(resp) == "UNAUTHORIZED"
-    assert google.so_lan_goi == 0
+    assert google.call_count == 0
 
 
-def test_callback_state_ngoai_ascii_tra_302_chu_khong_500(
-    client: Any, google: GoogleGia
+def test_callback_non_ascii_state_returns_302_not_500(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
     """`secrets.compare_digest` ném TypeError với non-ASCII, mà state do client điều khiển
     hoàn toàn. Không chặn trước thì `?state=é` biến 401 thành 500."""
@@ -153,38 +153,38 @@ def test_callback_state_ngoai_ascii_tra_302_chu_khong_500(
 
     assert resp.status_code == 302
     assert _auth_error(resp) == "UNAUTHORIZED"
-    assert google.so_lan_goi == 0
+    assert google.call_count == 0
 
 
-def test_callback_google_tra_error_thi_ve_nha_kem_ma_loi(
-    client: Any, google: GoogleGia
+def test_callback_google_returns_error_then_redirects_home_with_error_code(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
     _start(client)
 
-    resp = _callback(client, error="access_denied", state=_state_dang_giu(client))
+    resp = _callback(client, error="access_denied", state=_held_state(client))
 
     assert _auth_error(resp) == "UNAUTHORIZED"
-    assert google.so_lan_goi == 0
+    assert google.call_count == 0
 
 
-def test_callback_email_ngoai_allowlist_tra_ma_FORBIDDEN(
-    client: Any, google: GoogleGia
+def test_callback_email_outside_allowlist_returns_FORBIDDEN_code(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
     """FORBIDDEN phải phân biệt được với UNAUTHORIZED: một bên bấm lại là xong, bên kia phải
     nhờ quản trị thêm email. Trộn hai mã là chỉ sai đường hồi phục."""
-    google.tra_ve = _danh_tinh("nguoi-la@test.local")
+    google.identity_to_return = _identity("nguoi-la@test.local")
     _start(client)
 
-    resp = _callback(client, code="c", state=_state_dang_giu(client))
+    resp = _callback(client, code="c", state=_held_state(client))
 
     assert _auth_error(resp) == "FORBIDDEN"
 
 
-def test_callback_email_chua_xac_minh_bi_tu_choi(client: Any, google: GoogleGia) -> None:
-    google.tra_ve = _danh_tinh(verified=False)
+def test_callback_unverified_email_is_rejected(client: Any, google: FakeGoogleTokenClient) -> None:
+    google.identity_to_return = _identity(verified=False)
     _start(client)
 
-    resp = _callback(client, code="c", state=_state_dang_giu(client))
+    resp = _callback(client, code="c", state=_held_state(client))
 
     assert _auth_error(resp) == "UNAUTHORIZED"
 
@@ -192,45 +192,45 @@ def test_callback_email_chua_xac_minh_bi_tu_choi(client: Any, google: GoogleGia)
 # ── /callback: đường thành công ──────────────────────────────────────────────
 
 
-def test_callback_thanh_cong_phat_cookie_phien_va_ve_trang_chu(
-    client: Any, google: GoogleGia
+def test_callback_success_issues_session_cookie_and_redirects_to_home(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
-    google.tra_ve = _danh_tinh()
+    google.identity_to_return = _identity()
     _start(client)
 
-    resp = _callback(client, code="c", state=_state_dang_giu(client))
+    resp = _callback(client, code="c", state=_held_state(client))
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "/"
 
     cookies = resp.headers.get_list("set-cookie")
-    phien = next(c for c in cookies if c.startswith(session_cookie_name(get_settings())))
-    assert "HttpOnly" in phien
-    assert "Secure" in phien
-    assert "samesite=lax" in phien.lower()
-    assert "Path=/" in phien
+    session_cookie = next(c for c in cookies if c.startswith(session_cookie_name(get_settings())))
+    assert "HttpOnly" in session_cookie
+    assert "Secure" in session_cookie
+    assert "samesite=lax" in session_cookie.lower()
+    assert "Path=/" in session_cookie
     # `__Host-` cấm thuộc tính Domain — có nó là mất luôn tính toàn vẹn theo origin.
-    assert "Domain=" not in phien
+    assert "Domain=" not in session_cookie
 
 
-def test_callback_dung_redirect_uri_dung_tu_config_khong_tu_client(
-    client: Any, google: GoogleGia
+def test_callback_uses_redirect_uri_from_config_not_from_client(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
-    google.tra_ve = _danh_tinh()
+    google.identity_to_return = _identity()
     _start(client)
 
-    _callback(client, code="c", state=_state_dang_giu(client))
+    _callback(client, code="c", state=_held_state(client))
 
-    assert google.redirect_uri_nhan_duoc == get_settings().web_redirect_uri
+    assert google.received_redirect_uri == get_settings().web_redirect_uri
 
 
-def test_sau_callback_thi_goi_duoc_api_bang_cookie(
-    client: Any, google: GoogleGia, db: Session
+def test_after_callback_api_can_be_called_with_cookie(
+    client: Any, google: FakeGoogleTokenClient, db: Session
 ) -> None:
     """Đường đi trọn vẹn: đăng nhập bằng điều hướng, rồi dùng app bằng cookie."""
-    google.tra_ve = _danh_tinh()
+    google.identity_to_return = _identity()
     _start(client)
-    _callback(client, code="c", state=_state_dang_giu(client))
+    _callback(client, code="c", state=_held_state(client))
 
     resp = client.get("/api/auth/me", headers={"X-IELTS-Web": "1"})
 
@@ -238,8 +238,8 @@ def test_sau_callback_thi_goi_duoc_api_bang_cookie(
     assert resp.json()["email"] == OWNER_EMAIL
 
 
-def test_redirect_uri_cua_web_KHONG_dung_duoc_cho_luong_extension(
-    client: Any, google: GoogleGia
+def test_web_redirect_uri_CANNOT_be_used_for_extension_flow(
+    client: Any, google: FakeGoogleTokenClient
 ) -> None:
     """Hai luồng KHÔNG được mượn redirect_uri của nhau.
 
@@ -247,7 +247,7 @@ def test_redirect_uri_cua_web_KHONG_dung_duoc_cho_luong_extension(
     redirect_uri của web callback thì luồng cookie httpOnly — vốn cố ý giấu token khỏi
     JavaScript — bỗng có một đường vòng để đọc chính token đó.
     """
-    google.tra_ve = _danh_tinh()
+    google.identity_to_return = _identity()
 
     resp = client.post(
         "/api/auth/google",
@@ -255,4 +255,4 @@ def test_redirect_uri_cua_web_KHONG_dung_duoc_cho_luong_extension(
     )
 
     assert resp.status_code == 401
-    assert google.so_lan_goi == 0
+    assert google.call_count == 0

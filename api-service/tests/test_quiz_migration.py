@@ -22,10 +22,10 @@ from app.auth import models as _auth_models  # noqa: F401  (đăng ký bảng ap
 from app.quiz import repository
 from app.quiz.models import QuizAttempt, QuizItem, QuizType
 from app.vocabulary.models import VocabEntry
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 
-def _tu_da_luu(db: Session, user_id: int) -> VocabEntry:
+def _saved_word(db: Session, user_id: int) -> VocabEntry:
     """user_id là NOT NULL từ V6 — dựng entry mà quên chủ sở hữu là nổ ngay lúc insert."""
     entry = VocabEntry(
         user_id=user_id,
@@ -42,7 +42,7 @@ def _tu_da_luu(db: Session, user_id: int) -> VocabEntry:
     return entry
 
 
-def _item_da_luu(db: Session, entry: VocabEntry) -> QuizItem:
+def _saved_item(db: Session, entry: VocabEntry) -> QuizItem:
     item = QuizItem(
         vocab_entry_id=entry.id,
         type=QuizType.FILL_BLANK.value,
@@ -54,12 +54,12 @@ def _item_da_luu(db: Session, entry: VocabEntry) -> QuizItem:
     return item
 
 
-def _dem(db: Session, model: Any) -> int:
+def _count(db: Session, model: Any) -> int:
     return int(db.execute(select(func.count()).select_from(model)).scalar_one())
 
 
-def test_v5_dung_duoc_bang_va_payload_jsonb_doc_lai_nguyen_ven(
-    db: Session, owner: NguoiDungTest
+def test_v5_builds_tables_and_jsonb_payload_reads_back_intact(
+    db: Session, owner: UserFixture
 ) -> None:
     """V5 dựng được bảng và entity khớp schema — payload JSONB đọc lại nguyên vẹn.
 
@@ -67,7 +67,7 @@ def test_v5_dung_duoc_bang_va_payload_jsonb_doc_lai_nguyen_ven(
     lệch cột lúc khởi động; SQLAlchemy không có cơ chế đó, nên phép ghi/đọc thật ở đây là thứ
     duy nhất đứng thay.
     """
-    item = _item_da_luu(db, _tu_da_luu(db, owner.id))
+    item = _saved_item(db, _saved_word(db, owner.id))
 
     db.add(
         QuizAttempt(
@@ -84,21 +84,21 @@ def test_v5_dung_duoc_bang_va_payload_jsonb_doc_lai_nguyen_ven(
     # expire_all buộc SELECT lại từ DB thay vì trả object đang nằm trong identity map — không
     # có dòng này thì phép so dưới đây chỉ chứng minh Python nhớ được thứ Python vừa tạo.
     db.expire_all()
-    doc_lai = db.get(QuizItem, item.id)
-    assert doc_lai is not None
-    assert doc_lai.payload["answer"] == "mitigate"
-    assert doc_lai.payload["sentence"] == "We must ___ the risk."
-    assert doc_lai.type == QuizType.FILL_BLANK.value
-    assert _dem(db, QuizAttempt) == 1
+    reloaded_item = db.get(QuizItem, item.id)
+    assert reloaded_item is not None
+    assert reloaded_item.payload["answer"] == "mitigate"
+    assert reloaded_item.payload["sentence"] == "We must ___ the risk."
+    assert reloaded_item.type == QuizType.FILL_BLANK.value
+    assert _count(db, QuizAttempt) == 1
 
 
-def test_cot_improved_version_luu_va_doc_lai_duoc(db: Session, owner: NguoiDungTest) -> None:
+def test_improved_version_column_saves_and_reads_back(db: Session, owner: UserFixture) -> None:
     """Chỗ DUY NHẤT giữ câu Gemini viết lại.
 
     Cột này tách khỏi `ai_feedback` vì hợp đồng API trả hai trường khác nhau; nhét chung một
     cột rồi tách bằng chuỗi phân cách sẽ hỏng ở lần đầu Gemini trả đúng dấu phân cách đó.
     """
-    item = _item_da_luu(db, _tu_da_luu(db, owner.id))
+    item = _saved_item(db, _saved_word(db, owner.id))
 
     attempt = QuizAttempt(
         quiz_item_id=item.id,
@@ -111,22 +111,22 @@ def test_cot_improved_version_luu_va_doc_lai_duoc(db: Session, owner: NguoiDungT
     db.add(attempt)
     db.commit()
 
-    luu_duoi_db = db.execute(
+    stored_in_db = db.execute(
         text("SELECT improved_version FROM quiz_attempt WHERE id = :i"), {"i": attempt.id}
     ).scalar_one()
-    assert luu_duoi_db == "We must mitigate the risk effectively."
+    assert stored_in_db == "We must mitigate the risk effectively."
 
 
-def test_xoa_tu_trong_so_cascade_sach_quiz_item_va_quiz_attempt(
-    db: Session, owner: NguoiDungTest
+def test_deleting_word_from_notebook_cascade_clears_quiz_item_and_quiz_attempt(
+    db: Session, owner: UserFixture
 ) -> None:
     """Xoá một từ phải cuốn theo cả đề lẫn lịch sử làm bài của từ đó.
 
     Không có cascade thì `quiz_item` mồ côi vẫn nằm lại, và khoá ngoại sẽ chặn lệnh xoá —
     người dùng bấm xoá từ và nhận về 500.
     """
-    entry = _tu_da_luu(db, owner.id)
-    item = _item_da_luu(db, entry)
+    entry = _saved_word(db, owner.id)
+    item = _saved_item(db, entry)
     db.add(
         QuizAttempt(quiz_item_id=item.id, user_answer="x", correct=False, score=0)
     )
@@ -135,12 +135,12 @@ def test_xoa_tu_trong_so_cascade_sach_quiz_item_va_quiz_attempt(
     db.execute(text("DELETE FROM vocab_entry WHERE id = :v"), {"v": entry.id})
     db.commit()
 
-    assert _dem(db, QuizItem) == 0
-    assert _dem(db, QuizAttempt) == 0
+    assert _count(db, QuizItem) == 0
+    assert _count(db, QuizAttempt) == 0
 
 
-def test_find_reusable_bo_qua_item_da_lam_va_item_sai_prompt_version(
-    db: Session, owner: NguoiDungTest
+def test_find_reusable_skips_attempted_item_and_wrong_prompt_version_item(
+    db: Session, owner: UserFixture
 ) -> None:
     """Ba item cùng từ, cùng loại: một dùng được, một đã có lượt làm, một sai prompt_version.
     Chỉ item đầu được trả về.
@@ -148,29 +148,29 @@ def test_find_reusable_bo_qua_item_da_lam_va_item_sai_prompt_version(
     Ba điều kiện hỏng theo ba kiểu riêng và đều IM LẶNG: bỏ "chưa có lượt làm" là câu vừa làm
     xong hiện lại ở đề sau; bỏ `prompt_version` là sửa prompt xong đề cũ vẫn sống mãi.
     """
-    entry = _tu_da_luu(db, owner.id)
+    entry = _saved_word(db, owner.id)
 
-    dung_duoc = _item_da_luu(db, entry)
+    usable_item = _saved_item(db, entry)
 
-    da_lam = _item_da_luu(db, entry)
+    attempted_item = _saved_item(db, entry)
     db.add(
-        QuizAttempt(quiz_item_id=da_lam.id, user_answer="x", correct=False, score=0)
+        QuizAttempt(quiz_item_id=attempted_item.id, user_answer="x", correct=False, score=0)
     )
 
-    cu = _item_da_luu(db, entry)
-    cu.prompt_version = 99
+    wrong_version_item = _saved_item(db, entry)
+    wrong_version_item.prompt_version = 99
     db.flush()
     db.commit()
 
-    con_dung_duoc = repository.find_reusable(
+    still_reusable = repository.find_reusable(
         db, owner.id, [entry.id], [QuizType.FILL_BLANK], 1
     )
 
-    assert [item.id for item in con_dung_duoc] == [dung_duoc.id]
+    assert [item.id for item in still_reusable] == [usable_item.id]
 
 
-def test_find_reusable_khong_tra_de_cua_nguoi_khac(
-    db: Session, owner: NguoiDungTest, user_b: NguoiDungTest
+def test_find_reusable_does_not_return_another_users_quiz_items(
+    db: Session, owner: UserFixture, user_b: UserFixture
 ) -> None:
     """Điều kiện thứ tư — chủ sở hữu.
 
@@ -179,13 +179,13 @@ def test_find_reusable_khong_tra_de_cua_nguoi_khac(
     tương lai quên lọc từ trước khi gọi sẽ không có lưới nào đỡ nếu chính câu truy vấn cũng
     không lọc (ràng buộc #13).
     """
-    cua_b = _tu_da_luu(db, user_b.id)
-    item_cua_b = _item_da_luu(db, cua_b)
+    b_word = _saved_word(db, user_b.id)
+    b_item = _saved_item(db, b_word)
     db.commit()
 
     # A hỏi thẳng bằng id từ của B — đúng hình dạng của lỗ IDOR.
-    assert repository.find_reusable(db, owner.id, [cua_b.id], [QuizType.FILL_BLANK], 1) == []
+    assert repository.find_reusable(db, owner.id, [b_word.id], [QuizType.FILL_BLANK], 1) == []
     # Còn chính B thì vẫn thấy đề của mình: khẳng định trên không xanh vì câu truy vấn chết.
     assert [item.id for item in repository.find_reusable(
-        db, user_b.id, [cua_b.id], [QuizType.FILL_BLANK], 1
-    )] == [item_cua_b.id]
+        db, user_b.id, [b_word.id], [QuizType.FILL_BLANK], 1
+    )] == [b_item.id]

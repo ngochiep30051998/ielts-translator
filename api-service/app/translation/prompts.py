@@ -57,7 +57,7 @@ class PromptTemplate:
         return self.render({"TEXT": text or "", "CONTEXT": safe_context})
 
 
-def parse_template(raw: str, mo_ta: str) -> PromptTemplate:
+def parse_template(raw: str, description: str) -> PromptTemplate:
     """Tách header/body từ nội dung thô. `mo_ta` chỉ để nhét vào thông điệp lỗi — không có
     nó thì "Prompt thiếu dòng phân cách" là một câu vô dụng khi có mười file prompt."""
     lines = raw.split("\n")
@@ -67,17 +67,17 @@ def parse_template(raw: str, mo_ta: str) -> PromptTemplate:
             delimiter_index = i
             break
     if delimiter_index < 0:
-        raise PromptError(f"Prompt thiếu dòng phân cách '---': {mo_ta}")
+        raise PromptError(f"Prompt thiếu dòng phân cách '---': {description}")
 
     header = "\n".join(lines[:delimiter_index]).strip()
     body = "\n".join(lines[delimiter_index + 1 :]).strip()
 
     if not header.startswith(_HEADER_PREFIX):
-        raise PromptError(f"Prompt thiếu header 'version:': {mo_ta}")
+        raise PromptError(f"Prompt thiếu header 'version:': {description}")
     try:
         version = int(header[len(_HEADER_PREFIX) :].strip())
     except ValueError as e:
-        raise PromptError(f"Prompt có version không phải số: {mo_ta}") from e
+        raise PromptError(f"Prompt có version không phải số: {description}") from e
     return PromptTemplate(body, version)
 
 

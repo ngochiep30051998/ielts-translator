@@ -14,7 +14,7 @@ NBSP = " "
 
 
 @pytest.mark.parametrize(
-    ("text", "mong_doi"),
+    ("text", "expected"),
     [
         ("renewable", Mode.WORD),
         ("climate change", Mode.WORD),
@@ -25,23 +25,23 @@ NBSP = " "
         ("năng lượng tái tạo là xu hướng", Mode.SENTENCE),
     ],
 )
-def test_phan_loai_mode(text: str, mong_doi: Mode) -> None:
-    assert Mode.of(text) == mong_doi
+def test_mode_classification(text: str, expected: Mode) -> None:
+    assert Mode.of(text) == expected
 
 
 @pytest.mark.parametrize("text", ["", "   ", "\t\n", None])
-def test_chuoi_rong_coi_la_word(text: str | None) -> None:
+def test_empty_string_is_treated_as_word(text: str | None) -> None:
     """Không được nổ lỗi: `Mode.of` nằm trên đường nóng của mọi lượt dịch."""
     assert Mode.of(text) is Mode.WORD
 
 
-def test_dung_ba_token_van_la_word_bon_token_thanh_sentence() -> None:
+def test_exactly_three_tokens_still_word_four_tokens_becomes_sentence() -> None:
     """Chốt đúng cái ngưỡng, không phải chốt quanh nó."""
     assert Mode.of("a b c") is Mode.WORD
     assert Mode.of("a b c d") is Mode.SENTENCE
 
 
-def test_khoang_trang_unicode_khong_duoc_tinh_la_dau_tach_token() -> None:
+def test_unicode_whitespace_is_not_counted_as_token_separator() -> None:
     r"""Lệch chỉ tồn tại ở bản Python.
 
     `\s` của Java là `[ \t\n\x0B\f\r]` — thuần ASCII. `\s` của Python bao cả khoảng trắng
@@ -53,7 +53,7 @@ def test_khoang_trang_unicode_khong_duoc_tinh_la_dau_tach_token() -> None:
     assert Mode.of("a b c d") is Mode.SENTENCE
 
 
-def test_ten_hang_di_thang_vao_json() -> None:
+def test_enum_constant_names_go_straight_into_json() -> None:
     """`Mode` và `Direction` xuất hiện nguyên tên trong response `/api/translate`, và
     `shared/types.ts` phân nhánh theo chúng."""
     assert {m.value for m in Mode} == {"WORD", "SENTENCE"}

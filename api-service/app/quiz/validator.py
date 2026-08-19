@@ -32,8 +32,8 @@ def is_valid_fill_blank(sentence: str | None, answer: str | None, hint: str | No
     if BLANK not in sentence:
         return False
     needle = answer.strip().lower()
-    khong_con_cho_trong = sentence.replace(BLANK, " ").lower()
-    if needle in khong_con_cho_trong:
+    sentence_without_blank = sentence.replace(BLANK, " ").lower()
+    if needle in sentence_without_blank:
         return False
     return needle not in hint.lower()
 
@@ -44,12 +44,12 @@ def is_valid_collocation(options: Sequence[str | None] | None, correct_index: in
         return False
     if correct_index < 0 or correct_index >= _REQUIRED_OPTIONS:
         return False
-    da_thay: set[str] = set()
+    seen: set[str] = set()
     for option in options:
         if option is None or not option.strip():
             return False
-        chuan = option.strip().lower()
-        if chuan in da_thay:
+        normalised = option.strip().lower()
+        if normalised in seen:
             return False
-        da_thay.add(chuan)
+        seen.add(normalised)
     return True

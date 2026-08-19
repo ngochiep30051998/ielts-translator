@@ -13,10 +13,10 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import IT_TOKEN, NguoiDungTest, sha256
+from tests.conftest import IT_TOKEN, UserFixture, sha256
 
 
-def _mo_phien(
+def _open_session(
     db: Session, user_id: int, expires_at: datetime, revoked_at: datetime | None
 ) -> str:
     raw = f"sf-{expires_at.timestamp()}-{revoked_at}"
@@ -31,7 +31,7 @@ def _mo_phien(
     return raw
 
 
-def test_thieu_header_tra_401_dung_hinh_dang(client: Any, owner: NguoiDungTest) -> None:
+def test_missing_header_returns_401_with_correct_shape(client: Any, owner: UserFixture) -> None:
     """Hình dạng lỗi quan trọng ngang status: UI phân nhánh theo `code`, và một trang lỗi
     HTML từ tầng middleware sẽ làm nó hiện "lỗi không xác định"."""
     resp = client.get("/api/vocab")
@@ -43,30 +43,30 @@ def test_thieu_header_tra_401_dung_hinh_dang(client: Any, owner: NguoiDungTest) 
     assert body["retryable"] is False
 
 
-def test_token_rac_tra_401(client: Any, owner: NguoiDungTest) -> None:
+def test_garbage_token_returns_401(client: Any, owner: UserFixture) -> None:
     resp = client.get("/api/vocab", headers={"Authorization": "Bearer khong-phai-token"})
     assert resp.status_code == 401
 
 
-def test_header_sai_luoc_do_tra_401(client: Any, owner: NguoiDungTest) -> None:
+def test_header_with_wrong_scheme_returns_401(client: Any, owner: UserFixture) -> None:
     """`Basic <token>` không được nhận nhầm thành Bearer."""
     resp = client.get("/api/vocab", headers={"Authorization": f"Basic {IT_TOKEN}"})
     assert resp.status_code == 401
 
 
-def test_token_da_thu_hoi_tra_401(client: Any, db: Session, owner: NguoiDungTest) -> None:
-    raw = _mo_phien(db, owner.id, datetime.now(UTC) + timedelta(days=30), datetime.now(UTC))
+def test_revoked_token_returns_401(client: Any, db: Session, owner: UserFixture) -> None:
+    raw = _open_session(db, owner.id, datetime.now(UTC) + timedelta(days=30), datetime.now(UTC))
     resp = client.get("/api/vocab", headers={"Authorization": f"Bearer {raw}"})
     assert resp.status_code == 401
 
 
-def test_token_het_han_tra_401(client: Any, db: Session, owner: NguoiDungTest) -> None:
-    raw = _mo_phien(db, owner.id, datetime.now(UTC) - timedelta(days=1), None)
+def test_expired_token_returns_401(client: Any, db: Session, owner: UserFixture) -> None:
+    raw = _open_session(db, owner.id, datetime.now(UTC) - timedelta(days=1), None)
     resp = client.get("/api/vocab", headers={"Authorization": f"Bearer {raw}"})
     assert resp.status_code == 401
 
 
-def test_health_khong_can_token(client: Any) -> None:
+def test_health_requires_no_token(client: Any) -> None:
     """Bắt health đăng nhập là tự khoá mình ngoài cửa: đăng nhập hỏng thì không còn endpoint
     nào nói được backend còn sống hay không."""
     resp = client.get("/api/health")
@@ -78,12 +78,12 @@ def test_health_khong_can_token(client: Any) -> None:
     assert body["geminiConfigured"] is True
 
 
-def test_token_hop_le_di_lot_toi_handler(client: Any, owner: NguoiDungTest) -> None:
+def test_valid_token_passes_through_to_handler(client: Any, owner: UserFixture) -> None:
     resp = client.get("/api/vocab", headers=owner.headers)
     assert resp.status_code == 200
 
 
-def test_bearer_rong_tra_401(client: Any, owner: NguoiDungTest) -> None:
+def test_empty_bearer_returns_401(client: Any, owner: UserFixture) -> None:
     """`Authorization: Bearer ` (thiếu token) không được coi là đã đăng nhập."""
     resp = client.get("/api/vocab", headers={"Authorization": "Bearer "})
     assert resp.status_code == 401

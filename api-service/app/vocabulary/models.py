@@ -65,7 +65,7 @@ class SaveVocabRequest(ApiModel):
 
     @field_validator("term", "lang", "meaning_vi")
     @classmethod
-    def khong_duoc_de_trong(cls, value: str) -> str:
+    def not_blank(cls, value: str) -> str:
         """Bản dịch của `@NotBlank` trên `term`/`lang`/`meaningVi`.
 
         `min_length=1` một mình vẫn cho `"   "` lọt qua, còn `@NotBlank` bên Java thì không.
@@ -107,20 +107,20 @@ class VocabUpdateRequest(ApiModel):
 
     @field_validator("meaning_vi")
     @classmethod
-    def khong_duoc_de_trong(cls, value: str | None) -> str | None:
+    def not_blank(cls, value: str | None) -> str | None:
         """Giống `@NotBlank` bên `SaveVocabRequest`: sửa một từ thành nghĩa rỗng là làm hỏng
         chính dòng người dùng đang muốn sửa, không có đường quay lại từ UI."""
         if value is not None and not value.strip():
             raise ValueError("không được để trống")
         return value
 
-    def co_gui(self, ten: Literal["meaning_vi", "tags"]) -> bool:
+    def was_sent(self, field_name: Literal["meaning_vi", "tags"]) -> bool:
         """Field `ten` có mặt trong body VÀ không phải `null`.
 
         `Literal` chứ không `str`: tra bằng `getattr` nên một tên gõ sai sẽ lặng lẽ trả
         `False`, tức field đó vĩnh viễn không bao giờ được cập nhật và không có gì đỏ.
         """
-        return ten in self.model_fields_set and getattr(self, ten) is not None
+        return field_name in self.model_fields_set and getattr(self, field_name) is not None
 
 
 class VocabTagDto(ApiModel):

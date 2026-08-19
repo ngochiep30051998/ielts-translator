@@ -22,7 +22,7 @@ def utf16_length(value: str) -> int:
     khác cho cùng một đoạn text. Không dùng `len(value.encode("utf-16-le")) // 2` vì chuỗi
     chứa lone surrogate (JSON có thể sinh ra) sẽ làm `encode` ném lỗi.
     """
-    return len(value) + sum(1 for ky_tu in value if ord(ky_tu) > 0xFFFF)
+    return len(value) + sum(1 for char in value if ord(char) > 0xFFFF)
 
 
 def java_trim(value: str) -> str:
@@ -32,16 +32,16 @@ def java_trim(value: str) -> str:
     (`&nbsp;`) nhan nhản ở text bôi đen từ web. Cắt nhiều hơn bản Java một ký tự là sinh ra
     một khoá cache khác cho cùng một đoạn text.
     """
-    dau = 0
-    cuoi = len(value)
-    while dau < cuoi and value[dau] <= " ":
-        dau += 1
-    while cuoi > dau and value[cuoi - 1] <= " ":
-        cuoi -= 1
-    return value[dau:cuoi]
+    start = 0
+    end = len(value)
+    while start < end and value[start] <= " ":
+        start += 1
+    while end > start and value[end - 1] <= " ":
+        end -= 1
+    return value[start:end]
 
 
-def _append_field(cac_manh: list[str], value: str | None) -> None:
+def _append_field(parts: list[str], value: str | None) -> None:
     """Nối một field vào material dạng "độDài:nộiDung|" thay vì nối chuỗi trực tiếp có/không
     dấu phân cách. Text và context là văn bản người dùng bôi đen tuỳ ý trên web, có thể
     chứa bất kỳ ký tự nào (kể cả ký tự điều khiển do lỗi encoding khi paste) nên không thể
@@ -50,7 +50,7 @@ def _append_field(cac_manh: list[str], value: str | None) -> None:
     bao giờ sinh ra cùng một chuỗi material, bất kể nội dung field chứa gì.
     """
     safe = "" if value is None else value
-    cac_manh.append(f"{utf16_length(safe)}:{safe}|")
+    parts.append(f"{utf16_length(safe)}:{safe}|")
 
 
 def build_cache_key(
@@ -72,11 +72,11 @@ def build_cache_key(
     `prompt_version` đi vào khoá vì đó là cách DUY NHẤT làm cache cũ hết hiệu lực khi sửa
     nội dung prompt (ràng buộc #5).
     """
-    cac_manh: list[str] = []
-    _append_field(cac_manh, text)
-    _append_field(cac_manh, context)
-    _append_field(cac_manh, direction.value)
-    _append_field(cac_manh, mode.value)
-    _append_field(cac_manh, model)
-    _append_field(cac_manh, str(prompt_version))
-    return hashlib.sha256("".join(cac_manh).encode("utf-8")).hexdigest()
+    parts: list[str] = []
+    _append_field(parts, text)
+    _append_field(parts, context)
+    _append_field(parts, direction.value)
+    _append_field(parts, mode.value)
+    _append_field(parts, model)
+    _append_field(parts, str(prompt_version))
+    return hashlib.sha256("".join(parts).encode("utf-8")).hexdigest()

@@ -56,7 +56,7 @@ def spa_client(tmp_path: Path, db: Session, monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.fixture
-def client_khong_spa(
+def client_without_spa(
     tmp_path: Path, db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Any]:
     """App CHƯA build web — trỏ tường minh vào một thư mục rỗng.
@@ -71,9 +71,9 @@ def client_khong_spa(
     from app.db import get_db
     from app.main import create_app
 
-    rong = tmp_path / "chua-build"
-    rong.mkdir()
-    monkeypatch.setenv("WEB_STATIC_DIR", str(rong))
+    empty_dir = tmp_path / "chua-build"
+    empty_dir.mkdir()
+    monkeypatch.setenv("WEB_STATIC_DIR", str(empty_dir))
     get_settings.cache_clear()
     try:
         application = create_app()
@@ -88,16 +88,16 @@ def client_khong_spa(
         get_settings.cache_clear()
 
 
-def test_khong_co_spa_thi_app_van_khoi_dong(client_khong_spa: Any) -> None:
+def test_app_still_starts_without_spa(client_without_spa: Any) -> None:
     """Trạng thái của `uv run ielts-api` khi chạy backend-only, và của mọi lần chạy pytest
     trên máy chưa build web."""
-    assert client_khong_spa.get("/api/health").status_code == 200
+    assert client_without_spa.get("/api/health").status_code == 200
 
 
-def test_khong_co_spa_thi_duong_dan_la_van_tra_404_dung_hinh_dang(
-    client_khong_spa: Any,
+def test_without_spa_unknown_path_still_returns_404_with_correct_shape(
+    client_without_spa: Any,
 ) -> None:
-    resp = client_khong_spa.get("/mot-duong-dan-la")
+    resp = client_without_spa.get("/mot-duong-dan-la")
 
     assert resp.status_code == 404
     assert resp.json()["code"] == "NOT_FOUND"
@@ -106,21 +106,21 @@ def test_khong_co_spa_thi_duong_dan_la_van_tra_404_dung_hinh_dang(
 # ── khi ĐÃ build SPA ─────────────────────────────────────────────────────────
 
 
-def test_trang_chu_tra_index_html(spa_client: Any) -> None:
+def test_home_page_returns_index_html(spa_client: Any) -> None:
     resp = spa_client.get("/")
 
     assert resp.status_code == 200
     assert "<div id='root'></div>" in resp.text
 
 
-def test_duong_dan_la_tra_index_html_de_spa_tu_dinh_tuyen(spa_client: Any) -> None:
+def test_unknown_path_returns_index_html_so_spa_routes_itself(spa_client: Any) -> None:
     resp = spa_client.get("/share")
 
     assert resp.status_code == 200
     assert "<div id='root'></div>" in resp.text
 
 
-def test_API_KHONG_bi_catch_all_nuot(spa_client: Any) -> None:
+def test_API_is_not_swallowed_by_catch_all(spa_client: Any) -> None:
     """Chốt chặn quan trọng nhất của cả file này."""
     resp = spa_client.get("/api/khong-co-endpoint-nay")
 
@@ -128,14 +128,14 @@ def test_API_KHONG_bi_catch_all_nuot(spa_client: Any) -> None:
     assert resp.json()["code"] == "NOT_FOUND"
 
 
-def test_api_that_van_chay_binh_thuong(spa_client: Any) -> None:
+def test_real_api_still_works_normally(spa_client: Any) -> None:
     resp = spa_client.get("/api/health")
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "UP"
 
 
-def test_api_doi_dang_nhap_van_tra_401_chu_khong_phai_html(spa_client: Any) -> None:
+def test_api_requiring_login_still_returns_401_not_html(spa_client: Any) -> None:
     # Nếu catch-all nuốt nhầm, endpoint này trả HTML 200 và client tưởng đã đăng nhập.
     resp = spa_client.get("/api/vocab")
 
@@ -143,14 +143,14 @@ def test_api_doi_dang_nhap_van_tra_401_chu_khong_phai_html(spa_client: Any) -> N
     assert resp.json()["code"] == "UNAUTHORIZED"
 
 
-def test_asset_co_hash_duoc_phuc_vu(spa_client: Any) -> None:
+def test_hashed_asset_is_served(spa_client: Any) -> None:
     resp = spa_client.get("/assets/index-abc123.js")
 
     assert resp.status_code == 200
     assert "console.log(1)" in resp.text
 
 
-def test_file_that_ngoai_assets_cung_duoc_phuc_vu(spa_client: Any) -> None:
+def test_real_file_outside_assets_is_also_served(spa_client: Any) -> None:
     # manifest.webmanifest và sw.js nằm ở gốc build, không có hash trong tên.
     resp = spa_client.get("/manifest.webmanifest")
 
@@ -158,20 +158,20 @@ def test_file_that_ngoai_assets_cung_duoc_phuc_vu(spa_client: Any) -> None:
     assert resp.json() == {"name": "x"}
 
 
-def test_HEAD_khong_tra_405(spa_client: Any) -> None:
+def test_HEAD_does_not_return_405(spa_client: Any) -> None:
     """`APIRoute` của FastAPI KHÔNG tự thêm HEAD khi khai `@app.get` — khác `Route` của
     Starlette. Thiếu nó thì health check, monitor và trình thu thập liên kết đều nhận 405 ở
     mọi đường dẫn của web app, kể cả `/sw.js`."""
-    for duong_dan in ("/", "/sw.js", "/manifest.webmanifest", "/mot-duong-dan-la"):
-        resp = spa_client.head(duong_dan)
-        assert resp.status_code == 200, f"{duong_dan} -> {resp.status_code}"
+    for url_path in ("/", "/sw.js", "/manifest.webmanifest", "/mot-duong-dan-la"):
+        resp = spa_client.head(url_path)
+        assert resp.status_code == 200, f"{url_path} -> {resp.status_code}"
 
 
-def test_HEAD_tren_api_sai_duong_dan_van_la_404(spa_client: Any) -> None:
+def test_HEAD_on_wrong_api_path_still_returns_404(spa_client: Any) -> None:
     assert spa_client.head("/api/khong-co").status_code == 404
 
 
-def test_index_html_khong_duoc_cache(spa_client: Any) -> None:
+def test_index_html_is_not_cached(spa_client: Any) -> None:
     """Cache index.html là cách chắc chắn nhất để người dùng chạy mã cũ trỏ vào asset đã bị
     xoá sau một lần deploy — trang trắng, không lỗi nào giải thích."""
     resp = spa_client.get("/")
@@ -179,7 +179,7 @@ def test_index_html_khong_duoc_cache(spa_client: Any) -> None:
     assert "no-cache" in resp.headers.get("cache-control", "")
 
 
-def test_service_worker_khong_duoc_cache(spa_client: Any) -> None:
+def test_service_worker_is_not_cached(spa_client: Any) -> None:
     """`sw.js` là thứ trình duyệt tải về để BIẾT có bản mới hay không.
 
     Nó không có hash trong tên, nên nếu trình duyệt phục vụ lại bản đã cache thì lượt kiểm
@@ -194,7 +194,7 @@ def test_service_worker_khong_duoc_cache(spa_client: Any) -> None:
     assert "no-cache" in resp.headers.get("cache-control", "")
 
 
-def test_khong_thoat_ra_ngoai_thu_muc_build(spa_client: Any) -> None:
+def test_cannot_escape_outside_build_directory(spa_client: Any) -> None:
     """Path traversal: `..` phải không lấy được file ngoài thư mục build."""
     resp = spa_client.get("/../../../etc/passwd")
 

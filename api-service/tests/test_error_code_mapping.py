@@ -13,7 +13,7 @@ import pytest
 from app.common.errors import AppError, ErrorCode, status_for
 
 
-def test_moi_error_code_deu_co_anh_xa_status() -> None:
+def test_every_error_code_has_a_status_mapping() -> None:
     """Vai trò của `switch` exhaustive bên Java."""
     for code in ErrorCode:
         status = status_for(code)
@@ -34,12 +34,12 @@ def test_moi_error_code_deu_co_anh_xa_status() -> None:
         (ErrorCode.INTERNAL, 500),
     ],
 )
-def test_status_khop_ban_java(code: ErrorCode, status: int) -> None:
+def test_status_matches_the_java_version(code: ErrorCode, status: int) -> None:
     """Bảng này là hợp đồng với extension — nó phân nhánh theo status code."""
     assert status_for(code) == status
 
 
-def test_co_retry_duoc_theo_tung_ma() -> None:
+def test_retryable_flag_for_each_error_code() -> None:
     """AUTH_UNAVAILABLE retry được; UNAUTHORIZED và FORBIDDEN thì không.
 
     `retryable` không phải chuyện thẩm mỹ: UI dùng nó để chọn giữa "thử lại sau ít giây" và
@@ -52,7 +52,7 @@ def test_co_retry_duoc_theo_tung_ma() -> None:
     assert AppError.of(ErrorCode.NOT_FOUND, "x").retryable is False
 
 
-def test_hinh_dang_body_loi() -> None:
+def test_error_body_shape() -> None:
     """Hợp đồng `{code, message, retryable}` (ràng buộc #4) — extension đọc đúng ba khoá này."""
     body = AppError.of(ErrorCode.TEXT_TOO_LONG, "Đoạn văn quá dài").body()
     assert body == {
@@ -62,7 +62,7 @@ def test_hinh_dang_body_loi() -> None:
     }
 
 
-def test_ten_ma_loi_khop_hop_dong_cu() -> None:
+def test_error_code_names_match_the_old_contract() -> None:
     """Tên mã đi thẳng vào JSON. Đổi tên là làm hỏng extension mà không có gì đỏ ở đây."""
     assert {c.value for c in ErrorCode} == {
         "GEMINI_QUOTA",

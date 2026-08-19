@@ -19,10 +19,10 @@ from sqlalchemy.pool import NullPool
 
 from app.config import Settings
 
-GOC = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _tham_so_engine(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def _engine_params(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Bắt đúng bộ tham số mà `get_engine()` truyền cho `create_engine`.
 
     Bắt ở đây chứ không soi engine đã dựng: `connect_args` bị SQLAlchemy nuốt vào closure
@@ -35,23 +35,23 @@ def _tham_so_engine(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> dict
     """
     import app.db as db_mod
 
-    bat: dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
-    def _gia(url: str, **kwargs: Any) -> Any:
-        bat.update(kwargs)
-        bat["url"] = url
+    def _fake(url: str, **kwargs: Any) -> Any:
+        captured.update(kwargs)
+        captured["url"] = url
         return sqlalchemy_create_engine(url, **kwargs)
 
     monkeypatch.setattr(db_mod, "get_settings", lambda: settings)
-    monkeypatch.setattr(db_mod, "create_engine", _gia)
+    monkeypatch.setattr(db_mod, "create_engine", _fake)
     db_mod.get_engine.cache_clear()
     db_mod.get_session_factory.cache_clear()
     db_mod.get_engine()
-    return bat
+    return captured
 
 
 @pytest.fixture(autouse=True)
-def _don_bo_nho_dem_engine() -> Iterator[None]:
+def _clear_engine_cache() -> Iterator[None]:
     """`get_engine` có `lru_cache`; không dọn thì engine giả rò sang test khác."""
     import app.db as db_mod
 
@@ -63,7 +63,7 @@ def _don_bo_nho_dem_engine() -> Iterator[None]:
 # ── psycopg × Supavisor transaction mode ──────────────────────────────────────
 
 
-def test_serverless_thi_tat_han_prepared_statement(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_serverless_disables_prepared_statements_entirely(monkeypatch: pytest.MonkeyPatch) -> None:
     """psycopg tạo prepared statement sau 5 lần chạy cùng một câu.
 
     Supavisor ở transaction mode ghép nhiều client lên chung một backend, nên câu thứ sáu
@@ -72,12 +72,12 @@ def test_serverless_thi_tat_han_prepared_statement(monkeypatch: pytest.MonkeyPat
     """
     settings = Settings(_env_file=None, VERCEL="1", DATABASE_URL="postgresql://u:p@h:5432/d")  # type: ignore[call-arg]
 
-    assert settings.qua_pooler_transaction is True
-    tham_so = _tham_so_engine(settings, monkeypatch)
-    assert tham_so["connect_args"] == {"prepare_threshold": None}
+    assert settings.uses_transaction_pooler is True
+    params = _engine_params(settings, monkeypatch)
+    assert params["connect_args"] == {"prepare_threshold": None}
 
 
-def test_cong_6543_thi_tat_prepared_statement_ke_ca_khi_khong_serverless() -> None:
+def test_port_6543_disables_prepared_statements_even_when_not_serverless() -> None:
     """Chạy container dài hạn trỏ vào Supavisor transaction mode vẫn dính đúng lỗi đó.
 
     Supabase dùng 5432 cho session mode và 6543 cho transaction mode; nhận diện theo cổng
@@ -88,66 +88,66 @@ def test_cong_6543_thi_tat_prepared_statement_ke_ca_khi_khong_serverless() -> No
     )
 
     assert settings.is_serverless is False
-    assert settings.qua_pooler_transaction is True
+    assert settings.uses_transaction_pooler is True
 
 
-def test_ket_noi_truc_tiep_thi_giu_prepared_statement(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_direct_connection_keeps_prepared_statements(monkeypatch: pytest.MonkeyPatch) -> None:
     """Không có pooler thì prepared statement là thứ tốt — đừng tắt vô cớ."""
     settings = Settings(_env_file=None, DB_HOST="localhost", DB_PORT=5432)  # type: ignore[call-arg]
 
-    assert settings.qua_pooler_transaction is False
-    assert "connect_args" not in _tham_so_engine(settings, monkeypatch)
+    assert settings.uses_transaction_pooler is False
+    assert "connect_args" not in _engine_params(settings, monkeypatch)
 
 
-def test_serverless_dung_nullpool(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_serverless_uses_nullpool(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mỗi instance sống vài giây và phục vụ một request. Giữ pool phía client chỉ chiếm chỗ
     trong hạn mức kết nối của Supabase mà không tái dùng được."""
     settings = Settings(_env_file=None, VERCEL="1")  # type: ignore[call-arg]
 
-    assert _tham_so_engine(settings, monkeypatch)["poolclass"] is NullPool
+    assert _engine_params(settings, monkeypatch)["poolclass"] is NullPool
 
 
-def test_tien_trinh_dai_thi_khong_dung_nullpool(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_long_running_process_does_not_use_nullpool(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings(_env_file=None, DB_HOST="localhost")  # type: ignore[call-arg]
 
-    tham_so = _tham_so_engine(settings, monkeypatch)
-    assert "poolclass" not in tham_so
-    assert tham_so["pool_pre_ping"] is True
+    params = _engine_params(settings, monkeypatch)
+    assert "poolclass" not in params
+    assert params["pool_pre_ping"] is True
 
 
 # ── file khai phụ thuộc ───────────────────────────────────────────────────────
 
 
-def _ten_goi(spec: str) -> str:
+def _package_name(spec: str) -> str:
     return re.split(r"[<>=!\[]", spec, maxsplit=1)[0].strip().lower()
 
 
-def test_requirements_txt_phu_du_phu_thuoc_runtime() -> None:
+def test_requirements_txt_covers_all_runtime_dependencies() -> None:
     """Vercel dựng runtime từ `requirements.txt`, KHÔNG đọc `pyproject.toml`.
 
     Thêm một gói vào `pyproject.toml` mà quên file này thì local chạy ngon còn deploy lên
     chết bằng `ModuleNotFoundError` — và log chỉ hiện ở dashboard, không hiện ở đâu khác.
     """
-    pyproject = tomllib.loads((GOC / "pyproject.toml").read_text("utf-8"))
-    runtime = {_ten_goi(d) for d in pyproject["project"]["dependencies"]}
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text("utf-8"))
+    runtime = {_package_name(d) for d in pyproject["project"]["dependencies"]}
     reqs = {
-        _ten_goi(dong)
-        for dong in (GOC / "requirements.txt").read_text("utf-8").splitlines()
-        if dong.strip() and not dong.lstrip().startswith("#")
+        _package_name(line)
+        for line in (PROJECT_ROOT / "requirements.txt").read_text("utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
     }
 
     # uvicorn cố ý vắng mặt: Vercel tự cung cấp lớp ASGI, cài thêm chỉ làm phình bundle.
-    thieu = runtime - reqs - {"uvicorn"}
-    assert thieu == set(), (
-        f"requirements.txt thiếu {sorted(thieu)} so với pyproject.toml. "
+    missing = runtime - reqs - {"uvicorn"}
+    assert missing == set(), (
+        f"requirements.txt thiếu {sorted(missing)} so với pyproject.toml. "
         "Deploy sẽ chết bằng ModuleNotFoundError."
     )
 
-    thua = reqs - runtime
-    assert thua == set(), f"requirements.txt có {sorted(thua)} mà pyproject.toml không khai."
+    extra = reqs - runtime
+    assert extra == set(), f"requirements.txt có {sorted(extra)} mà pyproject.toml không khai."
 
 
-def test_tzdata_nam_trong_phu_thuoc_runtime() -> None:
+def test_tzdata_is_in_runtime_dependencies() -> None:
     """`zoneinfo` không tự mang dữ liệu múi giờ — nó đọc file hệ thống.
 
     Máy dev và image Docker đều có sẵn /usr/share/zoneinfo nên gỡ gói này ra thì mọi test ở
@@ -156,8 +156,8 @@ def test_tzdata_nam_trong_phu_thuoc_runtime() -> None:
     khác. Đó là lý do ràng buộc này phải là một assertion tường minh, không phải một dòng
     comment trong `pyproject.toml`.
     """
-    pyproject = tomllib.loads((GOC / "pyproject.toml").read_text("utf-8"))
-    runtime = {_ten_goi(d) for d in pyproject["project"]["dependencies"]}
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text("utf-8"))
+    runtime = {_package_name(d) for d in pyproject["project"]["dependencies"]}
 
     assert "tzdata" in runtime, (
         "Thiếu tzdata thì ZoneInfo(settings.tz) ném ZoneInfoNotFoundError trên Vercel — "
@@ -168,7 +168,7 @@ def test_tzdata_nam_trong_phu_thuoc_runtime() -> None:
 # ── đóng gói cho Vercel ───────────────────────────────────────────────────────
 
 
-def test_vercel_json_khong_duoc_co_rewrites() -> None:
+def test_vercel_json_must_not_have_rewrites() -> None:
     """Đây là lỗi đã tốn nhiều giờ để tìm ra, nên nó phải có test canh.
 
     Vercel TỰ nhận diện FastAPI và dựng một function tên `fastapi` phục vụ app ở MỌI đường
@@ -181,7 +181,7 @@ def test_vercel_json_khong_duoc_co_rewrites() -> None:
     """
     import json
 
-    cfg = json.loads((GOC / "vercel.json").read_text("utf-8"))
+    cfg = json.loads((PROJECT_ROOT / "vercel.json").read_text("utf-8"))
 
     assert "rewrites" not in cfg, (
         "Vercel tự route mọi đường dẫn vào app FastAPI. Thêm rewrites là viết đè đường dẫn "
@@ -190,13 +190,13 @@ def test_vercel_json_khong_duoc_co_rewrites() -> None:
     assert "routes" not in cfg, "Cùng lý do với rewrites."
 
 
-def test_entry_point_vercel_import_duoc_app() -> None:
+def test_vercel_entry_point_can_import_app() -> None:
     """`api/index.py` phải import được KHI CHẠY TỪ THƯ MỤC GỐC PROJECT — Vercel đặt working
     directory ở đó chứ không ở `api/`."""
-    nguon = (GOC / "api" / "index.py").read_text("utf-8")
+    source = (PROJECT_ROOT / "api" / "index.py").read_text("utf-8")
 
-    assert "sys.path.insert" in nguon, (
+    assert "sys.path.insert" in source, (
         "Vercel không tự thêm thư mục gốc vào sys.path; thiếu bước này thì cold start chết "
         "bằng ModuleNotFoundError và log chỉ hiện ở dashboard."
     )
-    assert "from app.main import app" in nguon
+    assert "from app.main import app" in source

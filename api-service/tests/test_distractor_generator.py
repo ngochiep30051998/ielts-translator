@@ -28,15 +28,15 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.srs.distractors import current_prompt_version, generate_distractors
-from tests.conftest import GeminiGia, NguoiDungTest
+from tests.conftest import FakeGemini, UserFixture
 
-BO_HOP_LE: dict[str, list[str]] = {
+VALID_DISTRACTOR_SET: dict[str, list[str]] = {
     "vi_options": ["làm trầm trọng thêm", "phóng đại", "trì hoãn"],
     "en_options": ["aggravate", "exaggerate", "postpone"],
 }
 
 
-def _luu_tu(client: Any, owner: NguoiDungTest, term: str, pos: str) -> int:
+def _save_word(client: Any, owner: UserFixture, term: str, pos: str) -> int:
     """Lưu một từ qua API thật, đúng hình dạng `request(term, pos)` bên Java.
 
     `meaningVi` = "nghĩa của <term>" cũng lấy nguyên từ bản Java: test bộ hỏng dựa vào việc
@@ -59,7 +59,7 @@ def _luu_tu(client: Any, owner: NguoiDungTest, term: str, pos: str) -> int:
     return int(resp.json()["id"])
 
 
-def _moi_nhu(db: Session, vocab_id: int) -> Any:
+def _distractor_row(db: Session, vocab_id: int) -> Any:
     db.rollback()  # kết thúc transaction đọc cũ để thấy commit của tác vụ nền
     return db.execute(
         text(
@@ -70,13 +70,13 @@ def _moi_nhu(db: Session, vocab_id: int) -> Any:
     ).one_or_none()
 
 
-def _so_ban_ghi(db: Session) -> int:
+def _record_count(db: Session) -> int:
     db.rollback()
     return int(db.execute(text("SELECT count(*) FROM srs_distractor")).scalar_one())
 
 
-def test_luu_mot_tu_don_thi_moi_nhu_duoc_sinh_va_luu_kem_prompt_version(
-    client: Any, db: Session, gemini: GeminiGia, owner: NguoiDungTest
+def test_saving_a_single_word_generates_and_stores_distractors_with_prompt_version(
+    client: Any, db: Session, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """Ca chính: lưu từ → tác vụ nền gọi Gemini → bộ mồi nhử nằm trong DB kèm version prompt.
 
@@ -84,11 +84,11 @@ def test_luu_mot_tu_don_thi_moi_nhu_duoc_sinh_va_luu_kem_prompt_version(
     (ràng buộc #5). Ghi thiếu hoặc ghi sai version thì `find_fresh_distractors` lọc trượt và
     hệ thống sinh lại mồi nhử ở MỌI lượt mở tab ôn — đốt quota mà không ai thấy.
     """
-    gemini.tra_json(BO_HOP_LE)
+    gemini.queue_json(VALID_DISTRACTOR_SET)
 
-    vocab_id = _luu_tu(client, owner, "mitigate", "verb")
+    vocab_id = _save_word(client, owner, "mitigate", "verb")
 
-    row = _moi_nhu(db, vocab_id)
+    row = _distractor_row(db, vocab_id)
     assert row is not None, "Tác vụ nền không ghi được mồi nhử nào"
     assert len(row.vi_options) == 3
     # So từng cột, đúng thứ tự — không chỉ đếm: thứ tự sai nghĩa là mồi nhử EN bị gán vào
@@ -96,11 +96,11 @@ def test_luu_mot_tu_don_thi_moi_nhu_duoc_sinh_va_luu_kem_prompt_version(
     assert row.en_options == ["aggravate", "exaggerate", "postpone"]
     assert row.vi_options == ["làm trầm trọng thêm", "phóng đại", "trì hoãn"]
     assert row.prompt_version == current_prompt_version()
-    assert gemini.so_lan_goi == 1
+    assert gemini.call_count == 1
 
 
-def test_luu_ca_mot_cau_pos_phrase_thi_khong_goi_gemini(
-    client: Any, db: Session, gemini: GeminiGia, owner: NguoiDungTest
+def test_saving_a_whole_sentence_with_pos_phrase_makes_no_gemini_call(
+    client: Any, db: Session, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """Câu đầy đủ không làm trắc nghiệm được, nên không có gì để sinh mồi nhử.
 
@@ -109,16 +109,16 @@ def test_luu_ca_mot_cau_pos_phrase_thi_khong_goi_gemini(
     """
     # Xếp sẵn một phản hồi hợp lệ: nếu code lỡ gọi Gemini thì nó sẽ THÀNH CÔNG và ghi bản
     # ghi, tức là test đỏ ở đúng chỗ cần đỏ chứ không đỏ vì hàng đợi cạn.
-    gemini.tra_json(BO_HOP_LE)
+    gemini.queue_json(VALID_DISTRACTOR_SET)
 
-    _luu_tu(client, owner, "Governments must act on climate change.", "phrase")
+    _save_word(client, owner, "Governments must act on climate change.", "phrase")
 
     assert gemini.requests == []
-    assert _so_ban_ghi(db) == 0
+    assert _record_count(db) == 0
 
 
-def test_gemini_loi_thi_tu_van_nam_trong_so_chi_la_chua_co_moi_nhu(
-    client: Any, db: Session, gemini: GeminiGia, owner: NguoiDungTest
+def test_gemini_error_keeps_word_in_the_book_only_without_distractors(
+    client: Any, db: Session, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """Gemini chết không được kéo đổ việc lưu từ.
 
@@ -130,27 +130,27 @@ def test_gemini_loi_thi_tu_van_nam_trong_so_chi_la_chua_co_moi_nhu(
     thẳng `generateJson` nên không lộ ra chi tiết đó; ở đây đi qua tầng vận chuyển thật nên
     số lượt gọi là một phần của hành vi được kiểm.
     """
-    gemini.tra_status(503, '{"error":"unavailable"}', lap=2)
+    gemini.queue_status(503, '{"error":"unavailable"}', times=2)
 
-    vocab_id = _luu_tu(client, owner, "resilient", "adjective")
+    vocab_id = _save_word(client, owner, "resilient", "adjective")
 
     assert vocab_id > 0
     db.rollback()
-    con_tu = db.execute(
+    word_count = db.execute(
         text("SELECT count(*) FROM vocab_entry WHERE id = :v"), {"v": vocab_id}
     ).scalar_one()
-    assert con_tu == 1, "Gemini lỗi đã kéo đổ luôn việc lưu từ"
+    assert word_count == 1, "Gemini lỗi đã kéo đổ luôn việc lưu từ"
     # Thẻ ôn cũng phải còn: nó được tạo ĐỒNG BỘ trong cùng transaction với từ.
-    con_the = db.execute(
+    card_count = db.execute(
         text("SELECT count(*) FROM srs_card WHERE vocab_entry_id = :v"), {"v": vocab_id}
     ).scalar_one()
-    assert con_the == 1
-    assert _moi_nhu(db, vocab_id) is None
-    assert gemini.so_lan_goi == 2
+    assert card_count == 1
+    assert _distractor_row(db, vocab_id) is None
+    assert gemini.call_count == 2
 
 
-def test_gemini_tra_bo_hong_trung_dap_an_dung_thi_khong_luu_gi(
-    client: Any, db: Session, gemini: GeminiGia, owner: NguoiDungTest
+def test_gemini_returns_broken_set_colliding_with_correct_answer_saves_nothing(
+    client: Any, db: Session, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """Không lưu gì, để lần sau sinh lại.
 
@@ -158,22 +158,22 @@ def test_gemini_tra_bo_hong_trung_dap_an_dung_thi_khong_luu_gi(
     người học gặp một câu có hai đáp án cùng đúng — chọn đúng vẫn bị chấm sai. Bộ hỏng cũng
     KHÔNG được retry: nó không phải lỗi tạm thời, gọi lại ngay chỉ tốn thêm một lượt quota.
     """
-    gemini.tra_json(
+    gemini.queue_json(
         {
             "vi_options": ["nghĩa của mitigate", "phóng đại", "trì hoãn"],
             "en_options": ["aggravate", "exaggerate", "postpone"],
         }
     )
 
-    vocab_id = _luu_tu(client, owner, "mitigate", "verb")
+    vocab_id = _save_word(client, owner, "mitigate", "verb")
 
-    assert _moi_nhu(db, vocab_id) is None
-    assert _so_ban_ghi(db) == 0
-    assert gemini.so_lan_goi == 1
+    assert _distractor_row(db, vocab_id) is None
+    assert _record_count(db) == 0
+    assert gemini.call_count == 1
 
 
-def test_sinh_lai_cho_tu_da_co_moi_nhu_thi_ghi_de_khong_tao_ban_ghi_thu_hai(
-    client: Any, db: Session, gemini: GeminiGia, owner: NguoiDungTest
+def test_regenerating_for_word_with_distractors_overwrites_instead_of_creating_second_record(
+    client: Any, db: Session, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """`vocab_entry_id` là khoá duy nhất, nên sinh lại phải UPDATE chứ không INSERT.
 
@@ -184,18 +184,18 @@ def test_sinh_lai_cho_tu_da_co_moi_nhu_thi_ghi_de_khong_tao_ban_ghi_thu_hai(
     Lượt thứ hai gọi thẳng `generate_distractors` (vai của `generator.generateAsync` bên
     Java): đây đúng là đường mà `_request_missing` dùng để bù mồi nhử hết hiệu lực.
     """
-    gemini.tra_json(BO_HOP_LE)
-    vocab_id = _luu_tu(client, owner, "mitigate", "verb")
-    assert _moi_nhu(db, vocab_id) is not None
+    gemini.queue_json(VALID_DISTRACTOR_SET)
+    vocab_id = _save_word(client, owner, "mitigate", "verb")
+    assert _distractor_row(db, vocab_id) is not None
 
-    truoc = _moi_nhu(db, vocab_id)
-    gemini.tra_json({"vi_options": ["một", "hai", "ba"], "en_options": ["one", "two", "three"]})
+    before = _distractor_row(db, vocab_id)
+    gemini.queue_json({"vi_options": ["một", "hai", "ba"], "en_options": ["one", "two", "three"]})
     generate_distractors(vocab_id)
 
-    assert _so_ban_ghi(db) == 1
-    sau = _moi_nhu(db, vocab_id)
-    assert sau is not None
-    assert sau.en_options == ["one", "two", "three"]
-    assert sau.vi_options == ["một", "hai", "ba"]
-    assert truoc is not None and truoc.en_options != sau.en_options
-    assert gemini.so_lan_goi == 2
+    assert _record_count(db) == 1
+    after = _distractor_row(db, vocab_id)
+    assert after is not None
+    assert after.en_options == ["one", "two", "three"]
+    assert after.vi_options == ["một", "hai", "ba"]
+    assert before is not None and before.en_options != after.en_options
+    assert gemini.call_count == 2

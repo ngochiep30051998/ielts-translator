@@ -24,7 +24,7 @@ _STATE = "ielts_oauth_state"
 STATE_MAX_AGE_SECONDS = 600
 
 
-def _ten(co_ban: str, settings: Settings) -> str:
+def _cookie_name(base_name: str, settings: Settings) -> str:
     """Gắn tiền tố `__Host-` khi cookie là Secure.
 
     `__Host-` là thứ ngăn một subdomain ghi đè cookie của domain cha: cookie KHÔNG có tính
@@ -35,15 +35,15 @@ def _ten(co_ban: str, settings: Settings) -> str:
     Secure) phải bỏ nó đi — trình duyệt sẽ từ chối thẳng một cookie `__Host-` không Secure,
     và triệu chứng là đăng nhập "thành công" nhưng request sau vẫn 401.
     """
-    return f"__Host-{co_ban}" if settings.cookie_secure else co_ban
+    return f"__Host-{base_name}" if settings.cookie_secure else base_name
 
 
 def session_cookie_name(settings: Settings) -> str:
-    return _ten(_SESSION, settings)
+    return _cookie_name(_SESSION, settings)
 
 
 def state_cookie_name(settings: Settings) -> str:
-    return _ten(_STATE, settings)
+    return _cookie_name(_STATE, settings)
 
 
 def set_session_cookie(response: Response, token: str, settings: Settings) -> None:

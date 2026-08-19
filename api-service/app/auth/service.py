@@ -77,14 +77,14 @@ class AuthService:
         # chuyển cho Google là cho một extension lạ mượn client_secret của mình.
         if self.extension_redirect_uri() != redirect_uri:
             raise AppError.of(ErrorCode.UNAUTHORIZED, "redirect_uri không hợp lệ")
-        return self._hoan_tat(db, code, redirect_uri)
+        return self._finish_login(db, code, redirect_uri)
 
     def login_web(self, db: Session, code: str) -> AuthSessionDto:
         """Luồng WEB. Không có gate so chuỗi vì không có chuỗi nào đến từ client — redirect
         uri dựng thẳng từ config ngay tại đây."""
-        return self._hoan_tat(db, code, self.web_redirect_uri())
+        return self._finish_login(db, code, self.web_redirect_uri())
 
-    def _hoan_tat(self, db: Session, code: str, redirect_uri: str) -> AuthSessionDto:
+    def _finish_login(self, db: Session, code: str, redirect_uri: str) -> AuthSessionDto:
         """Phần chung sau khi đã chốt được redirect_uri: đổi code, kiểm quyền, mở phiên."""
         identity = self._google.exchange(code, redirect_uri)
 

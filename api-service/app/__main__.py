@@ -20,7 +20,7 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent
 
 
-def _ten_lenh() -> str:
+def _program_name() -> str:
     """Tên hiển thị ở dòng `usage:`.
 
     Có hai đường vào cùng một hàm — `uv run ielts-api` (console script) và `python -m app`.
@@ -29,9 +29,9 @@ def _ten_lenh() -> str:
     return "python -m app" if Path(sys.argv[0]).name == "__main__.py" else "ielts-api"
 
 
-def _doc_tham_so(argv: list[str] | None) -> argparse.Namespace:
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog=_ten_lenh(), description="Chạy api-service của IELTS Translator"
+        prog=_program_name(), description="Chạy api-service của IELTS Translator"
     )
     parser.add_argument(
         "--reload",
@@ -52,17 +52,17 @@ def main(argv: list[str] | None = None) -> int:
     import uvicorn
 
     from app.config import get_settings
-    from app.startup import main as chay_migration
+    from app.startup import main as run_migrations
 
-    args = _doc_tham_so(argv)
+    args = _parse_args(argv)
 
     # Migration chạy MỘT lần ở tiến trình cha, trước khi uvicorn dựng reloader. Tiến trình
     # con do reloader spawn ra import `app.main`, không import module này (guard
     # `__name__ == "__main__"` chặn), nên sửa file không kéo theo một lượt migrate nữa.
     if not args.skip_migrate:
-        ma_loi = chay_migration()
-        if ma_loi != 0:
-            return ma_loi
+        exit_code = run_migrations()
+        if exit_code != 0:
+            return exit_code
 
     settings = get_settings()
     uvicorn.run(

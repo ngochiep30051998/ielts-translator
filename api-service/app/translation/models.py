@@ -19,7 +19,7 @@ from app.db import Base
 #: `\s` của Java thì không — và U+00A0 (`&nbsp;`) nhan nhản trong text bôi đen từ web. Một
 #: cụm bốn chữ nối bằng `&nbsp;` sẽ ra WORD ở bản Java và SENTENCE ở đây: hai hình dạng
 #: payload khác nhau cho cùng một chuỗi, và hai khoá cache khác nhau.
-_KHOANG_TRANG = re.compile(r"[ \t\n\x0b\f\r]+")
+_WHITESPACE = re.compile(r"[ \t\n\x0b\f\r]+")
 
 
 class Direction(enum.StrEnum):
@@ -36,11 +36,11 @@ class Mode(enum.StrEnum):
         """Từ 3 token trở xuống coi là tra từ; nhiều hơn là tra câu."""
         if text is None:
             return Mode.WORD
-        # Cắt rìa bằng đúng bộ ký tự của `_KHOANG_TRANG`, cùng lý do như ở đó.
+        # Cắt rìa bằng đúng bộ ký tự của `_WHITESPACE`, cùng lý do như ở đó.
         trimmed = text.strip(" \t\n\x0b\f\r")
         if not trimmed:
             return Mode.WORD
-        tokens = len(_KHOANG_TRANG.split(trimmed))
+        tokens = len(_WHITESPACE.split(trimmed))
         return Mode.WORD if tokens <= 3 else Mode.SENTENCE
 
 
@@ -76,7 +76,7 @@ class TranslateRequest(ApiModel):
 
     @field_validator("text")
     @classmethod
-    def text_khong_duoc_trong(cls, value: str) -> str:
+    def text_not_blank(cls, value: str) -> str:
         """Bản dịch của `@NotBlank`: `min_length=1` một mình vẫn cho `"   "` lọt qua.
 
         Thông điệp phải là tiếng Việt và phải giữ nguyên chữ "không được để trống": bubble

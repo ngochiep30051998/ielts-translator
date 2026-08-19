@@ -26,7 +26,7 @@ from app.srs.router import router as srs_router
 from app.stats.router import router as stats_router
 from app.translation.router import router as translation_router
 from app.vocabulary.router import router as vocabulary_router
-from app.web_static import gan_web_app
+from app.web_static import mount_web_app
 
 log = logging.getLogger(__name__)
 
@@ -65,9 +65,9 @@ def create_app() -> FastAPI:
     app.include_router(quiz_router)
     app.include_router(stats_router)
 
-    # SAU CÙNG, không có ngoại lệ: `gan_web_app` khai một catch-all khớp mọi đường dẫn, nên
+    # SAU CÙNG, không có ngoại lệ: `mount_web_app` khai một catch-all khớp mọi đường dẫn, nên
     # router nào include sau nó sẽ không bao giờ nhận được request.
-    gan_web_app(app)
+    mount_web_app(app)
     return app
 
 
@@ -87,15 +87,15 @@ def _register_exception_handlers(app: FastAPI) -> None:
         không có test nào bên backend đỏ.
         """
         assert isinstance(exc, RequestValidationError)
-        chi_tiet = "; ".join(
-            f"{'.'.join(str(p) for p in loi.get('loc', ())[1:])} {loi.get('msg', '')}".strip()
-            for loi in exc.errors()
+        details = "; ".join(
+            f"{'.'.join(str(p) for p in error.get('loc', ())[1:])} {error.get('msg', '')}".strip()
+            for error in exc.errors()
         )
         return JSONResponse(
             status_code=400,
             content={
                 "code": ErrorCode.INTERNAL.value,
-                "message": f"Request không hợp lệ: {chi_tiet}",
+                "message": f"Request không hợp lệ: {details}",
                 "retryable": False,
             },
         )

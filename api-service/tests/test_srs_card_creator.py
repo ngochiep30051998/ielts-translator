@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 BODY = {
     "term": "mitigate",
@@ -24,7 +24,7 @@ BODY = {
 }
 
 
-def _the_cua(db: Session, term: str) -> list[Any]:
+def _cards_of_term(db: Session, term: str) -> list[Any]:
     return list(
         db.execute(
             text(
@@ -36,8 +36,8 @@ def _the_cua(db: Session, term: str) -> list[Any]:
     )
 
 
-def test_luu_tu_don_thi_the_on_tap_duoc_tao_ngay(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_saving_single_word_creates_review_card_immediately(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Due hôm nay, state NEW.
 
@@ -46,17 +46,17 @@ def test_luu_tu_don_thi_the_on_tap_duoc_tao_ngay(
     """
     assert client.post("/api/vocab", headers=owner.headers, json=BODY).status_code == 200
 
-    hang = _the_cua(db, "mitigate")
-    assert len(hang) == 1
-    state, due_date, repetitions = hang[0]
+    rows = _cards_of_term(db, "mitigate")
+    assert len(rows) == 1
+    state, due_date, repetitions = rows[0]
     assert state == "NEW"
     assert repetitions == 0
-    hom_nay = db.execute(text("SELECT CURRENT_DATE")).scalar_one()
-    assert due_date == hom_nay
+    today = db.execute(text("SELECT CURRENT_DATE")).scalar_one()
+    assert due_date == today
 
 
-def test_luu_ca_mot_cau_thi_khong_tao_the(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_saving_whole_sentence_does_not_create_card(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """`pos = 'phrase'` là câu đầy đủ do service worker đặt khi mode = SENTENCE. Flashcard
     một câu dài là vô nghĩa, nên không tạo thẻ."""
@@ -64,11 +64,11 @@ def test_luu_ca_mot_cau_thi_khong_tao_the(
 
     assert client.post("/api/vocab", headers=owner.headers, json=body).status_code == 200
 
-    assert _the_cua(db, "Governments must act now.") == []
+    assert _cards_of_term(db, "Governments must act now.") == []
 
 
-def test_luu_lai_tu_da_co_khong_tao_the_thu_hai(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_resaving_existing_word_does_not_create_second_card(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Lưu lại một từ cũ KHÔNG được đặt lại lịch ôn của nó từ đầu.
 
@@ -76,17 +76,17 @@ def test_luu_lai_tu_da_co_khong_tao_the_thu_hai(
     lần bôi đen lại một từ đã học là lịch ôn của nó lùi về ngày đầu tiên.
     """
     assert client.post("/api/vocab", headers=owner.headers, json=BODY).status_code == 200
-    lan_hai = client.post("/api/vocab", headers=owner.headers, json=BODY)
+    second_response = client.post("/api/vocab", headers=owner.headers, json=BODY)
 
-    assert lan_hai.status_code == 200
-    assert lan_hai.json()["alreadyExists"] is True
-    assert len(_the_cua(db, "mitigate")) == 1
+    assert second_response.status_code == 200
+    assert second_response.json()["alreadyExists"] is True
+    assert len(_cards_of_term(db, "mitigate")) == 1
 
 
-def test_pos_rong_van_duoc_tao_the(client: Any, db: Session, owner: NguoiDungTest) -> None:
+def test_empty_pos_still_creates_card(client: Any, db: Session, owner: UserFixture) -> None:
     """Chỉ đúng chuỗi `"phrase"` mới bị bỏ qua. `pos` rỗng là từ chưa phân loại, vẫn học được."""
     body = {**BODY, "term": "resilient", "pos": ""}
 
     assert client.post("/api/vocab", headers=owner.headers, json=body).status_code == 200
 
-    assert len(_the_cua(db, "resilient")) == 1
+    assert len(_cards_of_term(db, "resilient")) == 1

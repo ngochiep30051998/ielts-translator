@@ -1,6 +1,6 @@
 """Bản port của `VocabControllerIT` — hợp đồng HTTP của sổ từ.
 
-`client` (TestClient) thay `MockMvc`; `_don_sach` của `conftest.py` thay
+`client` (TestClient) thay `MockMvc`; `_clean_database` của `conftest.py` thay
 `@BeforeEach repository.deleteAll()`.
 
 Không mock Gemini ở đây, ĐÚNG như bản Java: `VocabControllerIT` cũng không `@MockitoBean`
@@ -23,7 +23,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 #: Đúng body của `VocabControllerIT.BODY`.
 BODY: dict[str, Any] = {
@@ -47,7 +47,9 @@ BODY: dict[str, Any] = {
 # ── lưu ───────────────────────────────────────────────────────────────────────
 
 
-def test_luu_tra_ve_id_va_bao_chua_ton_tai(client: Any, owner: NguoiDungTest) -> None:
+def test_saving_returns_id_and_reports_not_already_exists(
+    client: Any, owner: UserFixture
+) -> None:
     resp = client.post("/api/vocab", headers=owner.headers, json=BODY)
 
     assert resp.status_code == 200, resp.text
@@ -56,28 +58,28 @@ def test_luu_tra_ve_id_va_bao_chua_ton_tai(client: Any, owner: NguoiDungTest) ->
     assert body["alreadyExists"] is False
 
 
-def test_luu_lan_hai_bao_da_ton_tai_chu_khong_no_loi(
-    client: Any, owner: NguoiDungTest
+def test_saving_second_time_reports_already_exists_instead_of_erroring(
+    client: Any, owner: UserFixture
 ) -> None:
     """Lưu trùng là chuyện BÌNH THƯỜNG: người dùng bôi lại đúng từ đó ở một trang khác.
 
     Ràng buộc UNIQUE `(user_id, term, pos)` phải được service đón trước, nếu không database
     từ chối và người dùng nhận 500 cho một thao tác chẳng có gì sai.
     """
-    dau = client.post("/api/vocab", headers=owner.headers, json=BODY)
-    assert dau.status_code == 200, dau.text
+    first_save = client.post("/api/vocab", headers=owner.headers, json=BODY)
+    assert first_save.status_code == 200, first_save.text
 
-    lan_hai = client.post("/api/vocab", headers=owner.headers, json=BODY)
+    second_save = client.post("/api/vocab", headers=owner.headers, json=BODY)
 
-    assert lan_hai.status_code == 200, lan_hai.text
-    assert lan_hai.json()["alreadyExists"] is True
-    assert lan_hai.json()["id"] == dau.json()["id"]
+    assert second_save.status_code == 200, second_save.text
+    assert second_save.json()["alreadyExists"] is True
+    assert second_save.json()["id"] == first_save.json()["id"]
 
 
 # ── tìm kiếm ──────────────────────────────────────────────────────────────────
 
 
-def test_tim_kiem_tra_ve_trang_ket_qua(client: Any, owner: NguoiDungTest) -> None:
+def test_search_returns_page_of_results(client: Any, owner: UserFixture) -> None:
     client.post("/api/vocab", headers=owner.headers, json=BODY)
 
     resp = client.get("/api/vocab", headers=owner.headers, params={"q": "renew"})
@@ -94,26 +96,26 @@ def test_tim_kiem_tra_ve_trang_ket_qua(client: Any, owner: NguoiDungTest) -> Non
 # ── đọc một từ · xoá ──────────────────────────────────────────────────────────
 
 
-def test_xoa_tra_204_roi_get_tra_404(client: Any, owner: NguoiDungTest) -> None:
+def test_delete_returns_204_then_get_returns_404(client: Any, owner: UserFixture) -> None:
     """Và lỗi 404 phải đúng hình dạng `{code, message, retryable}` (ràng buộc #4): UI phân
     biệt lỗi vĩnh viễn với lỗi thử lại được nhờ chính hai field đó."""
     entry_id = client.post("/api/vocab", headers=owner.headers, json=BODY).json()["id"]
 
-    xoa = client.delete(f"/api/vocab/{entry_id}", headers=owner.headers)
-    assert xoa.status_code == 204
-    assert xoa.content == b""
+    delete_resp = client.delete(f"/api/vocab/{entry_id}", headers=owner.headers)
+    assert delete_resp.status_code == 204
+    assert delete_resp.content == b""
 
-    doc_lai = client.get(f"/api/vocab/{entry_id}", headers=owner.headers)
-    assert doc_lai.status_code == 404
-    assert doc_lai.json()["code"] == "NOT_FOUND"
-    assert doc_lai.json()["retryable"] is False
+    reread = client.get(f"/api/vocab/{entry_id}", headers=owner.headers)
+    assert reread.status_code == 404
+    assert reread.json()["code"] == "NOT_FOUND"
+    assert reread.json()["retryable"] is False
 
 
 # ── export CSV — đường thoát dữ liệu của người dùng ───────────────────────────
 
 
-def test_export_csv_co_hang_tieu_de_va_header_tai_file(
-    client: Any, owner: NguoiDungTest
+def test_export_csv_has_header_row_and_download_headers(
+    client: Any, owner: UserFixture
 ) -> None:
     """Content-Disposition và Content-Type là thứ quyết định trình duyệt TẢI file hay hiện
     chữ ra tab — sai một trong hai là người dùng không lấy được sổ từ của mình."""
@@ -128,8 +130,8 @@ def test_export_csv_co_hang_tieu_de_va_header_tai_file(
     assert "renewable" in resp.text
 
 
-def test_export_csv_so_tu_rong_van_co_hang_tieu_de(
-    client: Any, owner: NguoiDungTest
+def test_export_csv_empty_vocab_still_has_header_row(
+    client: Any, owner: UserFixture
 ) -> None:
     """Sổ từ rỗng vẫn ra một file CSV hợp lệ, không phải body rỗng."""
     resp = client.get("/api/vocab/export.csv", headers=owner.headers)
@@ -140,8 +142,8 @@ def test_export_csv_so_tu_rong_van_co_hang_tieu_de(
     )
 
 
-def test_export_csv_giu_nguyen_du_lieu_co_dau_phay_nhay_kep_xuong_dong(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_export_csv_preserves_data_with_commas_quotes_and_newlines(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Bằng chứng đầu-cuối cho đường thoát dữ liệu: từ POST tới file tải về, một nghĩa chứa
     CẢ dấu phẩy, ngoặc kép lẫn xuống dòng phải quay về NGUYÊN VẸN qua trình đọc CSV chuẩn.
@@ -149,24 +151,24 @@ def test_export_csv_giu_nguyen_du_lieu_co_dau_phay_nhay_kep_xuong_dong(
     Escape sai ở đây không làm gì đỏ trên màn hình: file vẫn tải được, chỉ là các cột lệch
     ô và sổ từ nhập vào Anki thành rác — phát hiện được thì đã muộn.
     """
-    nghia = 'tái tạo, "phục hồi"\ndòng hai'
-    body = {**BODY, "meaningVi": nghia, "tags": ["environment", "writing"]}
+    meaning = 'tái tạo, "phục hồi"\ndòng hai'
+    body = {**BODY, "meaningVi": meaning, "tags": ["environment", "writing"]}
     assert client.post("/api/vocab", headers=owner.headers, json=body).status_code == 200
 
     resp = client.get("/api/vocab/export.csv", headers=owner.headers)
     assert resp.status_code == 200
 
-    hang = list(csv.reader(io.StringIO(resp.text)))
-    assert len(hang) == 2, f"Phải đúng 1 hàng dữ liệu, đọc được {len(hang) - 1}"
+    rows = list(csv.reader(io.StringIO(resp.text)))
+    assert len(rows) == 2, f"Phải đúng 1 hàng dữ liệu, đọc được {len(rows) - 1}"
 
-    tieu_de = hang[0]
-    du_lieu = dict(zip(tieu_de, hang[1], strict=True))
-    assert du_lieu["term"] == "renewable"
-    assert du_lieu["meaning_vi"] == nghia
-    assert du_lieu["tags"] == "environment;writing"
-    assert du_lieu["pos"] == "adj"
-    assert du_lieu["ipa"] == "/rɪˈnjuːəbl/"
-    assert du_lieu["source_url"] == "https://example.com"
+    header_row = rows[0]
+    data_row = dict(zip(header_row, rows[1], strict=True))
+    assert data_row["term"] == "renewable"
+    assert data_row["meaning_vi"] == meaning
+    assert data_row["tags"] == "environment;writing"
+    assert data_row["pos"] == "adj"
+    assert data_row["ipa"] == "/rɪˈnjuːəbl/"
+    assert data_row["source_url"] == "https://example.com"
 
     # Và mốc thời gian trong file khớp đúng hàng trong bảng — không phải giờ máy chủ, không
     # phải một chuỗi được định dạng lại ở đường khác.
@@ -176,7 +178,7 @@ def test_export_csv_giu_nguyen_du_lieu_co_dau_phay_nhay_kep_xuong_dong(
     # luôn UTC, luôn hậu tố `Z`. Quên đổi múi giờ ở đây thì test đỏ vì lệch đúng 7 tiếng
     # trong khi file xuất ra hoàn toàn đúng.
     created_at = db.execute(text("SELECT created_at FROM vocab_entry")).scalar_one()
-    assert du_lieu["created_at"].startswith(
+    assert data_row["created_at"].startswith(
         created_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S")
     )
-    assert du_lieu["created_at"].endswith("Z")
+    assert data_row["created_at"].endswith("Z")

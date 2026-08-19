@@ -22,8 +22,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 API_SERVICE_ROOT = Path(__file__).resolve().parent.parent
 
 #: Múi giờ mặc định. Là hằng số vì cả `Field(default=...)` lẫn nhánh bỏ qua giá trị rác của
-#: nền tảng (xem `_bo_qua_tz_cua_nen_tang`) đều phải rơi về đúng một giá trị.
-TZ_MAC_DINH = "Asia/Ho_Chi_Minh"
+#: nền tảng (xem `_ignore_platform_tz`) đều phải rơi về đúng một giá trị.
+DEFAULT_TZ = "Asia/Ho_Chi_Minh"
 
 
 class Settings(BaseSettings):
@@ -129,11 +129,11 @@ class Settings(BaseSettings):
     # truyền vào để chỉnh cả đồng hồ container), nhưng trên Vercel chính vì thế mà nó là tên
     # BỊ GIỮ CHỖ: dashboard từ chối tạo biến `TZ`, còn AWS Lambda bên dưới thì tự đặt sẵn
     # `TZ=:UTC`. `APP_TZ` là lối thoát duy nhất ở đó, nên nó phải đứng trước.
-    tz: str = Field(default=TZ_MAC_DINH, validation_alias=AliasChoices("APP_TZ", "TZ"))
+    tz: str = Field(default=DEFAULT_TZ, validation_alias=AliasChoices("APP_TZ", "TZ"))
 
     @field_validator("tz")
     @classmethod
-    def _bo_qua_tz_cua_nen_tang(cls, gia_tri: str) -> str:
+    def _ignore_platform_tz(cls, value: str) -> str:
         """Giá trị bắt đầu bằng `:` là của Lambda, không phải của người dùng.
 
         `:UTC` là dạng POSIX ("đọc file zoneinfo tên UTC"), không phải key IANA — `ZoneInfo`
@@ -143,8 +143,8 @@ class Settings(BaseSettings):
         lệch 7 tiếng so với giờ VN — heatmap trỏ sai ô và streak đứt sai ngày trong 7 giờ mỗi
         ngày, không có lỗi nào bật lên. Quay về mặc định là hành vi hỏng-thì-thấy-ngay.
         """
-        sach = gia_tri.strip()
-        return TZ_MAC_DINH if not sach or sach.startswith(":") else sach
+        cleaned = value.strip()
+        return DEFAULT_TZ if not cleaned or cleaned.startswith(":") else cleaned
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -153,12 +153,12 @@ class Settings(BaseSettings):
             # Supabase phát `postgresql://` (hoặc `postgres://`); SQLAlchemy cần biết dùng
             # driver nào, mặc định của nó là psycopg2 vốn không được cài.
             url = self.database_url
-            for tien_to in ("postgresql+psycopg://", "postgresql+psycopg2://"):
-                if url.startswith(tien_to):
+            for prefix in ("postgresql+psycopg://", "postgresql+psycopg2://"):
+                if url.startswith(prefix):
                     return url
-            for tien_to in ("postgresql://", "postgres://"):
-                if url.startswith(tien_to):
-                    return "postgresql+psycopg://" + url[len(tien_to) :]
+            for prefix in ("postgresql://", "postgres://"):
+                if url.startswith(prefix):
+                    return "postgresql+psycopg://" + url[len(prefix) :]
             return url
         return (
             f"postgresql+psycopg://{self.db_user}:{self.db_password}"
@@ -176,7 +176,7 @@ class Settings(BaseSettings):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def qua_pooler_transaction(self) -> bool:
+    def uses_transaction_pooler(self) -> bool:
         """Có đang nói chuyện qua connection pooler ở chế độ transaction không.
 
         Quan trọng vì chế độ đó GHÉP LUỒNG nhiều client lên chung một backend Postgres, nên
@@ -206,7 +206,7 @@ class Settings(BaseSettings):
         và thông điệp lỗi thì nói "email không nằm trong allowlist" nên trông như đúng.
         """
         return frozenset(
-            phan.strip().lower() for phan in self.auth_allowed_emails.split(",") if phan.strip()
+            part.strip().lower() for part in self.auth_allowed_emails.split(",") if part.strip()
         )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -228,10 +228,10 @@ class Settings(BaseSettings):
         `auto` = True trừ khi web chạy trên loopback. Đó là chỗ DUY NHẤT mà HTTP thường là
         hợp lệ; mọi nơi khác thiếu `Secure` là phát phiên qua đường không mã hoá.
         """
-        chon = self.auth_cookie_secure.strip().lower()
-        if chon == "true":
+        choice = self.auth_cookie_secure.strip().lower()
+        if choice == "true":
             return True
-        if chon == "false":
+        if choice == "false":
             return False
         return not self.web_base_url.lower().startswith(
             ("http://localhost", "http://127.0.0.1", "http://[::1]")

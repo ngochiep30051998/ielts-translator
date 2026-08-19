@@ -26,7 +26,7 @@ def loader() -> PromptLoader:
 
 @pytest.mark.parametrize("direction", list(Direction))
 @pytest.mark.parametrize("mode", list(Mode))
-def test_doc_duoc_ca_bon_template(
+def test_loads_all_four_templates(
     loader: PromptLoader, direction: Direction, mode: Mode
 ) -> None:
     template = loader.load(direction, mode)
@@ -36,7 +36,9 @@ def test_doc_duoc_ca_bon_template(
     assert not template.body.startswith("version:")
 
 
-def test_header_bi_cat_nhung_ten_truong_chua_chu_version_thi_giu(loader: PromptLoader) -> None:
+def test_header_is_stripped_but_field_names_containing_version_are_kept(
+    loader: PromptLoader,
+) -> None:
     template = loader.load(Direction.VI_EN, Mode.SENTENCE)
 
     assert template.version == 1
@@ -45,7 +47,7 @@ def test_header_bi_cat_nhung_ten_truong_chua_chu_version_thi_giu(loader: PromptL
     assert "band65_version" in template.body
 
 
-def test_render_thay_text_va_context() -> None:
+def test_render_substitutes_text_and_context() -> None:
     template = PromptTemplate("Tra từ: {{TEXT}}\nNgữ cảnh: {{CONTEXT}}", 1)
 
     assert (
@@ -54,7 +56,7 @@ def test_render_thay_text_va_context() -> None:
     )
 
 
-def test_render_xu_ly_context_rong() -> None:
+def test_render_handles_empty_context() -> None:
     """Để `{{CONTEXT}}` thành chuỗi trắng sẽ làm model tưởng ngữ cảnh bị cắt mất."""
     template = PromptTemplate("{{TEXT}}|{{CONTEXT}}", 1)
 
@@ -62,14 +64,14 @@ def test_render_xu_ly_context_rong() -> None:
     assert template.render_text("x", "   ") == "x|(không có ngữ cảnh)"
 
 
-def test_thieu_dong_phan_cach_thi_nem_loi_kem_ten_file() -> None:
+def test_missing_delimiter_line_raises_error_with_file_name() -> None:
     with pytest.raises(PromptError) as ex:
         INVALID.load_file("no-delimiter.md")
 
     assert "no-delimiter.md" in str(ex.value)
 
 
-def test_version_khong_phai_so_thi_nem_loi_kem_ten_file() -> None:
+def test_non_numeric_version_raises_error_with_file_name() -> None:
     with pytest.raises(PromptError) as ex:
         INVALID.load_file("bad-version.md")
 
@@ -77,7 +79,7 @@ def test_version_khong_phai_so_thi_nem_loi_kem_ten_file() -> None:
     assert isinstance(ex.value.__cause__, ValueError)
 
 
-def test_dong_gia_phan_cach_bi_tu_choi_thay_vi_cat_body_sai() -> None:
+def test_decoy_delimiter_line_is_rejected_instead_of_splitting_body_wrong() -> None:
     """File có dòng `--- ghi chú ...` bắt đầu bằng `---` nhưng KHÔNG đúng bằng `---` sau khi
     strip, nằm TRƯỚC dòng phân cách thật.
 
@@ -92,7 +94,7 @@ def test_dong_gia_phan_cach_bi_tu_choi_thay_vi_cat_body_sai() -> None:
     assert "decoy-delimiter.md" in str(ex.value)
 
 
-def test_body_duoc_phep_chua_duong_ke_ngang_cua_chinh_no() -> None:
+def test_body_may_contain_its_own_horizontal_rule() -> None:
     """Prompt dùng đường kẻ ngang markdown `---` bên TRONG thân bài, sau dòng phân cách
     thật. Parser chỉ được dừng ở dòng `---` ĐẦU TIÊN."""
     template = EDGE.load_file("body-with-horizontal-rule.md")
@@ -103,13 +105,13 @@ def test_body_duoc_phep_chua_duong_ke_ngang_cua_chinh_no() -> None:
     assert template.body.endswith("Phần 2: kết luận.")
 
 
-def test_moi_template_dich_deu_co_placeholder_text(loader: PromptLoader) -> None:
+def test_every_translation_template_has_text_placeholder(loader: PromptLoader) -> None:
     for d in Direction:
         for m in Mode:
             assert "{{TEXT}}" in loader.load(d, m).body, f"{d}/{m} phải có {{{{TEXT}}}}"
 
 
-def test_doc_duoc_prompt_moi_nhu_theo_ten_file(loader: PromptLoader) -> None:
+def test_loads_distractor_prompt_by_file_name(loader: PromptLoader) -> None:
     template = loader.load_file("srs-distractors.md")
 
     assert template.version == 1
@@ -117,11 +119,11 @@ def test_doc_duoc_prompt_moi_nhu_theo_ten_file(loader: PromptLoader) -> None:
     assert "{{MEANING_VI}}" in template.body
 
 
-def test_ba_prompt_quiz_doc_duoc_va_du_placeholder(loader: PromptLoader) -> None:
-    for ten in ("quiz-fill-blank.md", "quiz-collocation.md", "quiz-grade-free-write.md"):
-        template = loader.load_file(ten)
-        assert template.version > 0, f"{ten} phải có version dương"
-        assert template.body.strip(), f"{ten} không được rỗng"
+def test_three_quiz_prompts_load_and_have_all_placeholders(loader: PromptLoader) -> None:
+    for file_name in ("quiz-fill-blank.md", "quiz-collocation.md", "quiz-grade-free-write.md"):
+        template = loader.load_file(file_name)
+        assert template.version > 0, f"{file_name} phải có version dương"
+        assert template.body.strip(), f"{file_name} không được rỗng"
 
     assert "{{TERMS}}" in loader.load_file("quiz-fill-blank.md").body
     assert "{{TERMS}}" in loader.load_file("quiz-collocation.md").body
@@ -130,19 +132,19 @@ def test_ba_prompt_quiz_doc_duoc_va_du_placeholder(loader: PromptLoader) -> None
         assert ph in body
 
 
-def test_ba_prompt_giai_thich_doc_duoc_va_du_placeholder(loader: PromptLoader) -> None:
-    for ten in (
+def test_three_explanation_prompts_load_and_have_all_placeholders(loader: PromptLoader) -> None:
+    for file_name in (
         "quiz-explain-fill-blank.md",
         "quiz-explain-collocation.md",
         "quiz-explain-free-write.md",
     ):
-        template = loader.load_file(ten)
-        assert template.version > 0, f"{ten} phải có version dương"
-        assert template.body.strip(), f"{ten} không được rỗng"
+        template = loader.load_file(file_name)
+        assert template.version > 0, f"{file_name} phải có version dương"
+        assert template.body.strip(), f"{file_name} không được rỗng"
         # {{USER_ANSWER}} là điều kiện để giải thích BÁM THEO câu trả lời của người học.
         # Thiếu nó thì prompt lặng lẽ tụt về giải thích chung chung và không có gì trong hệ
         # thống phát hiện ra.
-        assert "{{USER_ANSWER}}" in template.body, f"{ten} phải có {{{{USER_ANSWER}}}}"
+        assert "{{USER_ANSWER}}" in template.body, f"{file_name} phải có {{{{USER_ANSWER}}}}"
 
     fill = loader.load_file("quiz-explain-fill-blank.md").body
     assert "{{SENTENCE}}" in fill and "{{ANSWER}}" in fill
@@ -152,7 +154,7 @@ def test_ba_prompt_giai_thich_doc_duoc_va_du_placeholder(loader: PromptLoader) -
     assert "{{TERM}}" in free and "{{SENTENCE_EN}}" in free
 
 
-def test_render_thay_dung_moi_khoa(loader: PromptLoader) -> None:
+def test_render_substitutes_every_key_correctly(loader: PromptLoader) -> None:
     rendered = loader.load_file("srs-distractors.md").render(
         {
             "TERM": "mitigate",
@@ -162,12 +164,12 @@ def test_render_thay_dung_moi_khoa(loader: PromptLoader) -> None:
         }
     )
 
-    for gia_tri in ("mitigate", "giảm nhẹ", "verb", "to make less severe"):
-        assert gia_tri in rendered
+    for expected_fragment in ("mitigate", "giảm nhẹ", "verb", "to make less severe"):
+        assert expected_fragment in rendered
     assert "{{" not in rendered
 
 
-def test_version_di_vao_cache_key_nen_moi_prompt_phai_khai_version(
+def test_version_goes_into_cache_key_so_every_prompt_must_declare_version(
     loader: PromptLoader,
 ) -> None:
     """Ràng buộc #5: sửa nội dung prompt PHẢI tăng `version:`.

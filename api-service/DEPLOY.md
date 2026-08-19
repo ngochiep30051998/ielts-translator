@@ -118,7 +118,7 @@ Lúc chạy, **FastAPI tự phục vụ SPA** (`app/web_static.py`): `/` và m�
 
 **KHÔNG dùng `rewrites` của Vercel** — có ba lý do độc lập, mỗi lý do đủ để loại:
 
-1. `test_deploy_readiness.py::test_vercel_json_khong_duoc_co_rewrites` cấm.
+1. `test_deploy_readiness.py::test_vercel_json_must_not_have_rewrites` cấm.
 2. Thêm `rewrites` khi preset FastAPI đang bật làm **toàn bộ API trả 404** (rewrite chạy
    trước function và *thay* đường dẫn chứ không chỉ định tuyến).
 3. Chế độ `services` bị khoá sau quyền tài khoản.
@@ -239,7 +239,7 @@ Phải là `401` với body `{"code":"UNAUTHORIZED",...}`.
 
 **Nếu ra HTML thì catch-all của SPA đang nuốt `/api/*`** — lỗi nặng, vì client sẽ cố parse
 JSON, thất bại, rồi báo "backend trả phản hồi không đọc được" thay vì "cần đăng nhập".
-`tests/test_spa_static.py::test_API_KHONG_bi_catch_all_nuot` canh đúng chỗ này.
+`tests/test_spa_static.py::test_API_is_not_swallowed_by_catch_all` canh đúng chỗ này.
 
 Rồi kiểm web app:
 

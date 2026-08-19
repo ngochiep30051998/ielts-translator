@@ -29,14 +29,14 @@ from app.translation.models import Direction, Mode, TranslateRequest
 from app.translation.prompts import get_prompt_loader
 from app.translation.schemas import schema_for
 from app.translation.service import MAX_TEXT_LENGTH, TranslationService
-from tests.conftest import GeminiGia, NguoiDungTest
+from tests.conftest import FakeGemini, UserFixture
 
 #: Payload mà model "sinh ra" — cùng nội dung với bản Java để hai bộ test đọc đối chiếu được.
 PAYLOAD: dict[str, Any] = {"meaning_vi": "tái tạo"}
 
 
 @pytest.fixture
-def service(gemini: GeminiGia) -> TranslationService:
+def service(gemini: FakeGemini) -> TranslationService:
     """Dựng SAU `gemini`.
 
     Thứ tự bắt buộc, không phải chuyện gọn gàng: `TranslationService()` lấy `GeminiClient`
@@ -47,15 +47,15 @@ def service(gemini: GeminiGia) -> TranslationService:
     return TranslationService()
 
 
-def _yeu_cau(text: str, context: str | None = None) -> TranslateRequest:
+def _make_request(text: str, context: str | None = None) -> TranslateRequest:
     return TranslateRequest(text=text, context_sentence=context)
 
 
-def _so_dong_cache(db: Session) -> int:
+def _cache_row_count(db: Session) -> int:
     return int(db.execute(sql("SELECT count(*) FROM lookup_cache")).scalar_one())
 
 
-def _dong_cache_dau(db: Session) -> Any:
+def _first_cache_row(db: Session) -> Any:
     return db.execute(
         sql(
             "SELECT source_hash, source_text, direction, mode, model, prompt_version, "
@@ -64,25 +64,25 @@ def _dong_cache_dau(db: Session) -> Any:
     ).first()
 
 
-def _body_gui_gemini(gemini: GeminiGia, thu_tu: int = 0) -> Any:
-    return json.loads(gemini.requests[thu_tu].content)
+def _body_sent_to_gemini(gemini: FakeGemini, index: int = 0) -> Any:
+    return json.loads(gemini.requests[index].content)
 
 
 # ── định tuyến direction × mode ───────────────────────────────────────────────
 
 
-def test_tu_tieng_anh_di_theo_tuyen_en_vi_word(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_english_word_takes_en_vi_word_route(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Tuyến mặc định của người dùng chính: bôi đen một từ tiếng Anh trên trang web.
 
     Ba field `direction`/`mode`/`cached` là thứ extension phân nhánh để chọn hình dạng
     payload — sai một cái là bubble render nhầm template.
     """
-    gemini.tra_json(PAYLOAD)
+    gemini.queue_json(PAYLOAD)
 
     response = service.translate(
-        db, owner.id, _yeu_cau("renewable", "We need renewable energy.")
+        db, owner.id, _make_request("renewable", "We need renewable energy.")
     )
 
     assert response.direction is Direction.EN_VI
@@ -91,16 +91,16 @@ def test_tu_tieng_anh_di_theo_tuyen_en_vi_word(
     assert response.payload["meaning_vi"] == "tái tạo"
 
 
-def test_cau_tieng_viet_di_theo_tuyen_vi_en_sentence(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_vietnamese_sentence_takes_vi_en_sentence_route(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Chiều ngược lại, và mode ngược lại — cùng một hàm `translate` phải rẽ được cả hai."""
-    gemini.tra_json({"band65_version": "The government should invest more in renewables"})
+    gemini.queue_json({"band65_version": "The government should invest more in renewables"})
 
     response = service.translate(
         db,
         owner.id,
-        _yeu_cau("Chính phủ nên đầu tư nhiều hơn vào năng lượng tái tạo"),
+        _make_request("Chính phủ nên đầu tư nhiều hơn vào năng lượng tái tạo"),
     )
 
     assert response.direction is Direction.VI_EN
@@ -110,19 +110,19 @@ def test_cau_tieng_viet_di_theo_tuyen_vi_en_sentence(
 # ── cache ─────────────────────────────────────────────────────────────────────
 
 
-def test_lan_dau_goi_gemini_va_ghi_cache(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_first_lookup_calls_gemini_and_writes_cache(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
-    gemini.tra_json(PAYLOAD)
+    gemini.queue_json(PAYLOAD)
 
-    service.translate(db, owner.id, _yeu_cau("renewable"))
+    service.translate(db, owner.id, _make_request("renewable"))
 
-    assert gemini.so_lan_goi == 1
-    assert _so_dong_cache(db) == 1
+    assert gemini.call_count == 1
+    assert _cache_row_count(db) == 1
 
 
-def test_dong_cache_ghi_dung_tung_cot(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_cache_row_writes_every_column_correctly(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Không chỉ đếm dòng: đối chiếu TỪNG cột.
 
@@ -132,134 +132,134 @@ def test_dong_cache_ghi_dung_tung_cot(
     được `TranslationService` truyền nhầm thành phần (ví dụ quên `context`, hoặc lấy version
     của prompt khác).
     """
-    gemini.tra_json(PAYLOAD)
-    cai_dat = get_settings()
+    gemini.queue_json(PAYLOAD)
+    settings = get_settings()
     template = get_prompt_loader().load(Direction.EN_VI, Mode.WORD)
 
-    service.translate(db, owner.id, _yeu_cau("renewable", "We need renewable energy."))
+    service.translate(db, owner.id, _make_request("renewable", "We need renewable energy."))
 
-    dong = _dong_cache_dau(db)
-    assert dong is not None
-    assert dong.source_hash == build_cache_key(
+    cache_row = _first_cache_row(db)
+    assert cache_row is not None
+    assert cache_row.source_hash == build_cache_key(
         text="renewable",
         context="We need renewable energy.",
         direction=Direction.EN_VI,
         mode=Mode.WORD,
-        model=cai_dat.gemini_model,
+        model=settings.gemini_model,
         prompt_version=template.version,
     )
-    assert dong.source_text == "renewable"
-    assert dong.direction == "EN_VI"
-    assert dong.mode == "WORD"
-    assert dong.model == cai_dat.gemini_model
-    assert dong.prompt_version == template.version
-    assert dong.response == PAYLOAD
+    assert cache_row.source_text == "renewable"
+    assert cache_row.direction == "EN_VI"
+    assert cache_row.mode == "WORD"
+    assert cache_row.model == settings.gemini_model
+    assert cache_row.prompt_version == template.version
+    assert cache_row.response == PAYLOAD
     # Lượt ghi là lượt MISS, không phải hit — bắt đầu từ 0.
-    assert dong.hit_count == 0
+    assert cache_row.hit_count == 0
 
 
-def test_lan_hai_trung_khop_an_cache_va_khong_goi_gemini(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_second_matching_lookup_hits_cache_and_does_not_call_gemini(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Lý do tồn tại của cả bảng `lookup_cache`.
 
     Chỉ xếp ĐÚNG MỘT phản hồi: nếu lượt thứ hai vẫn gọi ra ngoài thì transport giả ném
     AssertionError ngay, chứ không lặng lẽ trả thêm một payload nữa rồi để test xanh.
     """
-    gemini.tra_json(PAYLOAD)
-    yeu_cau = _yeu_cau("renewable")
+    gemini.queue_json(PAYLOAD)
+    request = _make_request("renewable")
 
-    dau = service.translate(db, owner.id, yeu_cau)
-    sau = service.translate(db, owner.id, yeu_cau)
+    first_response = service.translate(db, owner.id, request)
+    second_response = service.translate(db, owner.id, request)
 
-    assert dau.cached is False
-    assert sau.cached is True
-    assert gemini.so_lan_goi == 1
+    assert first_response.cached is False
+    assert second_response.cached is True
+    assert gemini.call_count == 1
     # Payload trả từ cache phải giống hệt payload lượt đầu — đọc từ JSONB ra, không phải
     # dựng lại từ đâu khác.
-    assert sau.payload["meaning_vi"] == "tái tạo"
-    assert _so_dong_cache(db) == 1
+    assert second_response.payload["meaning_vi"] == "tái tạo"
+    assert _cache_row_count(db) == 1
 
 
-def test_cache_hit_tang_bo_dem_hit_count(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_cache_hit_increments_hit_count_counter(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Ba lượt tra = 1 miss + 2 hit. Bộ đếm là 2, không phải 3."""
-    gemini.tra_json(PAYLOAD)
-    yeu_cau = _yeu_cau("renewable")
+    gemini.queue_json(PAYLOAD)
+    request = _make_request("renewable")
 
-    service.translate(db, owner.id, yeu_cau)
-    service.translate(db, owner.id, yeu_cau)
-    service.translate(db, owner.id, yeu_cau)
+    service.translate(db, owner.id, request)
+    service.translate(db, owner.id, request)
+    service.translate(db, owner.id, request)
 
-    dong = _dong_cache_dau(db)
-    assert dong is not None
-    assert dong.hit_count == 2
+    cache_row = _first_cache_row(db)
+    assert cache_row is not None
+    assert cache_row.hit_count == 2
 
 
-def test_khac_ngu_canh_thi_khong_dung_chung_dong_cache(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_different_context_does_not_share_cache_row(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Cùng một từ trong hai câu khác nhau có thể mang hai nghĩa khác nhau. Dùng chung một
     dòng cache là trả nghĩa của câu trước cho câu sau."""
-    gemini.tra_json(PAYLOAD, lap=2)
+    gemini.queue_json(PAYLOAD, times=2)
 
-    service.translate(db, owner.id, _yeu_cau("renewable", "context A"))
-    service.translate(db, owner.id, _yeu_cau("renewable", "context B"))
+    service.translate(db, owner.id, _make_request("renewable", "context A"))
+    service.translate(db, owner.id, _make_request("renewable", "context B"))
 
-    assert gemini.so_lan_goi == 2
-    assert _so_dong_cache(db) == 2
+    assert gemini.call_count == 2
+    assert _cache_row_count(db) == 2
 
 
-def test_khoa_cache_khong_dung_do_khi_ranh_gioi_text_ngu_canh_dich_chuyen(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_cache_key_does_not_collide_when_text_context_boundary_shifts(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """("ab","c") và ("a","bc") — nối chuỗi trần sẽ ra cùng một material.
 
     Đây chính là lý do `_append_field` có tiền tố độ dài. Bỏ tiền tố đi thì test này đỏ, và
     không có test nào khác đỏ.
     """
-    gemini.tra_json(PAYLOAD, lap=2)
+    gemini.queue_json(PAYLOAD, times=2)
 
-    service.translate(db, owner.id, _yeu_cau("ab", "c"))
-    service.translate(db, owner.id, _yeu_cau("a", "bc"))
+    service.translate(db, owner.id, _make_request("ab", "c"))
+    service.translate(db, owner.id, _make_request("a", "bc"))
 
-    assert _so_dong_cache(db) == 2
+    assert _cache_row_count(db) == 2
 
 
 # ── giới hạn độ dài ───────────────────────────────────────────────────────────
 
 
-def test_text_vuot_1500_ky_tu_bi_tu_choi_truoc_khi_cham_gemini(
+def test_text_over_1500_characters_is_rejected_before_touching_gemini(
     db: Session,
-    gemini: GeminiGia,
+    gemini: FakeGemini,
     service: TranslationService,
-    owner: NguoiDungTest,
-    khong_goi_gemini: Callable[[], None],
+    owner: UserFixture,
+    assert_no_gemini_call: Callable[[], None],
 ) -> None:
     """Chặn ở 1500 ký tự (ràng buộc #9), và chặn TRƯỚC Gemini.
 
     Vế thứ hai là phần đắt: một đoạn 20 nghìn ký tự lọt xuống Gemini vẫn "chạy được", chỉ là
     tốn tiền và chậm. Bản Java khẳng định bằng `verifyNoInteractions`.
     """
-    qua_dai = "a" * (MAX_TEXT_LENGTH + 1)
+    too_long_text = "a" * (MAX_TEXT_LENGTH + 1)
 
     with pytest.raises(AppError) as ex:
-        service.translate(db, owner.id, _yeu_cau(qua_dai))
+        service.translate(db, owner.id, _make_request(too_long_text))
 
     assert ex.value.code is ErrorCode.TEXT_TOO_LONG
-    khong_goi_gemini()
-    assert _so_dong_cache(db) == 0
+    assert_no_gemini_call()
+    assert _cache_row_count(db) == 0
 
 
-def test_dung_1500_ky_tu_van_qua(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_exactly_1500_characters_still_passes(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Chặn khi `> 1500`, không phải `>= 1500`. Lệch một ký tự ở đây là hai đầu nói hai luật
     khác nhau: extension cho gửi, backend từ chối."""
-    gemini.tra_json(PAYLOAD)
+    gemini.queue_json(PAYLOAD)
 
-    response = service.translate(db, owner.id, _yeu_cau("a" * MAX_TEXT_LENGTH))
+    response = service.translate(db, owner.id, _make_request("a" * MAX_TEXT_LENGTH))
 
     assert response.cached is False
 
@@ -267,8 +267,8 @@ def test_dung_1500_ky_tu_van_qua(
 # ── đối số gửi sang Gemini ────────────────────────────────────────────────────
 
 
-def test_gemini_nhan_dung_schema_va_muc_timeout_cua_tuyen_da_do(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_gemini_receives_correct_schema_and_timeout_for_detected_route(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """Schema phải khớp tuyến đã dò ra, không phải một schema mặc định nào đó.
 
@@ -277,32 +277,32 @@ def test_gemini_nhan_dung_schema_va_muc_timeout_cua_tuyen_da_do(
     `GeminiTimeout` cố ý không có giá trị mặc định: một lượt dịch lỡ chạy ở mức 30 giây
     không làm gì đỏ, chỉ bắt người dùng đợi gấp đôi khi Gemini chậm thật.
     """
-    gemini.tra_json(PAYLOAD)
+    gemini.queue_json(PAYLOAD)
 
-    service.translate(db, owner.id, _yeu_cau("renewable"))
+    service.translate(db, owner.id, _make_request("renewable"))
 
-    body = _body_gui_gemini(gemini)
+    body = _body_sent_to_gemini(gemini)
     assert body["generationConfig"]["responseSchema"] == schema_for(
         Direction.EN_VI, Mode.WORD
     )
     assert body["generationConfig"]["responseMimeType"] == "application/json"
-    doc = gemini.requests[0].extensions["timeout"]["read"]
-    assert doc == float(get_settings().gemini_timeout_seconds)
+    read_timeout = gemini.requests[0].extensions["timeout"]["read"]
+    assert read_timeout == float(get_settings().gemini_timeout_seconds)
 
 
-def test_prompt_gui_di_chua_ca_text_lan_ngu_canh(
-    db: Session, gemini: GeminiGia, service: TranslationService, owner: NguoiDungTest
+def test_sent_prompt_contains_both_text_and_context(
+    db: Session, gemini: FakeGemini, service: TranslationService, owner: UserFixture
 ) -> None:
     """`{{TEXT}}` và `{{CONTEXT}}` phải được thay thật.
 
     Quên thay một trong hai vẫn ra một prompt trông bình thường và model vẫn trả JSON đúng
     schema — chỉ là nó đoán nghĩa của một từ mà nó không được cho biết là từ nào.
     """
-    gemini.tra_json(PAYLOAD)
+    gemini.queue_json(PAYLOAD)
 
-    service.translate(db, owner.id, _yeu_cau("renewable", "some context"))
+    service.translate(db, owner.id, _make_request("renewable", "some context"))
 
-    prompt = _body_gui_gemini(gemini)["contents"][0]["parts"][0]["text"]
+    prompt = _body_sent_to_gemini(gemini)["contents"][0]["parts"][0]["text"]
     assert "renewable" in prompt
     assert "some context" in prompt
     assert "{{" not in prompt

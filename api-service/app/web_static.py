@@ -3,7 +3,7 @@
 **Vì sao không để nền tảng lo việc này**, dù đó là cách hiển nhiên hơn — ba lý do độc lập,
 mỗi lý do đủ để loại:
 
-1. `tests/test_deploy_readiness.py::test_vercel_json_khong_duoc_co_rewrites` CẤM thêm
+1. `tests/test_deploy_readiness.py::test_vercel_json_must_not_have_rewrites` CẤM thêm
    `rewrites` vào `vercel.json`.
 2. Về kỹ thuật, thêm `rewrites` khi preset FastAPI đang bật làm **toàn bộ API trả 404**:
    rewrite chạy TRƯỚC function và *thay* đường dẫn chứ không chỉ định tuyến. Đó chính là lỗi
@@ -41,40 +41,40 @@ API_PREFIX = "/api/"
 #: `sw.js` là thứ trình duyệt tải về để biết CÓ BẢN MỚI HAY KHÔNG, và tên nó không mang
 #: hash. Để trình duyệt tự quyết cache bao lâu thì lượt kiểm tra bản mới đem bản cũ so với
 #: chính bản cũ — không bao giờ khác nhau, nên người dùng không bao giờ được báo.
-KHONG_CACHE = frozenset({"sw.js"})
+NO_CACHE = frozenset({"sw.js"})
 
 
-def thu_muc_static() -> Path | None:
+def static_dir() -> Path | None:
     """Thư mục SPA đã build, hoặc `None` nếu chưa build.
 
     Vắng mặt là chuyện bình thường: chạy backend-only bằng `uv run ielts-api`, hoặc chạy
     pytest, thì không ai build web cả.
     """
     settings = get_settings()
-    thu_muc = Path(settings.web_static_dir)
-    if not thu_muc.is_absolute():
-        thu_muc = API_SERVICE_ROOT / thu_muc
-    return thu_muc if (thu_muc / "index.html").is_file() else None
+    static_path = Path(settings.web_static_dir)
+    if not static_path.is_absolute():
+        static_path = API_SERVICE_ROOT / static_path
+    return static_path if (static_path / "index.html").is_file() else None
 
 
-def gan_web_app(app: FastAPI) -> None:
+def mount_web_app(app: FastAPI) -> None:
     """Lắp SPA vào app. Gọi SAU KHI đã include mọi router của API.
 
     Thứ tự có ý nghĩa tuyệt đối: catch-all khớp mọi đường dẫn, nên route nào khai sau nó sẽ
     không bao giờ nhận được request.
     """
-    goc = thu_muc_static()
-    if goc is None:
+    static_root = static_dir()
+    if static_root is None:
         # Ghi log rồi đi tiếp, KHÔNG ném. Ném ở đây biến một bộ test đang xanh thành
         # FileNotFoundError ở một file trông chẳng liên quan gì tới thứ vừa sửa.
         log.info("Không thấy SPA đã build — chạy ở chế độ chỉ-API.")
         return
 
     # Asset có hash trong tên nên cache được vĩnh viễn; `StaticFiles` đặt sẵn ETag/Last-Modified.
-    if (goc / "assets").is_dir():
-        app.mount("/assets", StaticFiles(directory=goc / "assets"), name="assets")
+    if (static_root / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=static_root / "assets"), name="assets")
 
-    index = goc / "index.html"
+    index = static_root / "index.html"
 
     # `api_route(methods=["GET", "HEAD"])` chứ KHÔNG `@app.get`.
     #
@@ -82,8 +82,8 @@ def gan_web_app(app: FastAPI) -> None:
     # Thiếu HEAD ở đây thì mọi đường dẫn của SPA trả 405 cho HEAD — và HEAD là thứ health
     # check, monitor lẫn trình thu thập liên kết dùng đầu tiên. `StaticFiles` ở trên không
     # dính vì nó là `Route` thật của Starlette; chỉ catch-all này dính.
-    @app.api_route("/{duong_dan:path}", methods=["GET", "HEAD"], include_in_schema=False)
-    def spa(duong_dan: str, request: Request) -> Response:
+    @app.api_route("/{spa_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    def spa(spa_path: str, request: Request) -> Response:
         """Trả `index.html` cho mọi đường dẫn không thuộc API — SPA tự định tuyến phía client.
 
         `/api/*` PHẢI rơi tiếp xuống handler 404 cũ và giữ nguyên hình dạng
@@ -92,17 +92,17 @@ def gan_web_app(app: FastAPI) -> None:
         không đọc được" thay vì "không tìm thấy endpoint".
         """
         if request.url.path.startswith(API_PREFIX):
-            return _khong_tim_thay(request)
+            return _not_found(request)
 
         # File thật có trong thư mục build (favicon, manifest, icon…) thì trả chính nó.
         # `resolve()` + kiểm cha là chốt chặn path traversal: `../../etc/passwd` phải không
         # ra khỏi được thư mục build.
-        if duong_dan:
-            ung_vien = (goc / duong_dan).resolve()
-            if ung_vien.is_file() and goc.resolve() in ung_vien.parents:
-                if duong_dan in KHONG_CACHE:
-                    return FileResponse(ung_vien, headers={"Cache-Control": "no-cache"})
-                return FileResponse(ung_vien)
+        if spa_path:
+            candidate = (static_root / spa_path).resolve()
+            if candidate.is_file() and static_root.resolve() in candidate.parents:
+                if spa_path in NO_CACHE:
+                    return FileResponse(candidate, headers={"Cache-Control": "no-cache"})
+                return FileResponse(candidate)
 
         # `no-cache` chứ không `no-store`: trình duyệt vẫn giữ bản sao nhưng luôn hỏi lại
         # trước khi dùng. Cache index.html là cách chắc chắn nhất để người dùng chạy mã cũ
@@ -110,7 +110,7 @@ def gan_web_app(app: FastAPI) -> None:
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
-def _khong_tim_thay(request: Request) -> Response:
+def _not_found(request: Request) -> Response:
     """404 mang đúng hình dạng lỗi chung, y như handler ở `main.py`."""
     from fastapi.responses import JSONResponse
 

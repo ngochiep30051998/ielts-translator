@@ -16,18 +16,18 @@ from __future__ import annotations
 from typing import Any
 
 from app.translation.service import MAX_TEXT_LENGTH
-from tests.conftest import GeminiGia, NguoiDungTest
+from tests.conftest import FakeGemini, UserFixture
 
 
-def test_tra_ve_direction_mode_va_payload(
-    client: Any, gemini: GeminiGia, owner: NguoiDungTest
+def test_returns_direction_mode_and_payload(
+    client: Any, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """Hình dạng phản hồi thành công — bốn khoá, tên camelCase như Jackson phát ra.
 
     `direction` + `mode` là thứ bubble phân nhánh để chọn template hiển thị, `cached` là thứ
     side panel dùng để biết lượt tra này có tốn quota hay không.
     """
-    gemini.tra_json({"meaning_vi": "tái tạo"})
+    gemini.queue_json({"meaning_vi": "tái tạo"})
 
     resp = client.post(
         "/api/translate",
@@ -43,8 +43,8 @@ def test_tra_ve_direction_mode_va_payload(
     assert body["payload"]["meaning_vi"] == "tái tạo"
 
 
-def test_het_quota_tra_429_dung_hinh_dang_loi(
-    client: Any, gemini: GeminiGia, owner: NguoiDungTest
+def test_quota_exhausted_returns_429_with_correct_error_shape(
+    client: Any, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """429 của Gemini → GEMINI_QUOTA → 429 của ta, và KHÔNG retryable.
 
@@ -52,7 +52,7 @@ def test_het_quota_tra_429_dung_hinh_dang_loi(
     thế `GeminiClient` không được retry mã này: chỉ xếp MỘT phản hồi 429, lượt gọi thứ hai
     sẽ làm transport giả nổ.
     """
-    gemini.tra_status(429)
+    gemini.queue_status(429)
 
     resp = client.post("/api/translate", headers=owner.headers, json={"text": "renewable"})
 
@@ -61,11 +61,11 @@ def test_het_quota_tra_429_dung_hinh_dang_loi(
     assert body["code"] == "GEMINI_QUOTA"
     assert body["retryable"] is False
     assert body["message"]
-    assert gemini.so_lan_goi == 1
+    assert gemini.call_count == 1
 
 
-def test_gemini_chet_tra_503_va_duoc_danh_dau_retryable(
-    client: Any, gemini: GeminiGia, owner: NguoiDungTest
+def test_gemini_down_returns_503_and_is_marked_retryable(
+    client: Any, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """5xx của Gemini → GEMINI_UNAVAILABLE → 503, retryable = true.
 
@@ -73,7 +73,7 @@ def test_gemini_chet_tra_503_va_duoc_danh_dau_retryable(
     và số lượt gọi cũng là một khẳng định — retry ba lần thì mỗi sự cố bên Gemini nhân ba
     tải lên chính nó.
     """
-    gemini.tra_status(503, lap=2)
+    gemini.queue_status(503, times=2)
 
     resp = client.post("/api/translate", headers=owner.headers, json={"text": "renewable"})
 
@@ -81,11 +81,11 @@ def test_gemini_chet_tra_503_va_duoc_danh_dau_retryable(
     body = resp.json()
     assert body["code"] == "GEMINI_UNAVAILABLE"
     assert body["retryable"] is True
-    assert gemini.so_lan_goi == 2
+    assert gemini.call_count == 2
 
 
-def test_text_vuot_gioi_han_tra_400(
-    client: Any, gemini: GeminiGia, owner: NguoiDungTest
+def test_text_over_limit_returns_400(
+    client: Any, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """1501 ký tự → TEXT_TOO_LONG → 400, và không một byte nào đi tới Gemini."""
     resp = client.post(
@@ -99,8 +99,8 @@ def test_text_vuot_gioi_han_tra_400(
     assert gemini.requests == []
 
 
-def test_text_toan_khoang_trang_truot_validate_va_tra_400(
-    client: Any, gemini: GeminiGia, owner: NguoiDungTest
+def test_whitespace_only_text_fails_validation_and_returns_400(
+    client: Any, gemini: FakeGemini, owner: UserFixture
 ) -> None:
     """400 chứ không 422, và thông điệp bằng TIẾNG VIỆT.
 

@@ -18,20 +18,20 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.srs.models import MASTERED_REPETITIONS
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 
-def _luu(client: Any, owner: NguoiDungTest, term: str, nghia: str, tags: list[str]) -> int:
+def _save(client: Any, owner: UserFixture, term: str, meaning: str, tags: list[str]) -> int:
     resp = client.post(
         "/api/vocab",
         headers=owner.headers,
-        json={"term": term, "lang": "en", "pos": "n", "meaningVi": nghia, "tags": tags},
+        json={"term": term, "lang": "en", "pos": "n", "meaningVi": meaning, "tags": tags},
     )
     assert resp.status_code == 200, resp.text
     return int(resp.json()["id"])
 
 
-def _luu_khong_the(db: Session, user_id: int, term: str, nghia: str) -> int:
+def _save_without_card(db: Session, user_id: int, term: str, meaning: str) -> int:
     """Một từ KHÔNG có `srs_card`.
 
     Chèn thẳng bằng SQL chứ không qua `POST /api/vocab`: đường HTTP luôn tạo kèm thẻ ôn
@@ -44,24 +44,24 @@ def _luu_khong_the(db: Session, user_id: int, term: str, nghia: str) -> int:
                 "INSERT INTO vocab_entry (term, lang, pos, meaning_vi, tags, user_id) "
                 "VALUES (:t, 'en', 'n', :m, '{}', :u) RETURNING id"
             ),
-            {"t": term, "m": nghia, "u": user_id},
+            {"t": term, "m": meaning, "u": user_id},
         ).scalar_one()
     )
     db.commit()
     return entry_id
 
 
-def _dat_so_lan_on(db: Session, entry_id: int, so_lan: int) -> None:
+def _set_repetitions(db: Session, entry_id: int, repetitions: int) -> None:
     """Đặt thẳng `repetitions` của thẻ ôn gắn với từ.
 
     Không đi qua `POST /api/srs/review`: cần đúng MỘT con số, còn đường thật phải chạy đủ
-    `so_lan` lượt ôn và mỗi lượt lại đẩy `due_date` ra xa — dài dòng mà không kiểm thêm gì.
+    `repetitions` lượt ôn và mỗi lượt lại đẩy `due_date` ra xa — dài dòng mà không kiểm thêm gì.
     """
     db.execute(
         text(
             "UPDATE srs_card SET state = 'REVIEW', repetitions = :r WHERE vocab_entry_id = :v"
         ),
-        {"r": so_lan, "v": entry_id},
+        {"r": repetitions, "v": entry_id},
     )
     db.commit()
 
@@ -69,8 +69,8 @@ def _dat_so_lan_on(db: Session, entry_id: int, so_lan: int) -> None:
 # ── GET /api/vocab/tags ───────────────────────────────────────────────────────
 
 
-def test_tags_so_tu_rong_tra_object_rong_chu_khong_404(
-    client: Any, owner: NguoiDungTest
+def test_tags_empty_vocab_book_returns_empty_object_not_404(
+    client: Any, owner: UserFixture
 ) -> None:
     """Sổ từ rỗng là trạng thái BÌNH THƯỜNG của người dùng mới, không phải lỗi."""
     resp = client.get("/api/vocab/tags", headers=owner.headers)
@@ -79,8 +79,8 @@ def test_tags_so_tu_rong_tra_object_rong_chu_khong_404(
     assert resp.json() == {"total": 0, "untagged": 0, "tags": []}
 
 
-def test_tags_dem_so_tu_va_sap_xep_count_giam_dan_roi_tag_tang_dan(
-    client: Any, owner: NguoiDungTest
+def test_tags_counts_words_and_sorts_by_count_desc_then_tag_asc(
+    client: Any, owner: UserFixture
 ) -> None:
     """Thứ tự phải ỔN ĐỊNH: hàng chip trong tab Sổ từ nhảy loạn giữa hai lần tải là lỗi
     người dùng thấy ngay, còn `ORDER BY` thiếu tiêu chí phụ thì không có gì đỏ.
@@ -88,11 +88,11 @@ def test_tags_dem_so_tu_va_sap_xep_count_giam_dan_roi_tag_tang_dan(
     Hai tag `alpha`/`beta` cùng count để chốt tiêu chí phụ; cả hai viết thường ASCII nên
     kết quả không phụ thuộc collation của Postgres đang chạy test.
     """
-    _luu(client, owner, "renewable", "tái tạo", ["Giáo dục", "Môi trường"])
-    _luu(client, owner, "mitigate", "giảm nhẹ", ["Giáo dục", "Môi trường"])
-    _luu(client, owner, "curriculum", "chương trình học", ["Giáo dục"])
-    _luu(client, owner, "alphabet", "bảng chữ cái", ["alpha"])
-    _luu(client, owner, "betamax", "băng từ", ["beta"])
+    _save(client, owner, "renewable", "tái tạo", ["Giáo dục", "Môi trường"])
+    _save(client, owner, "mitigate", "giảm nhẹ", ["Giáo dục", "Môi trường"])
+    _save(client, owner, "curriculum", "chương trình học", ["Giáo dục"])
+    _save(client, owner, "alphabet", "bảng chữ cái", ["alpha"])
+    _save(client, owner, "betamax", "băng từ", ["beta"])
 
     resp = client.get("/api/vocab/tags", headers=owner.headers)
 
@@ -105,17 +105,17 @@ def test_tags_dem_so_tu_va_sap_xep_count_giam_dan_roi_tag_tang_dan(
     ]
 
 
-def test_tags_bo_qua_tu_khong_gan_the_nao(client: Any, owner: NguoiDungTest) -> None:
-    _luu(client, owner, "renewable", "tái tạo", [])
-    _luu(client, owner, "mitigate", "giảm nhẹ", ["Môi trường"])
+def test_tags_skips_words_with_no_tags(client: Any, owner: UserFixture) -> None:
+    _save(client, owner, "renewable", "tái tạo", [])
+    _save(client, owner, "mitigate", "giảm nhẹ", ["Môi trường"])
 
     resp = client.get("/api/vocab/tags", headers=owner.headers)
 
     assert resp.json()["tags"] == [{"tag": "Môi trường", "count": 1, "mastered": 0}]
 
 
-def test_tags_mot_tu_gan_trung_mot_the_chi_dem_mot_lan(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_tags_word_with_duplicate_tag_is_counted_once(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """`count` là SỐ TỪ, không phải số dòng sau khi bung mảng.
 
@@ -137,8 +137,8 @@ def test_tags_mot_tu_gan_trung_mot_the_chi_dem_mot_lan(
     assert resp.json()["tags"] == [{"tag": "dup", "count": 1, "mastered": 0}]
 
 
-def test_tags_total_la_tong_KHONG_loc_con_untagged_dem_the_rong(
-    client: Any, owner: NguoiDungTest
+def test_tags_total_is_unfiltered_sum_while_untagged_counts_empty_tags(
+    client: Any, owner: UserFixture
 ) -> None:
     """Ba con số của hàng chip đến từ MỘT lượt gọi.
 
@@ -146,10 +146,10 @@ def test_tags_total_la_tong_KHONG_loc_con_untagged_dem_the_rong(
     bật. Lấy nó từ `GET /api/vocab` (request có mang `tag`) là lý do chip "Tất cả" từng đọc
     thành đúng con số của chủ đề vừa bấm.
     """
-    _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
-    _luu(client, owner, "mitigate", "giảm nhẹ", ["Môi trường", "Giáo dục"])
-    _luu(client, owner, "curriculum", "chương trình học", [])
-    _luu(client, owner, "alphabet", "bảng chữ cái", [])
+    _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    _save(client, owner, "mitigate", "giảm nhẹ", ["Môi trường", "Giáo dục"])
+    _save(client, owner, "curriculum", "chương trình học", [])
+    _save(client, owner, "alphabet", "bảng chữ cái", [])
 
     resp = client.get("/api/vocab/tags", headers=owner.headers)
 
@@ -164,12 +164,12 @@ def test_tags_total_la_tong_KHONG_loc_con_untagged_dem_the_rong(
     }
 
 
-def test_tags_untagged_bang_0_khi_tu_nao_cung_co_the(
-    client: Any, owner: NguoiDungTest
+def test_tags_untagged_is_zero_when_every_word_has_a_tag(
+    client: Any, owner: UserFixture
 ) -> None:
     """Chip "Chưa gắn" chỉ được hiện khi con số này > 0 — chip đếm 0 là một ô bấm vào ra
     danh sách rỗng."""
-    _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
 
     resp = client.get("/api/vocab/tags", headers=owner.headers)
 
@@ -180,8 +180,8 @@ def test_tags_untagged_bang_0_khi_tu_nao_cung_co_the(
 # ── GET /api/vocab/tags — `mastered` (thanh thành thạo của chip chủ đề) ───────
 
 
-def test_tags_mastered_dem_tu_dat_nguong_thuoc_va_ngung_ngay_duoi_nguong(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_tags_mastered_counts_words_at_threshold_and_stops_just_below_it(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """`mastered` = số từ mang tag đó có thẻ ôn `repetitions >= MASTERED_REPETITIONS`.
 
@@ -191,11 +191,11 @@ def test_tags_mastered_dem_tu_dat_nguong_thuoc_va_ngung_ngay_duoi_nguong(
 
     Ba từ cùng một tag phủ cả ba trạng thái: đúng ngưỡng, ngay dưới ngưỡng, chưa ôn lần nào.
     """
-    dat = _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
-    gan = _luu(client, owner, "mitigate", "giảm nhẹ", ["Môi trường"])
-    _luu(client, owner, "curriculum", "chương trình học", ["Môi trường"])
-    _dat_so_lan_on(db, dat, MASTERED_REPETITIONS)
-    _dat_so_lan_on(db, gan, MASTERED_REPETITIONS - 1)
+    at_threshold_id = _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    below_threshold_id = _save(client, owner, "mitigate", "giảm nhẹ", ["Môi trường"])
+    _save(client, owner, "curriculum", "chương trình học", ["Môi trường"])
+    _set_repetitions(db, at_threshold_id, MASTERED_REPETITIONS)
+    _set_repetitions(db, below_threshold_id, MASTERED_REPETITIONS - 1)
 
     resp = client.get("/api/vocab/tags", headers=owner.headers)
 
@@ -203,15 +203,17 @@ def test_tags_mastered_dem_tu_dat_nguong_thuoc_va_ngung_ngay_duoi_nguong(
     assert resp.json()["tags"] == [{"tag": "Môi trường", "count": 3, "mastered": 1}]
 
 
-def test_tags_mastered_dem_rieng_cho_tung_tag_cua_cung_mot_tu(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_tags_mastered_counts_separately_for_each_tag_of_the_same_word(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Một từ đã thuộc mang hai tag thì cộng vào `mastered` của CẢ HAI — cùng cách `count`
     đang làm. Ô chủ đề ở tab Sổ từ tính % bằng `mastered / count`, nên hai con số phải đếm
     trên cùng một tập từ."""
-    ca_hai = _luu(client, owner, "renewable", "tái tạo", ["Môi trường", "Giáo dục"])
-    _luu(client, owner, "mitigate", "giảm nhẹ", ["Môi trường"])
-    _dat_so_lan_on(db, ca_hai, MASTERED_REPETITIONS)
+    entry_with_both_tags_id = _save(
+        client, owner, "renewable", "tái tạo", ["Môi trường", "Giáo dục"]
+    )
+    _save(client, owner, "mitigate", "giảm nhẹ", ["Môi trường"])
+    _set_repetitions(db, entry_with_both_tags_id, MASTERED_REPETITIONS)
 
     resp = client.get("/api/vocab/tags", headers=owner.headers)
 
@@ -221,8 +223,8 @@ def test_tags_mastered_dem_rieng_cho_tung_tag_cua_cung_mot_tu(
     ]
 
 
-def test_tags_mastered_tu_chua_co_the_on_van_nam_trong_count(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_tags_mastered_word_without_review_card_still_in_count(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Từ chưa có thẻ ôn (`pos = 'phrase'`, hoặc từ lưu trước khi có tính năng SRS) phải rơi
     ra ngoài `mastered` mà VẪN nằm trong `count`.
@@ -231,19 +233,19 @@ def test_tags_mastered_tu_chua_co_the_on_van_nam_trong_count(
     nó tự rơi ra. Đổi sang INNER JOIN cho "gọn" thì `count` tụt theo — chip chủ đề đếm thiếu
     đúng những từ người dùng không thấy lý do vì sao.
     """
-    entry_id = _luu_khong_the(db, owner.id, "renewable", "tái tạo")
-    gan_the = client.patch(
+    entry_id = _save_without_card(db, owner.id, "renewable", "tái tạo")
+    attach_tag_resp = client.patch(
         f"/api/vocab/{entry_id}", headers=owner.headers, json={"tags": ["Môi trường"]}
     )
-    assert gan_the.status_code == 200, gan_the.text
+    assert attach_tag_resp.status_code == 200, attach_tag_resp.text
 
     resp = client.get("/api/vocab/tags", headers=owner.headers)
 
     assert resp.json()["tags"] == [{"tag": "Môi trường", "count": 1, "mastered": 0}]
 
 
-def test_tags_mastered_khong_dem_hai_lan_khi_tag_bi_trung_trong_mang(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_tags_mastered_does_not_count_twice_when_tag_is_duplicated_in_array(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """`mastered` cũng phải đếm SỐ TỪ, không phải số dòng sau khi bung mảng — y như `count`.
 
@@ -277,41 +279,43 @@ def test_tags_mastered_khong_dem_hai_lan_khi_tag_bi_trung_trong_mang(
 # ── GET /api/vocab?untagged=true — chip "Chưa gắn" ────────────────────────────
 
 
-def test_untagged_chi_tra_tu_chua_gan_the_nao(client: Any, owner: NguoiDungTest) -> None:
-    _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
-    _luu(client, owner, "curriculum", "chương trình học", [])
-    _luu(client, owner, "alphabet", "bảng chữ cái", [])
+def test_untagged_returns_only_words_with_no_tags(client: Any, owner: UserFixture) -> None:
+    _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    _save(client, owner, "curriculum", "chương trình học", [])
+    _save(client, owner, "alphabet", "bảng chữ cái", [])
 
     body = client.get(
         "/api/vocab", headers=owner.headers, params={"untagged": "true"}
     ).json()
 
-    assert sorted(tu["term"] for tu in body["content"]) == ["alphabet", "curriculum"]
+    assert sorted(word["term"] for word in body["content"]) == ["alphabet", "curriculum"]
     assert body["totalElements"] == 2
 
 
-def test_untagged_mac_dinh_false_van_tra_ca_so_tu(client: Any, owner: NguoiDungTest) -> None:
+def test_untagged_defaults_to_false_and_still_returns_whole_vocab_book(
+    client: Any, owner: UserFixture
+) -> None:
     """Tham số MỚI không được đổi hành vi của request cũ — extension bản cũ không gửi nó."""
-    _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
-    _luu(client, owner, "curriculum", "chương trình học", [])
+    _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    _save(client, owner, "curriculum", "chương trình học", [])
 
     body = client.get("/api/vocab", headers=owner.headers).json()
 
     assert body["totalElements"] == 2
 
 
-def test_untagged_total_elements_dung_khi_trang_nho_hon_ket_qua(
-    client: Any, owner: NguoiDungTest
+def test_untagged_total_elements_correct_when_page_smaller_than_result_set(
+    client: Any, owner: UserFixture
 ) -> None:
     """Điều kiện lọc phải nằm trong `_search_conditions` — dùng chung cho câu LẤY và câu ĐẾM.
 
     Chỉ nhét vào câu lấy dữ liệu thì `content` đúng còn `totalElements` đếm cả sổ: side panel
     vẽ ra số trang không tồn tại, bấm sang là trang trắng.
     """
-    _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
-    _luu(client, owner, "curriculum", "chương trình học", [])
-    _luu(client, owner, "alphabet", "bảng chữ cái", [])
-    _luu(client, owner, "betamax", "băng từ", [])
+    _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    _save(client, owner, "curriculum", "chương trình học", [])
+    _save(client, owner, "alphabet", "bảng chữ cái", [])
+    _save(client, owner, "betamax", "băng từ", [])
 
     body = client.get(
         "/api/vocab", headers=owner.headers, params={"untagged": "true", "size": 1}
@@ -322,26 +326,26 @@ def test_untagged_total_elements_dung_khi_trang_nho_hon_ket_qua(
     assert len(body["content"]) == 1
 
 
-def test_untagged_ket_hop_q_van_loc_ca_hai(client: Any, owner: NguoiDungTest) -> None:
+def test_untagged_combined_with_q_still_filters_by_both(client: Any, owner: UserFixture) -> None:
     """`untagged` KHÔNG đi cùng `tag`, nhưng đi cùng ô tìm kiếm thì bình thường."""
-    _luu(client, owner, "renewable", "tái tạo", [])
-    _luu(client, owner, "curriculum", "chương trình học", [])
-    _luu(client, owner, "renewal", "sự gia hạn", ["Môi trường"])
+    _save(client, owner, "renewable", "tái tạo", [])
+    _save(client, owner, "curriculum", "chương trình học", [])
+    _save(client, owner, "renewal", "sự gia hạn", ["Môi trường"])
 
     body = client.get(
         "/api/vocab", headers=owner.headers, params={"untagged": "true", "q": "renew"}
     ).json()
 
-    assert [tu["term"] for tu in body["content"]] == ["renewable"]
+    assert [word["term"] for word in body["content"]] == ["renewable"]
     assert body["totalElements"] == 1
 
 
-def test_untagged_kem_tag_tra_400_vi_hai_dieu_kien_mau_thuan(
-    client: Any, owner: NguoiDungTest
+def test_untagged_with_tag_returns_400_because_conditions_conflict(
+    client: Any, owner: UserFixture
 ) -> None:
     """Chọn ngầm một trong hai là tệ hơn từ chối: người dùng thấy một danh sách không giải
     thích được, còn backend thì không nói ra nó đã bỏ điều kiện nào."""
-    _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
 
     resp = client.get(
         "/api/vocab",
@@ -357,10 +361,10 @@ def test_untagged_kem_tag_tra_400_vi_hai_dieu_kien_mau_thuan(
 # ── PATCH /api/vocab/{id} ─────────────────────────────────────────────────────
 
 
-def test_patch_doi_nghia_va_giu_nguyen_tag_khi_tag_vang_mat(
-    client: Any, owner: NguoiDungTest
+def test_patch_changes_meaning_and_keeps_tags_when_tags_absent(
+    client: Any, owner: UserFixture
 ) -> None:
-    entry_id = _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    entry_id = _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
 
     resp = client.patch(
         f"/api/vocab/{entry_id}", headers=owner.headers, json={"meaningVi": "có thể tái tạo"}
@@ -371,14 +375,14 @@ def test_patch_doi_nghia_va_giu_nguyen_tag_khi_tag_vang_mat(
     assert resp.json()["tags"] == ["Môi trường"]
 
 
-def test_patch_thay_the_toan_bo_tag_chu_khong_gop_them(
-    client: Any, owner: NguoiDungTest
+def test_patch_replaces_all_tags_instead_of_merging(
+    client: Any, owner: UserFixture
 ) -> None:
     """Ngữ nghĩa NGƯỢC với `POST /api/vocab` (`_merge_tags` gộp thêm).
 
     Trộn hai ngữ nghĩa vào một endpoint thì không còn cách nào gỡ một thẻ đã gắn nhầm.
     """
-    entry_id = _luu(client, owner, "renewable", "tái tạo", ["Môi trường", "gắn nhầm"])
+    entry_id = _save(client, owner, "renewable", "tái tạo", ["Môi trường", "gắn nhầm"])
 
     resp = client.patch(
         f"/api/vocab/{entry_id}", headers=owner.headers, json={"tags": ["Giáo dục"]}
@@ -390,33 +394,35 @@ def test_patch_thay_the_toan_bo_tag_chu_khong_gop_them(
     assert resp.json()["meaningVi"] == "tái tạo"
 
 
-def test_patch_mang_tag_rong_xoa_sach_the_khac_han_voi_vang_mat(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_patch_empty_tag_array_clears_all_tags_unlike_absent_field(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Đây là ca mà `None` làm "không đổi" sẽ phá: `[]` là một YÊU CẦU thật (gỡ hết thẻ),
     không phải "client không gửi gì"."""
-    entry_id = _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    entry_id = _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
 
-    vang_mat = client.patch(
+    absent_tags_resp = client.patch(
         f"/api/vocab/{entry_id}", headers=owner.headers, json={"meaningVi": "tái tạo"}
     )
-    assert vang_mat.json()["tags"] == ["Môi trường"]
+    assert absent_tags_resp.json()["tags"] == ["Môi trường"]
 
-    rong = client.patch(f"/api/vocab/{entry_id}", headers=owner.headers, json={"tags": []})
+    empty_tags_resp = client.patch(
+        f"/api/vocab/{entry_id}", headers=owner.headers, json={"tags": []}
+    )
 
-    assert rong.status_code == 200, rong.text
-    assert rong.json()["tags"] == []
+    assert empty_tags_resp.status_code == 200, empty_tags_resp.text
+    assert empty_tags_resp.json()["tags"] == []
     db.expire_all()
-    con_lai = db.execute(
+    remaining_tags = db.execute(
         text("SELECT tags FROM vocab_entry WHERE id = :i"), {"i": entry_id}
     ).scalar_one()
-    assert con_lai == []
+    assert remaining_tags == []
 
 
-def test_patch_null_la_khong_doi(client: Any, owner: NguoiDungTest) -> None:
+def test_patch_null_means_no_change(client: Any, owner: UserFixture) -> None:
     """Hợp đồng message của client (`UpdateVocabRequest`) dùng `null` cho "không đổi field
     này", nên body gửi lên có thể mang khoá với giá trị `null` — phải tương đương vắng mặt."""
-    entry_id = _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    entry_id = _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
 
     resp = client.patch(
         f"/api/vocab/{entry_id}",
@@ -429,8 +435,8 @@ def test_patch_null_la_khong_doi(client: Any, owner: NguoiDungTest) -> None:
     assert resp.json()["tags"] == ["Môi trường"]
 
 
-def test_patch_body_rong_khong_doi_gi(client: Any, owner: NguoiDungTest) -> None:
-    entry_id = _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
+def test_patch_empty_body_changes_nothing(client: Any, owner: UserFixture) -> None:
+    entry_id = _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
 
     resp = client.patch(f"/api/vocab/{entry_id}", headers=owner.headers, json={})
 
@@ -439,12 +445,12 @@ def test_patch_body_rong_khong_doi_gi(client: Any, owner: NguoiDungTest) -> None
     assert resp.json()["tags"] == ["Môi trường"]
 
 
-def test_patch_nghia_toan_khoang_trang_bi_tu_choi_va_khong_ghi_de(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_patch_whitespace_only_meaning_is_rejected_and_does_not_overwrite(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Lỗi validate của cả dự án trả 400 kèm `{code, message, retryable}` — xem
     `main.py: handle_validation`. Kiểm cả dữ liệu: từ chối mà vẫn ghi là ca im lặng nhất."""
-    entry_id = _luu(client, owner, "renewable", "tái tạo", ["Môi trường"])
+    entry_id = _save(client, owner, "renewable", "tái tạo", ["Môi trường"])
 
     resp = client.patch(
         f"/api/vocab/{entry_id}", headers=owner.headers, json={"meaningVi": "   "}
@@ -461,7 +467,7 @@ def test_patch_nghia_toan_khoang_trang_bi_tu_choi_va_khong_ghi_de(
     )
 
 
-def test_patch_id_khong_ton_tai_tra_404_not_found(client: Any, owner: NguoiDungTest) -> None:
+def test_patch_nonexistent_id_returns_404_not_found(client: Any, owner: UserFixture) -> None:
     resp = client.patch("/api/vocab/999999", headers=owner.headers, json={"meaningVi": "x"})
 
     assert resp.status_code == 404, resp.text
@@ -469,8 +475,8 @@ def test_patch_id_khong_ton_tai_tra_404_not_found(client: Any, owner: NguoiDungT
     assert resp.json()["retryable"] is False
 
 
-def test_patch_chua_dang_nhap_tra_401(client: Any, owner: NguoiDungTest) -> None:
-    entry_id = _luu(client, owner, "renewable", "tái tạo", [])
+def test_patch_without_login_returns_401(client: Any, owner: UserFixture) -> None:
+    entry_id = _save(client, owner, "renewable", "tái tạo", [])
 
     resp = client.patch(f"/api/vocab/{entry_id}", json={"meaningVi": "x"})
 
@@ -478,7 +484,7 @@ def test_patch_chua_dang_nhap_tra_401(client: Any, owner: NguoiDungTest) -> None
     assert resp.json()["code"] == "UNAUTHORIZED"
 
 
-def test_cors_cho_phep_method_patch(client: Any) -> None:
+def test_cors_allows_patch_method(client: Any) -> None:
     """`allow_methods` của CORSMiddleware liệt kê TAY. Thiếu PATCH ở đó thì extension vấp
     preflight và request chết trước khi chạm backend — không log, không test router nào đỏ."""
     resp = client.options(
@@ -496,10 +502,10 @@ def test_cors_cho_phep_method_patch(client: Any) -> None:
 # ── ba field SRS trong VocabEntryDto ──────────────────────────────────────────
 
 
-def test_danh_sach_kem_trang_thai_the_on(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_list_includes_review_card_state(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
-    entry_id = _luu(client, owner, "renewable", "tái tạo", [])
+    entry_id = _save(client, owner, "renewable", "tái tạo", [])
     db.execute(
         text(
             "UPDATE srs_card SET state = 'REVIEW', repetitions = 4, "
@@ -510,41 +516,43 @@ def test_danh_sach_kem_trang_thai_the_on(
     db.commit()
     db.expire_all()
 
-    tu = client.get("/api/vocab", headers=owner.headers).json()["content"][0]
+    word = client.get("/api/vocab", headers=owner.headers).json()["content"][0]
 
-    assert tu["srsState"] == "REVIEW"
-    assert tu["srsRepetitions"] == 4
-    assert tu["srsDueDate"] == (date.today() + timedelta(days=6)).isoformat()
+    assert word["srsState"] == "REVIEW"
+    assert word["srsRepetitions"] == 4
+    assert word["srsDueDate"] == (date.today() + timedelta(days=6)).isoformat()
 
 
-def test_ba_field_srs_cung_null_khi_tu_chua_co_the(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_three_srs_fields_all_null_when_word_has_no_card(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """CẢ BA cùng null nghĩa là "chưa có thẻ ôn" — trạng thái thật, không phải "chưa tải
     xong". UI vẽ thanh thành thạo phải phân biệt được hai thứ đó."""
-    _luu_khong_the(db, owner.id, "renewable", "tái tạo")
+    _save_without_card(db, owner.id, "renewable", "tái tạo")
 
-    tu = client.get("/api/vocab", headers=owner.headers).json()["content"][0]
+    word = client.get("/api/vocab", headers=owner.headers).json()["content"][0]
 
-    assert tu["srsState"] is None
-    assert tu["srsDueDate"] is None
-    assert tu["srsRepetitions"] is None
-
-
-def test_doc_mot_tu_cung_kem_trang_thai_the_on(client: Any, owner: NguoiDungTest) -> None:
-    entry_id = _luu(client, owner, "renewable", "tái tạo", [])
-
-    tu = client.get(f"/api/vocab/{entry_id}", headers=owner.headers).json()
-
-    assert tu["srsState"] == "NEW"
-    assert tu["srsRepetitions"] == 0
-    assert tu["srsDueDate"] == date.today().isoformat()
+    assert word["srsState"] is None
+    assert word["srsDueDate"] is None
+    assert word["srsRepetitions"] is None
 
 
-def test_patch_tra_ve_dto_day_du_kem_field_srs(client: Any, owner: NguoiDungTest) -> None:
+def test_reading_one_word_also_includes_review_card_state(
+    client: Any, owner: UserFixture
+) -> None:
+    entry_id = _save(client, owner, "renewable", "tái tạo", [])
+
+    word = client.get(f"/api/vocab/{entry_id}", headers=owner.headers).json()
+
+    assert word["srsState"] == "NEW"
+    assert word["srsRepetitions"] == 0
+    assert word["srsDueDate"] == date.today().isoformat()
+
+
+def test_patch_returns_full_dto_including_srs_fields(client: Any, owner: UserFixture) -> None:
     """Response của PATCH là `VocabEntryDto` nguyên vẹn — client thay thẳng dòng trong danh
     sách bằng nó, nên thiếu field SRS là thanh thành thạo biến mất sau khi bấm Lưu."""
-    entry_id = _luu(client, owner, "renewable", "tái tạo", [])
+    entry_id = _save(client, owner, "renewable", "tái tạo", [])
 
     resp = client.patch(
         f"/api/vocab/{entry_id}", headers=owner.headers, json={"meaningVi": "tái sinh"}
@@ -556,8 +564,8 @@ def test_patch_tra_ve_dto_day_du_kem_field_srs(client: Any, owner: NguoiDungTest
     assert resp.json()["srsDueDate"] == date.today().isoformat()
 
 
-def test_join_the_on_khong_lam_lech_danh_sach_lan_total_elements(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_review_card_join_does_not_skew_list_or_total_elements(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Từ CHƯA có thẻ vẫn phải nằm trong danh sách.
 
@@ -565,9 +573,9 @@ def test_join_the_on_khong_lam_lech_danh_sach_lan_total_elements(
     câu lấy dữ liệu sẽ ra `totalElements = 3` mà `content` chỉ có 2 — phân trang lệch mà
     không có gì đỏ.
     """
-    _luu(client, owner, "renewable", "tái tạo", [])
-    _luu(client, owner, "mitigate", "giảm nhẹ", [])
-    _luu_khong_the(db, owner.id, "curriculum", "chương trình học")
+    _save(client, owner, "renewable", "tái tạo", [])
+    _save(client, owner, "mitigate", "giảm nhẹ", [])
+    _save_without_card(db, owner.id, "curriculum", "chương trình học")
 
     body = client.get("/api/vocab", headers=owner.headers).json()
 

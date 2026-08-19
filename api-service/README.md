@@ -125,7 +125,7 @@ Thư mục này là bản port 1:1 của một backend Spring Boot. Vài lựa c
 | Bản Java | Ở đây | Vì sao |
 |---|---|---|
 | `SessionFilter` + bean `@RequestScope` | `Depends(current_user_id)` | Không còn trạng thái theo thread để rò giữa hai request |
-| `VocabEntrySavedEvent` + `@EventListener` | gọi thẳng `tao_the_khi_luu_tu()` | Listener đồng bộ trong cùng transaction đúng bằng một lời gọi hàm |
+| `VocabEntrySavedEvent` + `@EventListener` | gọi thẳng `create_card_on_vocab_saved()` | Listener đồng bộ trong cùng transaction đúng bằng một lời gọi hàm |
 | `@Async` + `ThreadPoolTaskExecutor` | `BackgroundTasks` | |
 | Flyway | `app/migrator.py` | SQL giữ dạng thuần; `migrator.py` đọc được cả `flyway_schema_history` cũ nên schema dựng từ bản Java dùng tiếp được, không cần đánh số lại |
 | Testcontainers | `pgserver` | Postgres 16 thật, không cần Docker |

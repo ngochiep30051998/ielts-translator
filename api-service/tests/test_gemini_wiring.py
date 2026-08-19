@@ -16,7 +16,7 @@ from app.common.gemini import CONNECT_TIMEOUT_SECONDS, GeminiClient, GeminiTimeo
 from app.config import Settings
 
 
-def test_du_ba_muc_timeout_va_khong_muc_nao_thieu() -> None:
+def test_all_three_timeout_tiers_present_and_none_missing() -> None:
     """Nếu ai đó thêm một mức thứ tư mà quên nhánh trong `_read_timeout`, `assert_never` của
     mypy bắt lúc kiểm kiểu và vòng lặp này bắt lúc chạy."""
     settings = Settings(
@@ -29,7 +29,7 @@ def test_du_ba_muc_timeout_va_khong_muc_nao_thieu() -> None:
         assert _read_timeout(settings, tier) > 0
 
 
-def test_moi_muc_lay_dung_bien_cau_hinh_cua_no() -> None:
+def test_each_tier_reads_its_own_config_variable() -> None:
     """Ba giá trị cố ý khác nhau và khác mặc định: nếu code lỡ đọc nhầm biến, con số trả về
     sẽ là của mức khác chứ không phải một giá trị vô lý dễ thấy."""
     settings = Settings(
@@ -43,7 +43,7 @@ def test_moi_muc_lay_dung_bien_cau_hinh_cua_no() -> None:
     assert _read_timeout(settings, GeminiTimeout.QUIZ_GRADE) == 33
 
 
-def test_client_that_dung_duoc_tu_cau_hinh_va_giu_timeout_rieng() -> None:
+def test_real_client_builds_from_config_and_keeps_separate_timeouts() -> None:
     """Dựng client thật từ `Settings` — tương đương phần "GeminiClient thật dựng được từ nó"
     của bản Java."""
     settings = Settings(
@@ -68,7 +68,7 @@ def test_client_that_dung_duoc_tu_cau_hinh_va_giu_timeout_rieng() -> None:
         client.close()
 
 
-def test_base_url_lay_tu_cau_hinh_khong_hardcode() -> None:
+def test_base_url_comes_from_config_not_hardcoded() -> None:
     """Ràng buộc #6: không hardcode giá trị nào. `GEMINI_BASE_URL` cũng là thứ test trỏ về
     cổng chết để không lượt gọi nào lọt ra mạng thật."""
     settings = Settings(GEMINI_BASE_URL="http://127.0.0.1:1")

@@ -18,12 +18,12 @@ from app.quiz.grader import grade_collocation, grade_fill_blank
 # ── FILL_BLANK ────────────────────────────────────────────────────────────────
 
 
-def test_khop_chinh_xac_thi_dung() -> None:
+def test_exact_match_is_correct() -> None:
     """Ca cơ bản nhất: gõ đúng nguyên văn đáp án thì đúng."""
     assert grade_fill_blank("mitigate", "mitigate") is True
 
 
-def test_thua_khoang_trang_hai_dau_van_dung() -> None:
+def test_extra_whitespace_on_both_ends_is_still_correct() -> None:
     """Khoảng trắng thừa hai đầu là lỗi gõ, không phải lỗi kiến thức.
 
     Ô nhập của panel không tự trim, nên không cắt ở đây là chấm sai người gõ đúng.
@@ -31,13 +31,13 @@ def test_thua_khoang_trang_hai_dau_van_dung() -> None:
     assert grade_fill_blank("  mitigate  ", "mitigate") is True
 
 
-def test_khac_hoa_thuong_van_dung() -> None:
+def test_different_letter_case_is_still_correct() -> None:
     """Viết hoa không phải thứ đang luyện ở loại câu này."""
     assert grade_fill_blank("MITIGATE", "mitigate") is True
     assert grade_fill_blank("Mitigate", "mitigate") is True
 
 
-def test_khong_lemmatize_sai_dang_tu_la_sai() -> None:
+def test_no_lemmatization_wrong_word_form_is_wrong() -> None:
     """CỐ Ý không lemmatize — sai dạng từ là sai.
 
     Chấp nhận "mitigate" khi đáp án là "mitigated" là dạy sai: chia động từ đúng chính là
@@ -48,7 +48,7 @@ def test_khong_lemmatize_sai_dang_tu_la_sai() -> None:
     assert grade_fill_blank("mitigates", "mitigate") is False
 
 
-def test_rong_chi_khoang_trang_hoac_none_deu_sai_khong_no() -> None:
+def test_empty_whitespace_only_or_none_are_wrong_without_raising() -> None:
     """Rỗng, chỉ khoảng trắng, hoặc None đều là SAI và không được ném.
 
     Chuỗi rỗng là giá trị hợp lệ trên đường truyền — nó nghĩa là "bỏ qua câu này". Ném ở đây
@@ -60,7 +60,7 @@ def test_rong_chi_khoang_trang_hoac_none_deu_sai_khong_no() -> None:
     assert grade_fill_blank("mitigate", None) is False
 
 
-def test_lower_chu_khong_casefold() -> None:
+def test_uses_lower_not_casefold() -> None:
     """So bằng `lower()` chứ KHÔNG `casefold()` — bằng đúng `equalsIgnoreCase` bên Java.
 
     Không có trong bản Java vì Java không có `casefold` để mà chọn nhầm. Ở Python thì có, và
@@ -73,18 +73,18 @@ def test_lower_chu_khong_casefold() -> None:
 # ── COLLOCATION_CHOICE ────────────────────────────────────────────────────────
 
 
-def test_chon_dung_index_thi_dung() -> None:
+def test_choosing_correct_index_is_correct() -> None:
     """Answer đi trên đường truyền LUÔN là chuỗi, kể cả với câu trắc nghiệm."""
     assert grade_collocation("2", 2) is True
     assert grade_collocation(" 2 ", 2) is True
 
 
-def test_chon_sai_index_thi_sai() -> None:
+def test_choosing_wrong_index_is_wrong() -> None:
     """Chọn nhầm ô thì sai — không có phần thưởng cho việc chọn gần đúng."""
     assert grade_collocation("1", 2) is False
 
 
-def test_answer_khong_parse_duoc_la_sai_khong_phai_loi() -> None:
+def test_unparsable_answer_is_wrong_not_an_error() -> None:
     """Chuỗi không parse được thành index tính là SAI, không phải lỗi.
 
     Người dùng gõ bậy không phải sự cố hệ thống. `"2.0"` nằm trong danh sách một cách có chủ

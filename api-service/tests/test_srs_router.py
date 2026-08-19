@@ -12,11 +12,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 
 def _seed(
-    db: Session, user_id: int, term: str, *, den_han: bool = True, state: str = "REVIEW"
+    db: Session, user_id: int, term: str, *, due: bool = True, state: str = "REVIEW"
 ) -> tuple[int, int]:
     """Trả (vocab_id, card_id)."""
     vocab_id = int(
@@ -38,15 +38,15 @@ def _seed(
                 "                      ease_factor, interval_days) "
                 "VALUES (:v, CURRENT_DATE + :offset, :s, 3, 1, 2.5, 7) RETURNING id"
             ),
-            {"v": vocab_id, "offset": 0 if den_han else 5, "s": state},
+            {"v": vocab_id, "offset": 0 if due else 5, "s": state},
         ).scalar_one()
     )
     db.commit()
     return vocab_id, card_id
 
 
-def test_due_tra_the_kem_du_lieu_vocab_da_gop_san(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_due_returns_cards_with_vocab_data_already_joined(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Gộp sẵn để side panel chỉ phải gọi MỘT lượt cho cả xấp thẻ — thay vì một lượt cho
     hàng đợi rồi N lượt tra từng từ."""
@@ -55,17 +55,17 @@ def test_due_tra_the_kem_du_lieu_vocab_da_gop_san(
     resp = client.get("/api/srs/due", headers=owner.headers)
 
     assert resp.status_code == 200, resp.text
-    the = resp.json()[0]
-    assert the["term"] == "mitigate"
-    assert the["meaningVi"] == "nghĩa của mitigate"
-    assert the["definitionEn"] == "to make less severe"
-    assert the["ipa"] == "/ˈmɪtɪɡeɪt/"
-    assert the["cefr"] == "C1"
-    assert the["state"] == "REVIEW"
-    assert "dueDate" in the and "vocabEntryId" in the
+    card = resp.json()[0]
+    assert card["term"] == "mitigate"
+    assert card["meaningVi"] == "nghĩa của mitigate"
+    assert card["definitionEn"] == "to make less severe"
+    assert card["ipa"] == "/ˈmɪtɪɡeɪt/"
+    assert card["cefr"] == "C1"
+    assert card["state"] == "REVIEW"
+    assert "dueDate" in card and "vocabEntryId" in card
 
 
-def test_stats_tra_ba_con_so(client: Any, db: Session, owner: NguoiDungTest) -> None:
+def test_stats_returns_three_numbers(client: Any, db: Session, owner: UserFixture) -> None:
     _seed(db, owner.id, "mitigate")
     _seed(db, owner.id, "resilient", state="NEW")
 
@@ -77,7 +77,7 @@ def test_stats_tra_ba_con_so(client: Any, db: Session, owner: NguoiDungTest) -> 
     assert body["newCount"] == 1
 
 
-def test_review_tra_lich_ke_tiep(client: Any, db: Session, owner: NguoiDungTest) -> None:
+def test_review_returns_the_next_schedule(client: Any, db: Session, owner: UserFixture) -> None:
     _, card_id = _seed(db, owner.id, "mitigate")
 
     resp = client.post(
@@ -91,8 +91,8 @@ def test_review_tra_lich_ke_tiep(client: Any, db: Session, owner: NguoiDungTest)
     assert body["easeFactor"] == 2.5  # GOOD không đổi EF
 
 
-def test_review_the_la_tra_404_dung_hinh_dang_loi_chung(
-    client: Any, owner: NguoiDungTest
+def test_review_unknown_card_returns_404_with_the_common_error_shape(
+    client: Any, owner: UserFixture
 ) -> None:
     resp = client.post(
         "/api/srs/review", headers=owner.headers, json={"cardId": 999999, "rating": "GOOD"}
@@ -104,7 +104,7 @@ def test_review_the_la_tra_404_dung_hinh_dang_loi_chung(
     assert body["retryable"] is False
 
 
-def test_review_thieu_rating_tra_400(client: Any, db: Session, owner: NguoiDungTest) -> None:
+def test_review_missing_rating_returns_400(client: Any, db: Session, owner: UserFixture) -> None:
     _, card_id = _seed(db, owner.id, "mitigate")
 
     resp = client.post("/api/srs/review", headers=owner.headers, json={"cardId": card_id})
@@ -113,8 +113,8 @@ def test_review_thieu_rating_tra_400(client: Any, db: Session, owner: NguoiDungT
     assert resp.json()["code"] == "INTERNAL"
 
 
-def test_rating_sai_chinh_ta_tra_400_khong_phai_500(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_misspelled_rating_returns_400_not_500(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Giá trị enum lạ là lỗi của REQUEST. Trả 500 ở đây là đổ lỗi cho server và làm UI hiện
     "lỗi không xác định" thay vì nói request sai."""
@@ -127,29 +127,29 @@ def test_rating_sai_chinh_ta_tra_400_khong_phai_500(
     assert resp.status_code == 400
 
 
-def test_card_dto_co_hai_mang_moi_nhu_rong_khi_chua_sinh(
-    client: Any, db: Session, gemini: Any, owner: NguoiDungTest
+def test_card_dto_has_two_empty_distractor_arrays_when_not_yet_generated(
+    client: Any, db: Session, gemini: Any, owner: UserFixture
 ) -> None:
     """Rỗng nghĩa là mồi nhử chưa sinh kịp — panel tự bù bằng thẻ khác trong hàng đợi chứ
     KHÔNG coi đó là lỗi. Thiếu hẳn khoá thì panel đọc `undefined` và vỡ."""
     _seed(db, owner.id, "mitigate")
 
-    the = client.get("/api/srs/due", headers=owner.headers).json()[0]
+    card = client.get("/api/srs/due", headers=owner.headers).json()[0]
 
-    assert the["viDistractors"] == []
-    assert the["enDistractors"] == []
+    assert card["viDistractors"] == []
+    assert card["enDistractors"] == []
 
 
-def test_the_chua_den_han_khong_nam_trong_hang_doi(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_card_not_yet_due_is_not_in_the_queue(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
-    _seed(db, owner.id, "mitigate", den_han=False)
+    _seed(db, owner.id, "mitigate", due=False)
 
     assert client.get("/api/srs/due", headers=owner.headers).json() == []
 
 
-def test_new_limit_doc_dung_ten_query_camel_case(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_new_limit_reads_the_correct_camel_case_query_name(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """Hợp đồng cũ của Spring lấy tên tham số từ bytecode nên query string là `newLimit`.
 
@@ -163,11 +163,11 @@ def test_new_limit_doc_dung_ten_query_camel_case(
     for i in range(3):
         _seed(db, owner.id, f"tu-moi-{i}", state="NEW")
 
-    khong_gioi_han = client.get(
+    unlimited = client.get(
         "/api/srs/due", params={"newLimit": 0}, headers=owner.headers
     )
-    assert khong_gioi_han.status_code == 200
-    assert len(khong_gioi_han.json()) == 3
+    assert unlimited.status_code == 200
+    assert len(unlimited.json()) == 3
 
-    cho_hai = client.get("/api/srs/due", params={"newLimit": 2}, headers=owner.headers)
-    assert len(cho_hai.json()) == 2
+    limit_two = client.get("/api/srs/due", params={"newLimit": 2}, headers=owner.headers)
+    assert len(limit_two.json()) == 2

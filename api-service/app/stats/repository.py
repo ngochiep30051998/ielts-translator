@@ -23,7 +23,7 @@ from app.srs.models import ReviewLog, ReviewMode, SrsCard
 from app.vocabulary.models import VocabEntry
 
 
-def _ngay_dia_phuong() -> ColumnElement[date]:
+def _local_date() -> ColumnElement[date]:
     """`(reviewed_at AT TIME ZONE :tz)::date` với `:tz = settings.tz`.
 
     TUYỆT ĐỐI không dùng `cast(ReviewLog.reviewed_at, Date)` trần. `reviewed_at` là TIMESTAMPTZ,
@@ -35,25 +35,25 @@ def _ngay_dia_phuong() -> ColumnElement[date]:
     nhưng không lộ ra. Chỉ định tường minh bằng `func.timezone(settings.tz, ...)` là cách DUY
     NHẤT đảm bảo kết quả nhất quán bất kể phiên đang chạy ở đâu. Lượt ôn 01:00 sáng giờ Việt Nam
     bị đẩy về ngày hôm trước khi cast trần rơi vào phiên UTC, streak đứt sai, và không có
-    exception nào — xem ca `test_luot_on_luc_1h_sang_gio_viet_nam_thuoc_ve_ngay_hom_do` trong
+    exception nào — xem ca `test_review_at_1am_vietnam_time_belongs_to_that_day` trong
     `test_stats_repository.py` (ca đó tự ép session về UTC bằng `SET LOCAL TIME ZONE 'UTC'` để
     luôn phân biệt được, bất kể máy chạy test đặt giờ gì).
     """
     return cast(func.timezone(get_settings().tz, ReviewLog.reviewed_at), Date)
 
 
-def dem_luot_on_theo_ngay(db: Session, user_id: int) -> list[tuple[date, int, int]]:
+def count_reviews_by_day(db: Session, user_id: int) -> list[tuple[date, int, int]]:
     """`(ngày, số lượt SCHEDULED, số lượt PRACTICE)` trên TOÀN BỘ lịch sử, tăng dần.
 
     CẢNH BÁO cho người gọi: ngày CHỈ có lượt PRACTICE vẫn nằm trong kết quả, với
     `scheduled = 0`. Đó là hành vi đúng của hàm này — nhưng `streak` và `totals.activeDays`
     PHẢI lọc `scheduled > 0`, nếu không chúng bắt đầu tính cả ngày chỉ luyện thêm. Xem
-    docstring của `service.lay_thong_ke`.
+    docstring của `service.get_stats`.
     """
-    ngay = _ngay_dia_phuong().label("ngay")
-    cau = (
+    day = _local_date().label("day")
+    stmt = (
         select(
-            ngay,
+            day,
             func.count().filter(ReviewLog.mode == ReviewMode.SCHEDULED.value),
             func.count().filter(ReviewLog.mode == ReviewMode.PRACTICE.value),
         )
@@ -61,13 +61,13 @@ def dem_luot_on_theo_ngay(db: Session, user_id: int) -> list[tuple[date, int, in
         .join(SrsCard, SrsCard.id == ReviewLog.card_id)
         .join(VocabEntry, VocabEntry.id == SrsCard.vocab_entry_id)
         .where(VocabEntry.user_id == user_id)
-        .group_by(ngay)
-        .order_by(ngay)
+        .group_by(day)
+        .order_by(day)
     )
-    return [(hang[0], int(hang[1]), int(hang[2])) for hang in db.execute(cau).all()]
+    return [(row[0], int(row[1]), int(row[2])) for row in db.execute(stmt).all()]
 
 
-def dem_luot_on_theo_rating(db: Session, user_id: int) -> dict[str, int]:
+def count_reviews_by_rating(db: Session, user_id: int) -> dict[str, int]:
     """Số lượt ôn theo từng mức tự chấm, toàn bộ lịch sử.
 
     Trả số lượt THÔ, không trả sẵn tỉ lệ nhớ: tỉ lệ là `1 − again/tổng`, một phép chia ở
@@ -78,7 +78,7 @@ def dem_luot_on_theo_rating(db: Session, user_id: int) -> dict[str, int]:
 
     Mức chưa xuất hiện lần nào thì VẮNG khỏi dict — service tự bù 0.
     """
-    cau = (
+    stmt = (
         select(ReviewLog.rating, func.count())
         .select_from(ReviewLog)
         .join(SrsCard, SrsCard.id == ReviewLog.card_id)
@@ -89,10 +89,10 @@ def dem_luot_on_theo_rating(db: Session, user_id: int) -> dict[str, int]:
         )
         .group_by(ReviewLog.rating)
     )
-    return {str(hang[0]): int(hang[1]) for hang in db.execute(cau).all()}
+    return {str(row[0]): int(row[1]) for row in db.execute(stmt).all()}
 
 
-def dem_band_level(db: Session, user_id: int) -> list[tuple[str, int]]:
+def count_by_band_level(db: Session, user_id: int) -> list[tuple[str, int]]:
     """`(chuỗi band_level, số từ mang đúng chuỗi đó)` của MỘT người. CHƯA parse, chưa lọc rác.
 
     Trả chuỗi THÔ và để service parse, cố ý:
@@ -107,16 +107,16 @@ def dem_band_level(db: Session, user_id: int) -> list[tuple[str, int]]:
     kể sổ từ to cỡ nào. Hàng `band_level IS NULL` bị loại ngay tại đây — "chưa có band" không
     phải một giá trị cần parse.
     """
-    cau = (
+    stmt = (
         select(VocabEntry.band_level, func.count())
         .select_from(VocabEntry)
         .where(VocabEntry.user_id == user_id, VocabEntry.band_level.is_not(None))
         .group_by(VocabEntry.band_level)
     )
-    return [(str(hang[0]), int(hang[1])) for hang in db.execute(cau).all()]
+    return [(str(row[0]), int(row[1])) for row in db.execute(stmt).all()]
 
 
-def thong_ke_quiz_theo_loai(db: Session, user_id: int) -> dict[str, tuple[int, int, float | None]]:
+def quiz_stats_by_type(db: Session, user_id: int) -> dict[str, tuple[int, int, float | None]]:
     """`(số lượt, số lượt đúng, điểm trung bình)` theo từng loại quiz, toàn bộ lịch sử.
 
     `avg_score` trả nguyên trạng cho MỌI loại. Việc bỏ nó đi với `FILL_BLANK` và
@@ -124,7 +124,7 @@ def thong_ke_quiz_theo_loai(db: Session, user_id: int) -> dict[str, tuple[int, i
 
     Loại chưa làm lần nào thì VẮNG khỏi dict; service tự bù hàng 0 để `quiz` luôn đủ 3 phần tử.
     """
-    cau = (
+    stmt = (
         select(
             QuizItem.type,
             func.count(),
@@ -138,6 +138,6 @@ def thong_ke_quiz_theo_loai(db: Session, user_id: int) -> dict[str, tuple[int, i
         .group_by(QuizItem.type)
     )
     return {
-        str(hang[0]): (int(hang[1]), int(hang[2]), None if hang[3] is None else float(hang[3]))
-        for hang in db.execute(cau).all()
+        str(row[0]): (int(row[1]), int(row[2]), None if row[3] is None else float(row[3]))
+        for row in db.execute(stmt).all()
     }

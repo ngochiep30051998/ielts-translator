@@ -96,7 +96,7 @@ Bốn tổ hợp direction × mode sinh ra **bốn hình dạng payload JSON kh�
 
 13. **Mọi truy vấn chạm dữ liệu học PHẢI lọc theo `user_id`.** Chủ sở hữu nằm ở đúng một cột — `vocab_entry.user_id`; mọi bảng khác treo vào nó. Quên một mệnh đề `WHERE user_id = ?` không làm gì đỏ cả, nó chỉ lặng lẽ cho người này đọc dữ liệu người kia. Chốt chặn là `tests/test_multi_user_isolation.py`: **endpoint mới không có mặt trong file đó là endpoint chưa được chứng minh an toàn**. Id nhận từ client (`vocabIds`, `quizItemId`, `cardId`, `/vocab/{id}`) phải tra theo `(id, user_id)` và trả `NOT_FOUND` — không phải `FORBIDDEN`, vì 403 xác nhận id đó có tồn tại. User id lấy qua `Depends(current_user_id)` (`auth/deps.py`), không phải trạng thái toàn cục.
 
-14. **`lookup_cache` CỐ Ý không có `user_id`.** Nó là cache bản dịch của một chuỗi công khai; dùng chung là phần tiết kiệm quota Gemini lớn nhất của hệ thống. "Sửa cho nhất quán" sẽ làm `test_lookup_cache_co_y_dung_chung` đỏ.
+14. **`lookup_cache` CỐ Ý không có `user_id`.** Nó là cache bản dịch của một chuỗi công khai; dùng chung là phần tiết kiệm quota Gemini lớn nhất của hệ thống. "Sửa cho nhất quán" sẽ làm `test_lookup_cache_is_intentionally_shared` đỏ.
 
 15. **Đường Vercel và đường Docker phải khớp nhau.** `vercel.json` rewrite MỌI đường dẫn về `api/index.py` (gói Hobby giới hạn 12 function/deploy), và `includeFiles` là **bắt buộc** — thiếu nó thì `prompts/*.md` không được đóng gói, chạy local ngon mà deploy lên là mọi lượt dịch chết. `test_deploy_readiness.py` và `test_vercel_entry.py` giữ chỗ này. Migration **không** chạy lúc cold start (nhiều instance cùng `ALTER TABLE` là công thức để khoá lẫn nhau) — trên Supabase chạy `migrations/V*.sql` một lần bằng tay.
 

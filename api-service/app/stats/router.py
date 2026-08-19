@@ -17,4 +17,4 @@ def stats(user_id: CurrentUserId, db: Db) -> StatsDto:
 
     Chưa học gì KHÔNG phải lỗi — trả toàn số 0, không bao giờ 404.
     """
-    return service.lay_thong_ke(db, user_id)
+    return service.get_stats(db, user_id)

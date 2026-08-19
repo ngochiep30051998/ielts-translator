@@ -24,25 +24,25 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.config import TZ_MAC_DINH, Settings
+from app.config import DEFAULT_TZ, Settings
 
 
 @pytest.fixture(autouse=True)
-def _env_khong_co_tz(monkeypatch: pytest.MonkeyPatch) -> None:
+def _env_without_tz(monkeypatch: pytest.MonkeyPatch) -> None:
     """Máy dev có thể đang đặt sẵn `TZ`; biến môi trường thắng cả `_env_file=None`."""
     monkeypatch.delenv("TZ", raising=False)
     monkeypatch.delenv("APP_TZ", raising=False)
 
 
-def test_tz_cua_lambda_bi_bo_qua_thay_vi_lam_chet_stats() -> None:
+def test_lambda_tz_is_ignored_instead_of_breaking_stats() -> None:
     """`:UTC` là dấu vết của nền tảng, không phải cấu hình của người dùng."""
     settings = Settings(_env_file=None, TZ=":UTC")  # type: ignore[call-arg]
 
-    assert settings.tz == TZ_MAC_DINH
+    assert settings.tz == DEFAULT_TZ
     ZoneInfo(settings.tz)  # không được ném — đây chính là dòng đã nổ trên production
 
 
-def test_khong_cat_dau_hai_cham_de_thanh_utc() -> None:
+def test_does_not_strip_colon_to_become_utc() -> None:
     """Cắt `:` cho ra `UTC` — một key HỢP LỆ, và đó mới là cái bẫy.
 
     App sẽ chạy tiếp, không lỗi gì, chỉ là "hôm nay" lệch 7 tiếng so với giờ VN: heatmap trỏ
@@ -52,7 +52,7 @@ def test_khong_cat_dau_hai_cham_de_thanh_utc() -> None:
     assert Settings(_env_file=None, TZ=":UTC").tz != "UTC"  # type: ignore[call-arg]
 
 
-def test_app_tz_thang_tz_cua_nen_tang(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_app_tz_beats_platform_tz(monkeypatch: pytest.MonkeyPatch) -> None:
     """Trên Vercel người dùng chỉ đặt được `APP_TZ`, và nó phải thắng `TZ` mà Lambda áp đặt."""
     monkeypatch.setenv("TZ", ":UTC")
     monkeypatch.setenv("APP_TZ", "Europe/Paris")
@@ -60,7 +60,7 @@ def test_app_tz_thang_tz_cua_nen_tang(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Settings(_env_file=None).tz == "Europe/Paris"  # type: ignore[call-arg]
 
 
-def test_tz_van_con_tac_dung_cho_docker(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tz_still_takes_effect_for_docker(monkeypatch: pytest.MonkeyPatch) -> None:
     """Đường Docker không đổi: `docker-compose.yml` truyền `TZ` để chỉnh cả đồng hồ container,
     và app phải đọc đúng biến đó — nếu không, giờ container và `settings.tz` trôi khỏi nhau."""
     monkeypatch.setenv("TZ", "Europe/Paris")
@@ -68,11 +68,11 @@ def test_tz_van_con_tac_dung_cho_docker(monkeypatch: pytest.MonkeyPatch) -> None
     assert Settings(_env_file=None).tz == "Europe/Paris"  # type: ignore[call-arg]
 
 
-def test_tz_rong_quay_ve_mac_dinh() -> None:
+def test_empty_tz_falls_back_to_default() -> None:
     """`TZ=` (đặt nhưng bỏ trống) là cấu hình lỡ tay, không phải yêu cầu chạy giờ UTC."""
-    assert Settings(_env_file=None, TZ="   ").tz == TZ_MAC_DINH  # type: ignore[call-arg]
+    assert Settings(_env_file=None, TZ="   ").tz == DEFAULT_TZ  # type: ignore[call-arg]
 
 
-def test_mac_dinh_la_key_iana_that() -> None:
+def test_default_is_a_real_iana_key() -> None:
     """Mặc định phải tra được — nó là thứ mọi nhánh fallback ở trên rơi về."""
     ZoneInfo(Settings(_env_file=None).tz)  # type: ignore[call-arg]

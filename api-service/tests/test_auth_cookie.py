@@ -21,20 +21,20 @@ from sqlalchemy.orm import Session
 
 from app.auth.cookies import session_cookie_name
 from app.config import get_settings
-from tests.conftest import NguoiDungTest, tao_nguoi_dung
+from tests.conftest import UserFixture, create_user
 
 WEB_HEADER = {"X-IELTS-Web": "1"}
 
 
-def _dat_cookie(client: Any, token: str) -> None:
+def _set_cookie(client: Any, token: str) -> None:
     client.cookies.clear()
     client.cookies.set(session_cookie_name(get_settings()), token)
 
 
-def test_cookie_kem_header_web_thi_nhan_dien_duoc_nguoi_dung(
-    client: Any, owner: NguoiDungTest
+def test_cookie_with_web_header_identifies_the_user(
+    client: Any, owner: UserFixture
 ) -> None:
-    _dat_cookie(client, owner.token)
+    _set_cookie(client, owner.token)
 
     resp = client.get("/api/auth/me", headers=WEB_HEADER)
 
@@ -42,11 +42,11 @@ def test_cookie_kem_header_web_thi_nhan_dien_duoc_nguoi_dung(
     assert resp.json()["email"] == owner.email
 
 
-def test_cookie_thieu_header_web_thi_coi_nhu_chua_dang_nhap(
-    client: Any, owner: NguoiDungTest
+def test_cookie_missing_web_header_is_treated_as_not_logged_in(
+    client: Any, owner: UserFixture
 ) -> None:
     """Đây là chốt chặn CSRF. Hỏng dòng này là mở toàn bộ API cho mọi trang trên Internet."""
-    _dat_cookie(client, owner.token)
+    _set_cookie(client, owner.token)
 
     resp = client.get("/api/auth/me")
 
@@ -54,23 +54,23 @@ def test_cookie_thieu_header_web_thi_coi_nhu_chua_dang_nhap(
     assert resp.json()["code"] == "UNAUTHORIZED"
 
 
-def test_get_co_tac_dung_phu_khong_kich_hoat_duoc_bang_dieu_huong(
-    client: Any, owner: NguoiDungTest
+def test_get_with_side_effects_cannot_be_triggered_by_navigation(
+    client: Any, owner: UserFixture
 ) -> None:
     """`GET /api/srs/due` commit DB và xếp lượt gọi Gemini. Một điều hướng top-level từ
     trang lạ mang theo cookie nhưng KHÔNG mang được header — phải bị từ chối."""
-    _dat_cookie(client, owner.token)
+    _set_cookie(client, owner.token)
 
     resp = client.get("/api/srs/due?limit=10&newLimit=5")
 
     assert resp.status_code == 401
 
 
-def test_header_authorization_thang_khi_co_ca_hai(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_authorization_header_wins_when_both_are_present(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
-    nguoi_khac = tao_nguoi_dung(db, "second@test.local")
-    _dat_cookie(client, nguoi_khac.token)
+    other_user = create_user(db, "second@test.local")
+    _set_cookie(client, other_user.token)
 
     resp = client.get("/api/auth/me", headers={**owner.headers, **WEB_HEADER})
 
@@ -78,7 +78,7 @@ def test_header_authorization_thang_khi_co_ca_hai(
     assert resp.json()["email"] == owner.email
 
 
-def test_extension_khong_can_header_web(client: Any, owner: NguoiDungTest) -> None:
+def test_extension_does_not_need_the_web_header(client: Any, owner: UserFixture) -> None:
     """Đường Bearer miễn nhiễm CSRF theo thiết kế nên không chịu ràng buộc header."""
     client.cookies.clear()
 
@@ -87,8 +87,8 @@ def test_extension_khong_can_header_web(client: Any, owner: NguoiDungTest) -> No
     assert resp.status_code == 200, resp.text
 
 
-def test_cookie_rac_tra_401_chu_khong_500(client: Any) -> None:
-    _dat_cookie(client, "khong-phai-token-that")
+def test_garbage_cookie_returns_401_not_500(client: Any) -> None:
+    _set_cookie(client, "khong-phai-token-that")
 
     resp = client.get("/api/auth/me", headers=WEB_HEADER)
 
@@ -96,15 +96,15 @@ def test_cookie_rac_tra_401_chu_khong_500(client: Any) -> None:
     assert resp.json()["code"] == "UNAUTHORIZED"
 
 
-def test_logout_bang_cookie_thu_hoi_that_phien(
-    client: Any, db: Session, owner: NguoiDungTest
+def test_logout_by_cookie_really_revokes_the_session(
+    client: Any, db: Session, owner: UserFixture
 ) -> None:
     """`router.logout` lấy token qua dependency RIÊNG, không qua `optional_user_id`.
 
     Sửa mỗi chỗ đọc user mà quên chỗ này thì logout của web trả 204 mà không thu hồi gì —
     người dùng thấy màn đăng nhập, còn phiên vẫn sống 60 ngày trên server.
     """
-    _dat_cookie(client, owner.token)
+    _set_cookie(client, owner.token)
 
     resp = client.post("/api/auth/logout", headers=WEB_HEADER)
     assert resp.status_code == 204, resp.text
@@ -114,20 +114,20 @@ def test_logout_bang_cookie_thu_hoi_that_phien(
     assert client.get("/api/auth/me", headers=owner.headers).status_code == 401
 
 
-def test_logout_xoa_cookie_o_trinh_duyet(client: Any, owner: NguoiDungTest) -> None:
-    _dat_cookie(client, owner.token)
+def test_logout_clears_the_cookie_in_the_browser(client: Any, owner: UserFixture) -> None:
+    _set_cookie(client, owner.token)
 
     resp = client.post("/api/auth/logout", headers=WEB_HEADER)
 
-    ten = session_cookie_name(get_settings())
-    assert ten in resp.headers.get("set-cookie", ""), resp.headers.get("set-cookie")
+    cookie_name = session_cookie_name(get_settings())
+    assert cookie_name in resp.headers.get("set-cookie", ""), resp.headers.get("set-cookie")
 
 
-def test_me_lam_moi_han_cookie(client: Any, owner: NguoiDungTest) -> None:
+def test_me_refreshes_the_cookie_expiry(client: Any, owner: UserFixture) -> None:
     """Hạn cookie và hạn phiên trong DB trượt theo hai đồng hồ khác nhau: DB gia hạn mỗi
     ngày dùng, còn Max-Age của cookie đóng băng lúc phát. Không phát lại thì người vào hàng
     ngày vẫn bị đá ra đúng ngày thứ 60."""
-    _dat_cookie(client, owner.token)
+    _set_cookie(client, owner.token)
 
     resp = client.get("/api/auth/me", headers=WEB_HEADER)
 
@@ -135,7 +135,7 @@ def test_me_lam_moi_han_cookie(client: Any, owner: NguoiDungTest) -> None:
     assert session_cookie_name(get_settings()) in resp.headers.get("set-cookie", "")
 
 
-def test_ten_cookie_mang_tien_to_host_khi_secure(client: Any) -> None:
+def test_cookie_name_carries_the_host_prefix_when_secure(client: Any) -> None:
     """`__Host-` là thứ ngăn một subdomain ghi đè cookie của domain cha — cookie không có
     tính toàn vẹn theo origin. Trên `*.vercel.app` đó không phải rủi ro lý thuyết."""
     assert session_cookie_name(get_settings()).startswith("__Host-")

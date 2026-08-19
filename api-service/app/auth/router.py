@@ -106,13 +106,13 @@ def google_callback(
     settings = get_settings()
 
     if error:
-        return _ve_nha_kem_loi(ErrorCode.UNAUTHORIZED, settings)
+        return _redirect_home_with_error(ErrorCode.UNAUTHORIZED, settings)
 
-    if not _state_khop(request, state, settings):
-        return _ve_nha_kem_loi(ErrorCode.UNAUTHORIZED, settings)
+    if not _state_matches(request, state, settings):
+        return _redirect_home_with_error(ErrorCode.UNAUTHORIZED, settings)
 
     if not code:
-        return _ve_nha_kem_loi(ErrorCode.UNAUTHORIZED, settings)
+        return _redirect_home_with_error(ErrorCode.UNAUTHORIZED, settings)
 
     try:
         session = service.login_web(db, code)
@@ -120,7 +120,7 @@ def google_callback(
         # FORBIDDEN (email chưa được cấp quyền) là trạng thái VĨNH VIỄN và phải phân biệt
         # được với UNAUTHORIZED, vì cách hồi phục khác hẳn nhau: một bên bấm lại là xong,
         # bên kia phải nhờ quản trị thêm email.
-        return _ve_nha_kem_loi(exc.code, settings)
+        return _redirect_home_with_error(exc.code, settings)
 
     response = RedirectResponse(WEB_HOME, status_code=302)
     set_session_cookie(response, session.token, settings)
@@ -128,7 +128,7 @@ def google_callback(
     return response
 
 
-def _state_khop(request: Request, state: str | None, settings: Settings) -> bool:
+def _state_matches(request: Request, state: str | None, settings: Settings) -> bool:
     """So state gửi về với state đã phát, theo kiểu không có kẽ hở.
 
     Ba cái bẫy nằm gọn trong một hàm nhỏ:
@@ -140,15 +140,15 @@ def _state_khop(request: Request, state: str | None, settings: Settings) -> bool
     3. So bằng `==` là so sánh không hằng thời gian. Ở đây rủi ro thấp, nhưng dùng đúng hàm
        thì không phải cân nhắc.
     """
-    da_phat = request.cookies.get(state_cookie_name(settings))
-    if not state or not da_phat:
+    issued_state = request.cookies.get(state_cookie_name(settings))
+    if not state or not issued_state:
         return False
-    if not state.isascii() or not da_phat.isascii():
+    if not state.isascii() or not issued_state.isascii():
         return False
-    return secrets.compare_digest(state, da_phat)
+    return secrets.compare_digest(state, issued_state)
 
 
-def _ve_nha_kem_loi(code: ErrorCode, settings: Settings) -> Response:
+def _redirect_home_with_error(code: ErrorCode, settings: Settings) -> Response:
     response = RedirectResponse(f"{WEB_HOME}?authError={code.value}", status_code=302)
     clear_state_cookie(response, settings)
     return response

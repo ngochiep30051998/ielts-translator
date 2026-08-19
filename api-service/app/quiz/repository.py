@@ -41,11 +41,11 @@ def find_owned_entries_in_order(
         )
     }
     ordered: list[VocabEntry] = []
-    da_lay: set[int] = set()
+    seen: set[int] = set()
     for vocab_id in vocab_ids:
         entry = found.get(vocab_id)
-        if entry is not None and vocab_id not in da_lay:
-            da_lay.add(vocab_id)
+        if entry is not None and vocab_id not in seen:
+            seen.add(vocab_id)
             ordered.append(entry)
     return ordered
 
@@ -69,20 +69,20 @@ def find_reusable(
     """
     if not vocab_ids or not types:
         return []
-    chua_lam = select(QuizAttempt.id).where(QuizAttempt.quiz_item_id == QuizItem.id).exists()
-    cau = (
+    has_attempt = select(QuizAttempt.id).where(QuizAttempt.quiz_item_id == QuizItem.id).exists()
+    stmt = (
         select(QuizItem)
         .join(VocabEntry, VocabEntry.id == QuizItem.vocab_entry_id)
         .where(
             VocabEntry.user_id == user_id,
             QuizItem.vocab_entry_id.in_(vocab_ids),
-            QuizItem.type.in_([loai.value for loai in types]),
+            QuizItem.type.in_([quiz_type.value for quiz_type in types]),
             QuizItem.prompt_version == prompt_version,
-            ~chua_lam,
+            ~has_attempt,
         )
         .order_by(QuizItem.id.asc())
     )
-    return list(db.scalars(cau))
+    return list(db.scalars(stmt))
 
 
 def find_owned_item(
@@ -95,14 +95,14 @@ def find_owned_item(
     Trả kèm `VocabEntry` vì mọi người gọi đều cần nó ngay sau đó (dựng DTO, dựng prompt) —
     tách làm hai lượt tra chỉ tạo cơ hội cho lượt thứ hai quên lọc user.
     """
-    hang = db.execute(
+    row = db.execute(
         select(QuizItem, VocabEntry)
         .join(VocabEntry, VocabEntry.id == QuizItem.vocab_entry_id)
         .where(QuizItem.id == quiz_item_id, VocabEntry.user_id == user_id)
     ).first()
-    if hang is None:
+    if row is None:
         return None
-    return hang[0], hang[1]
+    return row[0], row[1]
 
 
 def find_latest_attempt(db: Session, quiz_item_id: int, user_id: int) -> QuizAttempt | None:

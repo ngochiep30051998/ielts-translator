@@ -13,7 +13,7 @@ from app.translation.models import Direction
 
 
 @pytest.mark.parametrize(
-    ("text", "mong_doi"),
+    ("text", "expected"),
     [
         # Tiếng Việt có dấu → nhận ra ngay bằng ký tự.
         ("Chính phủ nên đầu tư nhiều hơn vào năng lượng tái tạo", Direction.VI_EN),
@@ -35,20 +35,20 @@ from app.translation.models import Direction
         ("Á", Direction.VI_EN),
     ],
 )
-def test_doan_chieu_dich(text: str, mong_doi: Direction) -> None:
-    assert detect(text) == mong_doi
+def test_detects_translation_direction(text: str, expected: Direction) -> None:
+    assert detect(text) == expected
 
 
-def test_text_rong_mac_dinh_en_vi() -> None:
+def test_empty_text_defaults_to_en_vi() -> None:
     assert detect("") is Direction.EN_VI
 
 
-def test_text_none_mac_dinh_en_vi() -> None:
+def test_text_none_defaults_to_en_vi() -> None:
     """Không được nổ lỗi: `detect` nằm trên đường nóng của mọi lượt dịch."""
     assert detect(None) is Direction.EN_VI
 
 
-def test_hoa_thi_ve_en_vi() -> None:
+def test_a_tie_falls_back_to_en_vi() -> None:
     """Java so `viHits > enHits`, KHÔNG phải `>=`.
 
     Đổi thành `>=` làm mọi chuỗi không có stopword nào (cả hai đếm bằng 0) nhảy sang VI_EN —
@@ -60,7 +60,7 @@ def test_hoa_thi_ve_en_vi() -> None:
     assert detect("xyz qwerty") is Direction.EN_VI
 
 
-def test_stopword_nam_trong_ca_hai_danh_sach_duoc_dem_cho_ca_hai() -> None:
+def test_stopword_present_in_both_lists_is_counted_for_both() -> None:
     """`the` có mặt ở CẢ HAI danh sách — "the" tiếng Anh và "thế" tiếng Việt không dấu.
 
     Đây là hành vi của bản Java chứ không phải sơ suất khi port, nên viết ra để lần sau ai
@@ -78,7 +78,7 @@ def test_stopword_nam_trong_ca_hai_danh_sach_duoc_dem_cho_ca_hai() -> None:
     assert detect("the cua") is Direction.VI_EN
 
 
-def test_chu_hoa_khong_lam_hong_viec_dem_stopword() -> None:
+def test_uppercase_does_not_break_stopword_counting() -> None:
     """Token được hạ chữ thường TRƯỚC khi tách bằng `[^a-z]+`.
 
     Tách trước rồi mới hạ chữ thường thì `KHONG` bị `[^a-z]+` xé thành chuỗi rỗng và không
@@ -87,5 +87,5 @@ def test_chu_hoa_khong_lam_hong_viec_dem_stopword() -> None:
     assert detect("TOI KHONG BIET CAI NAY LA CUA AI") is Direction.VI_EN
 
 
-def test_dau_cau_khong_dinh_vao_token() -> None:
+def test_punctuation_does_not_stick_to_tokens() -> None:
     assert detect("toi khong biet, cai nay la cua ai!") is Direction.VI_EN

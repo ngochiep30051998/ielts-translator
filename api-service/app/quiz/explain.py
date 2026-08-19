@@ -65,10 +65,10 @@ class ExplainInput:
 
 
 def explain(db: Session, user_id: int, quiz_item_id: int) -> ExplanationDto:
-    cap = repository.find_owned_item(db, quiz_item_id, user_id)
-    if cap is None:
+    pair = repository.find_owned_item(db, quiz_item_id, user_id)
+    if pair is None:
         raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy câu hỏi id={quiz_item_id}")
-    item, entry = cap
+    item, entry = pair
 
     attempt = repository.find_latest_attempt(db, quiz_item_id, user_id)
     if attempt is None:
@@ -77,18 +77,18 @@ def explain(db: Session, user_id: int, quiz_item_id: int) -> ExplanationDto:
     quiz_type = QuizType(item.type)
     match quiz_type:
         case QuizType.FILL_BLANK:
-            dau_vao = _fill_blank_input(item, entry, attempt)
+            explain_input = _fill_blank_input(item, entry, attempt)
         case QuizType.COLLOCATION_CHOICE:
-            dau_vao = _collocation_input(item, entry, attempt)
+            explain_input = _collocation_input(item, entry, attempt)
         case QuizType.FREE_WRITE:
-            dau_vao = _free_write_input(entry, attempt)
+            explain_input = _free_write_input(entry, attempt)
         case _:
             assert_never(quiz_type)
 
     consume(db, user_id)
-    template = get_prompt_loader().load_file(dau_vao.prompt_file)
+    template = get_prompt_loader().load_file(explain_input.prompt_file)
     payload = get_gemini_client().generate_json(
-        template.render(dau_vao.vars), EXPLAIN_SCHEMA, GeminiTimeout.QUIZ_GRADE
+        template.render(explain_input.vars), EXPLAIN_SCHEMA, GeminiTimeout.QUIZ_GRADE
     )
 
     explanation = _first_non_blank(
@@ -102,8 +102,8 @@ def explain(db: Session, user_id: int, quiz_item_id: int) -> ExplanationDto:
     # trả về bị bỏ qua hoàn toàn.
     sentence_en: str | None = (
         _text(payload, "sentence_en")
-        if not dau_vao.known_sentence_en.strip()
-        else dau_vao.known_sentence_en
+        if not explain_input.known_sentence_en.strip()
+        else explain_input.known_sentence_en
     )
     sentence_vi: str | None = _text(payload, "sentence_vi")
     # Thiếu một nửa thì bỏ cả cặp. Trả một nửa là bắt panel render khối "Dịch câu" với đúng
@@ -125,7 +125,7 @@ def _fill_blank_input(item: QuizItem, entry: VocabEntry, attempt: QuizAttempt) -
     answer = payload_str(item.payload.get("answer"))
     # Câu đã điền đáp án ghép ở đây chứ không nhờ Gemini. Prompt sinh đề đã bảo đảm "___"
     # xuất hiện đúng một lần trong câu.
-    da_dien = sentence.replace("___", answer)
+    filled_sentence = sentence.replace("___", answer)
     return ExplainInput(
         FILL_BLANK_PROMPT,
         {
@@ -136,15 +136,15 @@ def _fill_blank_input(item: QuizItem, entry: VocabEntry, attempt: QuizAttempt) -
             "MEANING_VI": _none_to_empty(entry.meaning_vi),
             "USER_ANSWER": _none_to_empty(attempt.user_answer),
         },
-        da_dien,
+        filled_sentence,
     )
 
 
 def _collocation_input(item: QuizItem, entry: VocabEntry, attempt: QuizAttempt) -> ExplainInput:
     options = payload_str_list(item.payload.get("options"))
     correct_index = payload_int(item.payload.get("correct_index"))
-    cum_dung = options[correct_index] if 0 <= correct_index < len(options) else ""
-    danh_sach = "\n".join(f"{i + 1}. {cum}" for i, cum in enumerate(options)).strip()
+    correct_option = options[correct_index] if 0 <= correct_index < len(options) else ""
+    options_text = "\n".join(f"{i + 1}. {option}" for i, option in enumerate(options)).strip()
 
     return ExplainInput(
         COLLOCATION_PROMPT,
@@ -153,8 +153,8 @@ def _collocation_input(item: QuizItem, entry: VocabEntry, attempt: QuizAttempt) 
             "POS": _none_to_empty(entry.pos),
             "MEANING_VI": _none_to_empty(entry.meaning_vi),
             "QUESTION": payload_str(item.payload.get("question")),
-            "OPTIONS": danh_sach,
-            "ANSWER": cum_dung,
+            "OPTIONS": options_text,
+            "ANSWER": correct_option,
             # Câu trả lời lưu trong attempt là INDEX dạng chuỗi. Dịch ngược ra nội dung cụm
             # ngay tại đây: đưa "2" vào prompt thì Gemini không biết người học đã chọn gì.
             "USER_ANSWER": _option_at(options, _none_to_empty(attempt.user_answer)),

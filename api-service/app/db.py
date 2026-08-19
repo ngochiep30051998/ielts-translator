@@ -41,9 +41,9 @@ class Base(DeclarativeBase):
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
     settings = get_settings()
-    tham_so: dict[str, Any] = {"future": True}
+    engine_kwargs: dict[str, Any] = {"future": True}
 
-    if settings.qua_pooler_transaction:
+    if settings.uses_transaction_pooler:
         # TẮT HẲN prepared statement. psycopg tự tạo prepared statement sau 5 lần chạy cùng
         # một câu; pooler ở transaction mode ghép nhiều client lên chung backend, nên câu
         # thứ sáu có thể rơi vào một backend chưa từng thấy statement đó và chết bằng
@@ -51,20 +51,20 @@ def get_engine() -> Engine:
         #
         # Đây chính là lớp lỗi mà quyết định "dùng psycopg chứ không asyncpg" định né —
         # psycopg né được vì TẮT ĐƯỢC, không phải vì mặc định đã tắt.
-        tham_so["connect_args"] = {"prepare_threshold": None}
+        engine_kwargs["connect_args"] = {"prepare_threshold": None}
 
     if settings.is_serverless:
         # Serverless: mỗi instance sống vài giây và phục vụ một request. Giữ pool phía
         # client chỉ chiếm chỗ trong hạn mức kết nối của Supabase mà không tái dùng được —
         # Supavisor đã là cái pool rồi.
-        tham_so["poolclass"] = NullPool
+        engine_kwargs["poolclass"] = NullPool
     else:
         # Tiến trình dài: pooler cắt kết nối nhàn rỗi mà không báo. Không có cờ này thì
         # request đầu tiên sau một quãng im lặng chết bằng "server closed the connection
         # unexpectedly". Với NullPool thì thừa, vì mỗi lượt đã là kết nối mới.
-        tham_so["pool_pre_ping"] = True
+        engine_kwargs["pool_pre_ping"] = True
 
-    return create_engine(settings.sqlalchemy_url, **tham_so)
+    return create_engine(settings.sqlalchemy_url, **engine_kwargs)
 
 
 @lru_cache(maxsize=1)

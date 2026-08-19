@@ -17,51 +17,51 @@ from sqlalchemy.orm import Session
 from app.auth.models import GoogleIdentity
 from app.auth.service import AuthService
 from app.common.errors import AppError, ErrorCode
-from tests.conftest import OWNER_EMAIL, NguoiDungTest, sha256
+from tests.conftest import OWNER_EMAIL, UserFixture, sha256
 
 REDIRECT = "https://testextensionid.chromiumapp.org/"
 
 
-class GoogleGia:
+class FakeGoogleClient:
     """Thay `GoogleTokenClient`. Ghi lại số lần bị gọi để khẳng định chốt chặn
     `redirect_uri` nằm TRƯỚC lượt gọi mạng."""
 
     def __init__(self) -> None:
-        self.tra_ve: GoogleIdentity | None = None
-        self.nem: Exception | None = None
-        self.so_lan_goi = 0
+        self.returns: GoogleIdentity | None = None
+        self.error_to_raise: Exception | None = None
+        self.call_count = 0
 
     def exchange(self, code: str, redirect_uri: str) -> GoogleIdentity:
-        self.so_lan_goi += 1
-        if self.nem is not None:
-            raise self.nem
-        assert self.tra_ve is not None, "Test quên đặt danh tính trả về"
-        return self.tra_ve
+        self.call_count += 1
+        if self.error_to_raise is not None:
+            raise self.error_to_raise
+        assert self.returns is not None, "Test quên đặt danh tính trả về"
+        return self.returns
 
 
 @pytest.fixture
-def google(client: Any) -> Iterator[GoogleGia]:
+def google(client: Any) -> Iterator[FakeGoogleClient]:
     from app.auth.service import get_auth_service
 
-    gia = GoogleGia()
-    client.app.dependency_overrides[get_auth_service] = lambda: AuthService(google=gia)  # type: ignore[arg-type]
-    yield gia
+    fake = FakeGoogleClient()
+    client.app.dependency_overrides[get_auth_service] = lambda: AuthService(google=fake)  # type: ignore[arg-type]
+    yield fake
     client.app.dependency_overrides.pop(get_auth_service, None)
 
 
-def _dang_nhap(client: Any, code: str, redirect_uri: str = REDIRECT) -> Any:
+def _login(client: Any, code: str, redirect_uri: str = REDIRECT) -> Any:
     return client.post(
         "/api/auth/google", json={"code": code, "redirectUri": redirect_uri}
     )
 
 
-def _token_sau_dang_nhap(client: Any, code: str) -> str:
-    resp = _dang_nhap(client, code)
+def _token_after_login(client: Any, code: str) -> str:
+    resp = _login(client, code)
     assert resp.status_code == 200, resp.text
     return str(resp.json()["token"])
 
 
-def _dem_user(db: Session) -> int:
+def _count_users(db: Session) -> int:
     return int(db.execute(text("SELECT count(*) FROM app_user")).scalar_one())
 
 
@@ -71,8 +71,8 @@ def _owner_identity() -> GoogleIdentity:
     )
 
 
-def test_dang_nhap_lan_dau_bang_email_bootstrap_nhan_luon_so_tu_cu(
-    client: Any, google: GoogleGia, db: Session, owner: NguoiDungTest
+def test_first_login_with_bootstrap_email_adopts_existing_vocab_book(
+    client: Any, google: FakeGoogleClient, db: Session, owner: UserFixture
 ) -> None:
     """Hàng vocab cũ đã thuộc tài khoản do V6 tạo (google_sub còn NULL). Lần đăng nhập đầu
     phải NHẬN tài khoản đó chứ không tạo tài khoản thứ hai — nếu tạo, sổ từ cũ nằm ở tài
@@ -85,12 +85,12 @@ def test_dang_nhap_lan_dau_bang_email_bootstrap_nhan_luon_so_tu_cu(
         {"uid": owner.id},
     )
     db.commit()
-    truoc = _dem_user(db)
-    google.tra_ve = _owner_identity()
+    users_before = _count_users(db)
+    google.returns = _owner_identity()
 
-    token = _token_sau_dang_nhap(client, "code-1")
+    token = _token_after_login(client, "code-1")
 
-    assert _dem_user(db) == truoc
+    assert _count_users(db) == users_before
     resp = client.get(
         "/api/vocab", params={"q": "legacyword"}, headers={"Authorization": f"Bearer {token}"}
     )
@@ -98,13 +98,13 @@ def test_dang_nhap_lan_dau_bang_email_bootstrap_nhan_luon_so_tu_cu(
     assert resp.json()["totalElements"] == 1
 
 
-def test_google_sub_duoc_dien_vao_hang_cu(
-    client: Any, google: GoogleGia, db: Session, owner: NguoiDungTest
+def test_google_sub_is_filled_into_the_existing_row(
+    client: Any, google: FakeGoogleClient, db: Session, owner: UserFixture
 ) -> None:
     """Lần sau khớp theo sub, không theo email — vì email Google đổi được còn sub thì không."""
-    google.tra_ve = _owner_identity()
+    google.returns = _owner_identity()
 
-    _token_sau_dang_nhap(client, "code-1")
+    _token_after_login(client, "code-1")
 
     found = db.execute(
         text("SELECT count(*) FROM app_user WHERE google_sub = 'sub-owner'")
@@ -112,106 +112,108 @@ def test_google_sub_duoc_dien_vao_hang_cu(
     assert found == 1
 
 
-def test_email_chua_xac_minh_bi_tu_choi_va_khong_tao_tai_khoan(
-    client: Any, google: GoogleGia, db: Session, owner: NguoiDungTest
+def test_unverified_email_is_rejected_and_no_account_is_created(
+    client: Any, google: FakeGoogleClient, db: Session, owner: UserFixture
 ) -> None:
     """`email_verified = false` nghĩa là Google KHÔNG bảo đảm người này sở hữu hộp thư đó,
     nên allowlist theo email mất sạch ý nghĩa."""
-    truoc = _dem_user(db)
-    google.tra_ve = GoogleIdentity(
+    users_before = _count_users(db)
+    google.returns = GoogleIdentity(
         sub="sub-x", email="unverified@test.local", email_verified=False, name="X", picture=None
     )
 
-    resp = _dang_nhap(client, "code-1")
+    resp = _login(client, "code-1")
 
     assert resp.status_code == 401
     assert resp.json()["code"] == "UNAUTHORIZED"
     assert resp.json()["retryable"] is False
-    assert _dem_user(db) == truoc
+    assert _count_users(db) == users_before
 
 
-def test_email_ngoai_allowlist_bi_tu_choi_403(
-    client: Any, google: GoogleGia, db: Session, owner: NguoiDungTest
+def test_email_outside_allowlist_is_rejected_with_403(
+    client: Any, google: FakeGoogleClient, db: Session, owner: UserFixture
 ) -> None:
     """403 chứ không 401, và KHÔNG retry được: cần được cấp quyền là một hành động khác,
     không phải bấm lại."""
-    truoc = _dem_user(db)
-    google.tra_ve = GoogleIdentity(
+    users_before = _count_users(db)
+    google.returns = GoogleIdentity(
         sub="sub-y", email="nguoila@test.local", email_verified=True, name="Y", picture=None
     )
 
-    resp = _dang_nhap(client, "code-1")
+    resp = _login(client, "code-1")
 
     assert resp.status_code == 403
     assert resp.json()["code"] == "FORBIDDEN"
     assert resp.json()["retryable"] is False
-    assert _dem_user(db) == truoc
+    assert _count_users(db) == users_before
 
 
-def test_redirect_uri_khong_khop_thi_khong_bao_gio_cham_google(
-    client: Any, google: GoogleGia, owner: NguoiDungTest
+def test_mismatched_redirect_uri_never_touches_google(
+    client: Any, google: FakeGoogleClient, owner: UserFixture
 ) -> None:
     """Chốt chặn phải nằm TRƯỚC lượt gọi Google: nhận đại redirect_uri của client rồi
     chuyển cho Google là cho một extension lạ mượn client_secret của mình."""
-    resp = _dang_nhap(client, "code-1", "https://ke-gian.chromiumapp.org/")
+    resp = _login(client, "code-1", "https://ke-gian.chromiumapp.org/")
 
     assert resp.status_code == 401
-    assert google.so_lan_goi == 0
+    assert google.call_count == 0
 
 
-def test_google_chet_thi_503_va_retry_duoc(
-    client: Any, google: GoogleGia, owner: NguoiDungTest
+def test_google_down_returns_503_and_is_retryable(
+    client: Any, google: FakeGoogleClient, owner: UserFixture
 ) -> None:
-    google.nem = AppError.of(ErrorCode.AUTH_UNAVAILABLE, "Google đang không phản hồi")
+    google.error_to_raise = AppError.of(ErrorCode.AUTH_UNAVAILABLE, "Google đang không phản hồi")
 
-    resp = _dang_nhap(client, "code-1")
+    resp = _login(client, "code-1")
 
     assert resp.status_code == 503
     assert resp.json()["code"] == "AUTH_UNAVAILABLE"
     assert resp.json()["retryable"] is True
 
 
-def test_moi_lan_dang_nhap_tao_mot_phien_rieng(
-    client: Any, google: GoogleGia, owner: NguoiDungTest
+def test_each_login_creates_a_separate_session(
+    client: Any, google: FakeGoogleClient, owner: UserFixture
 ) -> None:
     """Đăng xuất máy này không đá máy kia ra."""
-    google.tra_ve = _owner_identity()
+    google.returns = _owner_identity()
 
-    thu_nhat = _token_sau_dang_nhap(client, "code-1")
-    thu_hai = _token_sau_dang_nhap(client, "code-2")
-    assert thu_nhat != thu_hai
+    first = _token_after_login(client, "code-1")
+    second = _token_after_login(client, "code-2")
+    assert first != second
 
-    resp = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {thu_nhat}"})
+    resp = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {first}"})
     assert resp.status_code == 204
 
     assert (
-        client.get("/api/auth/me", headers={"Authorization": f"Bearer {thu_nhat}"}).status_code
+        client.get("/api/auth/me", headers={"Authorization": f"Bearer {first}"}).status_code
         == 401
     )
-    con_song = client.get("/api/auth/me", headers={"Authorization": f"Bearer {thu_hai}"})
-    assert con_song.status_code == 200
-    assert con_song.json()["email"] == OWNER_EMAIL
+    alive_response = client.get("/api/auth/me", headers={"Authorization": f"Bearer {second}"})
+    assert alive_response.status_code == 200
+    assert alive_response.json()["email"] == OWNER_EMAIL
 
 
-def test_token_tho_khong_bao_gio_duoc_luu_xuong_db(
-    client: Any, google: GoogleGia, db: Session, owner: NguoiDungTest
+def test_raw_token_is_never_stored_in_the_db(
+    client: Any, google: FakeGoogleClient, db: Session, owner: UserFixture
 ) -> None:
     """Lộ bảng `user_session` không được phép cho ai mạo danh ai."""
-    google.tra_ve = _owner_identity()
+    google.returns = _owner_identity()
 
-    token = _token_sau_dang_nhap(client, "code-1")
+    token = _token_after_login(client, "code-1")
 
-    tho = db.execute(
+    raw_token_count = db.execute(
         text("SELECT count(*) FROM user_session WHERE token_hash = :t"), {"t": token}
     ).scalar_one()
-    assert tho == 0
-    bam = db.execute(
+    assert raw_token_count == 0
+    hashed_count = db.execute(
         text("SELECT count(*) FROM user_session WHERE token_hash = :t"), {"t": sha256(token)}
     ).scalar_one()
-    assert bam == 1
+    assert hashed_count == 1
 
 
-def test_me_tra_dung_ho_so_nguoi_dang_nhap(client: Any, owner: NguoiDungTest) -> None:
+def test_me_returns_the_correct_profile_of_the_logged_in_user(
+    client: Any, owner: UserFixture
+) -> None:
     resp = client.get("/api/auth/me", headers=owner.headers)
 
     assert resp.status_code == 200
@@ -221,12 +223,12 @@ def test_me_tra_dung_ho_so_nguoi_dang_nhap(client: Any, owner: NguoiDungTest) ->
     assert set(body) == {"email", "displayName", "pictureUrl"}
 
 
-def test_logout_khong_token_tra_401_chu_khong_204(client: Any) -> None:
+def test_logout_without_token_returns_401_not_204(client: Any) -> None:
     """Trả 204 cho request không token sẽ làm client tưởng đã thu hồi được gì đó."""
     assert client.post("/api/auth/logout").status_code == 401
 
 
-def test_body_thieu_field_tra_400_dung_hinh_dang(client: Any) -> None:
+def test_body_missing_field_returns_400_with_the_right_shape(client: Any) -> None:
     resp = client.post("/api/auth/google", json={"code": "x"})
 
     assert resp.status_code == 400

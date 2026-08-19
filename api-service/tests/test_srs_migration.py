@@ -15,10 +15,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.srs import repository as repo
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 
-def _tu(db: Session, user_id: int, term: str, pos: str = "verb") -> int:
+def _word(db: Session, user_id: int, term: str, pos: str = "verb") -> int:
     vocab_id = int(
         db.execute(
             text(
@@ -33,7 +33,7 @@ def _tu(db: Session, user_id: int, term: str, pos: str = "verb") -> int:
     return vocab_id
 
 
-def _the(db: Session, vocab_id: int) -> int:
+def _card(db: Session, vocab_id: int) -> int:
     card_id = int(
         db.execute(
             text(
@@ -47,16 +47,16 @@ def _the(db: Session, vocab_id: int) -> int:
     return card_id
 
 
-def _dem(db: Session, sql: str) -> int:
+def _count(db: Session, sql: str) -> int:
     return int(db.execute(text(sql)).scalar_one())
 
 
-def test_xoa_tu_thi_the_va_lich_su_review_bien_mat_theo(
-    db: Session, owner: NguoiDungTest
+def test_deleting_word_removes_card_and_review_history_too(
+    db: Session, owner: UserFixture
 ) -> None:
     """ON DELETE CASCADE — không để lại hàng mồ côi."""
-    vocab_id = _tu(db, owner.id, "mitigate")
-    card_id = _the(db, vocab_id)
+    vocab_id = _word(db, owner.id, "mitigate")
+    card_id = _card(db, vocab_id)
     db.execute(
         text(
             "INSERT INTO review_log (card_id, rating, prev_interval, new_interval) "
@@ -69,11 +69,11 @@ def test_xoa_tu_thi_the_va_lich_su_review_bien_mat_theo(
     db.execute(text("DELETE FROM vocab_entry WHERE id = :v"), {"v": vocab_id})
     db.commit()
 
-    assert _dem(db, "SELECT count(*) FROM srs_card") == 0
-    assert _dem(db, "SELECT count(*) FROM review_log") == 0
+    assert _count(db, "SELECT count(*) FROM srs_card") == 0
+    assert _count(db, "SELECT count(*) FROM review_log") == 0
 
 
-def test_mot_tu_chi_duoc_co_dung_mot_the(db: Session, owner: NguoiDungTest) -> None:
+def test_a_word_may_have_exactly_one_card(db: Session, owner: UserFixture) -> None:
     """Ràng buộc UNIQUE ở tầng schema, không phải ở tầng service.
 
     Ở tầng service thì hai request song song vẫn chèn được hai thẻ cho cùng một từ; UNIQUE
@@ -82,26 +82,26 @@ def test_mot_tu_chi_duoc_co_dung_mot_the(db: Session, owner: NguoiDungTest) -> N
     import psycopg
     import pytest
 
-    vocab_id = _tu(db, owner.id, "resilient", "adjective")
-    _the(db, vocab_id)
+    vocab_id = _word(db, owner.id, "resilient", "adjective")
+    _card(db, vocab_id)
 
     with pytest.raises(Exception) as ex:
-        _the(db, vocab_id)
+        _card(db, vocab_id)
     assert isinstance(ex.value.orig, psycopg.errors.UniqueViolation)  # type: ignore[attr-defined]
     db.rollback()
 
-    assert _dem(db, f"SELECT count(*) FROM srs_card WHERE vocab_entry_id = {vocab_id}") == 1
+    assert _count(db, f"SELECT count(*) FROM srs_card WHERE vocab_entry_id = {vocab_id}") == 1
 
 
-def test_cau_lenh_backfill_bo_qua_pos_phrase(db: Session, owner: NguoiDungTest) -> None:
+def test_backfill_statement_skips_pos_phrase(db: Session, owner: UserFixture) -> None:
     """V3 backfill chỉ tạo thẻ cho từ đơn — câu (`pos = 'phrase'`) không làm flashcard được.
 
     Migration chạy lúc `vocab_entry` còn rỗng, nên chạy lại ĐÚNG câu lệnh của V3 trên dữ
     liệu vừa gieo là cách duy nhất kiểm chứng chính logic lọc đó.
     """
-    _tu(db, owner.id, "mitigate", "verb")
-    _tu(db, owner.id, "resilient", "adjective")
-    _tu(db, owner.id, "Governments must act now.", "phrase")
+    _word(db, owner.id, "mitigate", "verb")
+    _word(db, owner.id, "resilient", "adjective")
+    _word(db, owner.id, "Governments must act now.", "phrase")
 
     db.execute(
         text(
@@ -111,9 +111,9 @@ def test_cau_lenh_backfill_bo_qua_pos_phrase(db: Session, owner: NguoiDungTest) 
     )
     db.commit()
 
-    assert _dem(db, "SELECT count(*) FROM srs_card") == 2
+    assert _count(db, "SELECT count(*) FROM srs_card") == 2
     assert (
-        _dem(
+        _count(
             db,
             "SELECT count(*) FROM srs_card c JOIN vocab_entry v ON v.id = c.vocab_entry_id "
             "WHERE v.pos = 'phrase'",
@@ -122,13 +122,13 @@ def test_cau_lenh_backfill_bo_qua_pos_phrase(db: Session, owner: NguoiDungTest) 
     )
 
 
-def test_chi_dem_luot_review_dau_doi_cua_the(db: Session, owner: NguoiDungTest) -> None:
+def test_only_counts_the_first_ever_review_of_a_card(db: Session, owner: UserFixture) -> None:
     """`prev_interval = 0` nhận diện chính xác lượt đầu đời của một thẻ.
 
     Đây là thứ hạn mức "từ mới mỗi ngày" dựa vào. Đếm cả lượt sau là hạn mức bị tiêu hết bởi
     những thẻ vốn đã học từ tuần trước.
     """
-    card_id = _the(db, _tu(db, owner.id, "substantial", "adjective"))
+    card_id = _card(db, _word(db, owner.id, "substantial", "adjective"))
     db.execute(
         text(
             "INSERT INTO review_log (card_id, rating, prev_interval, new_interval) "
@@ -141,10 +141,10 @@ def test_chi_dem_luot_review_dau_doi_cua_the(db: Session, owner: NguoiDungTest) 
     assert repo.count_introduced_since(db, owner.id, datetime(1970, 1, 1, tzinfo=UTC)) == 1
 
 
-def test_moi_nhu_luu_va_doc_lai_duoc_hai_mang_jsonb(
-    db: Session, owner: NguoiDungTest
+def test_distractors_store_and_read_back_two_jsonb_arrays(
+    db: Session, owner: UserFixture
 ) -> None:
-    vocab_id = _tu(db, owner.id, "mitigate")
+    vocab_id = _word(db, owner.id, "mitigate")
     db.execute(
         text(
             "INSERT INTO srs_distractor (vocab_entry_id, vi_options, en_options, prompt_version) "
@@ -158,16 +158,16 @@ def test_moi_nhu_luu_va_doc_lai_duoc_hai_mang_jsonb(
     )
     db.commit()
 
-    hang = db.execute(
+    row = db.execute(
         text("SELECT vi_options, en_options, prompt_version FROM srs_distractor")
     ).one()
-    assert hang[0] == ["làm trầm trọng thêm", "phóng đại", "trì hoãn"]
-    assert hang[1] == ["aggravate", "exaggerate", "postpone"]
-    assert hang[2] == 1
+    assert row[0] == ["làm trầm trọng thêm", "phóng đại", "trì hoãn"]
+    assert row[1] == ["aggravate", "exaggerate", "postpone"]
+    assert row[2] == 1
 
 
-def test_moi_nhu_cascade_khi_xoa_tu(db: Session, owner: NguoiDungTest) -> None:
-    vocab_id = _tu(db, owner.id, "scrutinise")
+def test_distractors_cascade_when_word_is_deleted(db: Session, owner: UserFixture) -> None:
+    vocab_id = _word(db, owner.id, "scrutinise")
     db.execute(
         text(
             "INSERT INTO srs_distractor (vocab_entry_id, vi_options, en_options, prompt_version) "
@@ -180,44 +180,44 @@ def test_moi_nhu_cascade_khi_xoa_tu(db: Session, owner: NguoiDungTest) -> None:
     db.execute(text("DELETE FROM vocab_entry WHERE id = :v"), {"v": vocab_id})
     db.commit()
 
-    assert _dem(db, "SELECT count(*) FROM srs_distractor") == 0
+    assert _count(db, "SELECT count(*) FROM srs_distractor") == 0
 
 
-def test_moi_tu_chi_co_mot_bo_moi_nhu(db: Session, owner: NguoiDungTest) -> None:
+def test_each_word_has_only_one_distractor_set(db: Session, owner: UserFixture) -> None:
     """UNIQUE trên `vocab_entry_id` là thứ làm việc ghi đè bộ mồi nhử trở thành idempotent —
     hai instance serverless cùng sinh một lúc không đẻ ra hai hàng."""
-    thong_tin = db.execute(
+    unique_constraint_count = db.execute(
         text(
             "SELECT count(*) FROM pg_constraint c "
             "JOIN pg_class t ON t.oid = c.conrelid "
             "WHERE t.relname = 'srs_distractor' AND c.contype = 'u'"
         )
     ).scalar_one()
-    assert thong_tin >= 1
+    assert unique_constraint_count >= 1
 
 
-def test_v8_them_cot_mode_va_backfill_dong_cu(db: Session, owner: NguoiDungTest) -> None:
+def test_v8_adds_mode_column_and_backfills_old_rows(db: Session, owner: UserFixture) -> None:
     """`DEFAULT 'SCHEDULED'` không phải cho tiện: mọi dòng `review_log` đang có ĐỀU đúng là
     lượt ôn theo lịch, nên default đó backfill chính xác toàn bộ lịch sử mà không cần câu
     `UPDATE` nào. Sai chỗ này là thống kê cũ đổi số."""
-    kieu, mac_dinh, cho_null = db.execute(
+    column_type, default_expr, nullable = db.execute(
         text(
             "SELECT data_type, column_default, is_nullable FROM information_schema.columns "
             "WHERE table_name = 'review_log' AND column_name = 'mode'"
         )
     ).one()
 
-    assert kieu == "character varying"
-    assert "SCHEDULED" in mac_dinh
-    assert cho_null == "NO"
+    assert column_type == "character varying"
+    assert "SCHEDULED" in default_expr
+    assert nullable == "NO"
 
 
-def test_v8_dong_review_log_khong_ghi_mode_nhan_scheduled(
-    db: Session, owner: NguoiDungTest
+def test_v8_review_log_row_without_mode_gets_scheduled(
+    db: Session, owner: UserFixture
 ) -> None:
     """Chèn thẳng bằng SQL không nêu `mode` — mô phỏng đúng dòng có từ trước V8."""
-    vocab_id = _tu(db, owner.id, "mitigate")
-    card_id = _the(db, vocab_id)
+    vocab_id = _word(db, owner.id, "mitigate")
+    card_id = _card(db, vocab_id)
     db.execute(
         text(
             "INSERT INTO review_log (card_id, rating, prev_interval, new_interval) "

@@ -19,9 +19,9 @@ class Streak:
     last_active: date | None
 
 
-def tinh_streak(active_days: list[date], today: date) -> Streak:
+def compute_streak(active_days: list[date], today: date) -> Streak:
     """`active_days` phải đã sắp xếp TĂNG DẦN và không trùng lặp — repository đảm bảo cả hai
-    bằng `GROUP BY ngay ORDER BY ngay`.
+    bằng `GROUP BY day ORDER BY day`.
 
     Hôm nay chưa ôn thì streak VẪN tính từ hôm qua. Streak chỉ đứt khi cả hôm nay lẫn hôm qua
     đều trống — đúng cách Anki và Duolingo làm.
@@ -29,27 +29,27 @@ def tinh_streak(active_days: list[date], today: date) -> Streak:
     if not active_days:
         return Streak(current=0, longest=0, last_active=None)
 
-    co_on = set(active_days)
-    longest = _chuoi_dai_nhat(active_days)
+    active_day_set = set(active_days)
+    longest = _longest_streak(active_days)
     last_active = active_days[-1]
 
-    moc = today if today in co_on else today - timedelta(days=1)
-    if moc not in co_on:
+    cursor = today if today in active_day_set else today - timedelta(days=1)
+    if cursor not in active_day_set:
         return Streak(current=0, longest=longest, last_active=last_active)
 
     current = 0
-    while moc in co_on:
+    while cursor in active_day_set:
         current += 1
-        moc -= timedelta(days=1)
+        cursor -= timedelta(days=1)
 
     return Streak(current=current, longest=longest, last_active=last_active)
 
 
-def _chuoi_dai_nhat(days: list[date]) -> int:
+def _longest_streak(days: list[date]) -> int:
     """Chuỗi ngày liên tiếp dài nhất trong toàn bộ lịch sử. `days` khác rỗng."""
-    dai_nhat = 1
-    hien_tai = 1
-    for truoc, sau in pairwise(days):
-        hien_tai = hien_tai + 1 if sau - truoc == timedelta(days=1) else 1
-        dai_nhat = max(dai_nhat, hien_tai)
-    return dai_nhat
+    longest_run = 1
+    current_run = 1
+    for prev_day, curr_day in pairwise(days):
+        current_run = current_run + 1 if curr_day - prev_day == timedelta(days=1) else 1
+        longest_run = max(longest_run, current_run)
+    return longest_run

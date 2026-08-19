@@ -12,27 +12,27 @@ from sqlalchemy.orm import Session
 from tests.conftest import OWNER_EMAIL
 
 
-def _co_rang_buoc(db: Session, ten: str) -> bool:
+def _has_constraint(db: Session, constraint_name: str) -> bool:
     n = db.execute(
-        text("SELECT count(*) FROM pg_constraint WHERE conname = :t"), {"t": ten}
+        text("SELECT count(*) FROM pg_constraint WHERE conname = :t"), {"t": constraint_name}
     ).scalar_one()
     return int(n) > 0
 
 
-def test_rang_buoc_unique_gio_theo_tung_user(db: Session) -> None:
+def test_unique_constraint_is_now_per_user(db: Session) -> None:
     """`uq_vocab_term_pos` toàn cục nghĩa là hai người không cùng lưu được từ "mitigate"."""
-    assert _co_rang_buoc(db, "uq_vocab_term_pos") is False
-    assert _co_rang_buoc(db, "uq_vocab_user_term_pos") is True
+    assert _has_constraint(db, "uq_vocab_term_pos") is False
+    assert _has_constraint(db, "uq_vocab_user_term_pos") is True
 
 
-def test_tai_khoan_goc_duoc_tao_tu_bootstrap_email(db: Session) -> None:
+def test_owner_account_is_created_from_bootstrap_email(db: Session) -> None:
     n = db.execute(
         text("SELECT count(*) FROM app_user WHERE email = :e"), {"e": OWNER_EMAIL}
     ).scalar_one()
     assert n == 1
 
 
-def test_vocab_user_id_la_not_null(db: Session) -> None:
+def test_vocab_user_id_is_not_null(db: Session) -> None:
     """Không hàng nào vô chủ lọt qua."""
     nullable = db.execute(
         text(
@@ -43,7 +43,7 @@ def test_vocab_user_id_la_not_null(db: Session) -> None:
     assert nullable == "NO"
 
 
-def test_xoa_user_thi_so_tu_di_theo(db: Session) -> None:
+def test_deleting_user_also_deletes_their_vocabulary(db: Session) -> None:
     """Không để lại hàng mồ côi."""
     user_id = db.execute(
         text(
@@ -63,13 +63,13 @@ def test_xoa_user_thi_so_tu_di_theo(db: Session) -> None:
     db.execute(text("DELETE FROM app_user WHERE id = :uid"), {"uid": user_id})
     db.commit()
 
-    con_lai = db.execute(
+    remaining = db.execute(
         text("SELECT count(*) FROM vocab_entry WHERE term = 'cascadeword'")
     ).scalar_one()
-    assert con_lai == 0
+    assert remaining == 0
 
 
-def test_lookup_cache_co_y_khong_co_user_id(db: Session) -> None:
+def test_lookup_cache_intentionally_has_no_user_id(db: Session) -> None:
     """Bất biến ngược chiều mọi test cách ly còn lại, nên phải viết ra: ai đó "sửa cho nhất
     quán" bằng cách thêm `user_id` vào đây là bỏ đi phần tiết kiệm quota Gemini lớn nhất của
     hệ thống (ràng buộc #14)."""
@@ -82,29 +82,29 @@ def test_lookup_cache_co_y_khong_co_user_id(db: Session) -> None:
     assert n == 0
 
 
-def test_token_hash_la_varchar_chu_khong_phai_bpchar(db: Session) -> None:
+def test_token_hash_is_varchar_not_bpchar(db: Session) -> None:
     """V7 đổi `CHAR(64)` thành `VARCHAR(64)`.
 
     `char(n)` trong Postgres mang ngữ nghĩa đệm khoảng trắng tới độ dài cố định. Hash
     SHA-256 hex luôn đúng 64 ký tự nên hôm nay chưa ai thấy hậu quả, nhưng để nguyên là để
     lại một cái bẫy trong schema.
     """
-    kieu = db.execute(
+    column_type = db.execute(
         text(
             "SELECT data_type FROM information_schema.columns "
             "WHERE table_name = 'user_session' AND column_name = 'token_hash'"
         )
     ).scalar_one()
-    assert kieu == "character varying"
+    assert column_type == "character varying"
 
 
-def test_moi_bang_du_lieu_hoc_deu_truy_duoc_ve_mot_chu_so_huu(db: Session) -> None:
+def test_every_learning_data_table_traces_back_to_one_owner(db: Session) -> None:
     """Chủ sở hữu gắn ở ĐÚNG MỘT chỗ — `vocab_entry.user_id`.
 
     Nhân cột `user_id` ra sáu bảng chỉ tạo cơ hội cho hai nguồn sự thật lệch nhau, mà lệch
     kiểu đó là dữ liệu người này lọt sang người kia, không có lỗi nào nổ ra.
     """
-    co_user_id = {
+    tables_with_user_id = {
         row[0]
         for row in db.execute(
             text(
@@ -113,4 +113,4 @@ def test_moi_bang_du_lieu_hoc_deu_truy_duoc_ve_mot_chu_so_huu(db: Session) -> No
             )
         )
     }
-    assert co_user_id == {"vocab_entry", "user_session", "gemini_usage"}
+    assert tables_with_user_id == {"vocab_entry", "user_session", "gemini_usage"}

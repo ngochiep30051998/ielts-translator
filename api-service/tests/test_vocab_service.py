@@ -1,6 +1,6 @@
 """Bản port của `VocabServiceIT` — nghiệp vụ sổ từ, gọi thẳng tầng service.
 
-Bên Java, `@BeforeEach reset()` xoá sạch `vocab_entry`; ở đây fixture `_don_sach` của
+Bên Java, `@BeforeEach reset()` xoá sạch `vocab_entry`; ở đây fixture `_clean_database` của
 `conftest.py` đã TRUNCATE trước MỖI test nên không cần lặp lại.
 
 Hai chi tiết khác bản Java, không phải tuỳ tiện:
@@ -25,11 +25,11 @@ from app.auth import models as _auth_models  # noqa: F401  (đăng ký bảng ap
 from app.common.errors import AppError, ErrorCode
 from app.vocabulary import service
 from app.vocabulary.models import SaveVocabRequest, SaveVocabResponse
-from tests.conftest import NguoiDungTest
+from tests.conftest import UserFixture
 
 
 def _request(
-    term: str, pos: str, nghia: str, tags: Sequence[str] = ()
+    term: str, pos: str, meaning: str, tags: Sequence[str] = ()
 ) -> SaveVocabRequest:
     """Đúng bộ dữ liệu mà `VocabServiceIT.request(...)` dựng."""
     return SaveVocabRequest(
@@ -38,7 +38,7 @@ def _request(
         lang="en",
         pos=pos,
         ipa="/test/",
-        meaning_vi=nghia,
+        meaning_vi=meaning,
         definition_en="an English definition",
         cefr="B2",
         band_level="6.5",
@@ -50,12 +50,12 @@ def _request(
     )
 
 
-def _so_tu(db: Session) -> int:
+def _word_count(db: Session) -> int:
     db.flush()
     return int(db.execute(text("SELECT count(*) FROM vocab_entry")).scalar_one())
 
 
-def _luu(
+def _save(
     db: Session,
     user_id: int,
     request: SaveVocabRequest,
@@ -74,26 +74,26 @@ def _luu(
 # ── lưu ───────────────────────────────────────────────────────────────────────
 
 
-def test_luu_tu_moi(db: Session, owner: NguoiDungTest) -> None:
+def test_save_new_word(db: Session, owner: UserFixture) -> None:
     """Lưu lần đầu: có id, `alreadyExists=false`, đúng một hàng trong bảng."""
-    response = _luu(db, owner.id, _request("renewable", "adj", "tái tạo"))
+    response = _save(db, owner.id, _request("renewable", "adj", "tái tạo"))
 
     assert response.id is not None
     assert response.already_exists is False
-    assert _so_tu(db) == 1
+    assert _word_count(db) == 1
 
 
-def test_luu_tu_moi_ghi_dung_tung_cot(db: Session, owner: NguoiDungTest) -> None:
+def test_save_new_word_writes_every_column_correctly(db: Session, owner: UserFixture) -> None:
     """Chốt CẢ hàng vừa ghi, không chỉ số lượng.
 
     `save()` map 14 field bằng tay; hoán vị hai cột cùng kiểu chuỗi — `lemma` với `lang`,
     `cefr` với `band_level` — không làm test nào bên Java đỏ, nhưng làm sổ từ của người
     dùng sai vĩnh viễn.
     """
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment"]))
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment"]))
     db.flush()
 
-    hang = db.execute(
+    row = db.execute(
         text(
             "SELECT user_id, term, lemma, lang, pos, ipa, meaning_vi, definition_en, "
             "cefr, band_level, tags, source_url, source_sentence, collocations, examples "
@@ -101,7 +101,7 @@ def test_luu_tu_moi_ghi_dung_tung_cot(db: Session, owner: NguoiDungTest) -> None
         )
     ).one()
 
-    assert tuple(hang) == (
+    assert tuple(row) == (
         owner.id,
         "renewable",
         "renewable",
@@ -120,40 +120,40 @@ def test_luu_tu_moi_ghi_dung_tung_cot(db: Session, owner: NguoiDungTest) -> None
     )
 
 
-def test_luu_lai_cung_term_va_pos_bao_da_ton_tai_va_khong_nhan_ban(
-    db: Session, owner: NguoiDungTest
+def test_resaving_same_term_and_pos_reports_already_exists_and_does_not_duplicate(
+    db: Session, owner: UserFixture
 ) -> None:
     """Lưu trùng trả `alreadyExists=true` CHỨ KHÔNG nổ lỗi — và trả về đúng id cũ để UI
     còn mở được từ đó."""
-    first = _luu(db, owner.id, _request("renewable", "adj", "tái tạo"))
-    second = _luu(db, owner.id, _request("renewable", "adj", "nghĩa khác"))
+    first = _save(db, owner.id, _request("renewable", "adj", "tái tạo"))
+    second = _save(db, owner.id, _request("renewable", "adj", "nghĩa khác"))
 
     assert second.already_exists is True
     assert second.id == first.id
-    assert _so_tu(db) == 1
+    assert _word_count(db) == 1
 
 
-def test_tu_da_co_giu_nguyen_nghia_cu(db: Session, owner: NguoiDungTest) -> None:
+def test_existing_word_keeps_its_old_meaning(db: Session, owner: UserFixture) -> None:
     """Nội dung cũ KHÔNG bị ghi đè.
 
     Người dùng có thể đã sửa tay nghĩa của từ; lưu lại cùng từ đó từ một trang khác không
     được phép xoá công sức đó bằng bản dịch máy mới.
     """
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo"))
-    _luu(db, owner.id, _request("renewable", "adj", "nghĩa bị ghi đè"))
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo"))
+    _save(db, owner.id, _request("renewable", "adj", "nghĩa bị ghi đè"))
     db.flush()
 
     assert db.execute(text("SELECT meaning_vi FROM vocab_entry")).scalar_one() == "tái tạo"
 
 
-def test_luu_lai_gop_them_tag_moi(db: Session, owner: NguoiDungTest) -> None:
+def test_resaving_merges_in_the_new_tags(db: Session, owner: UserFixture) -> None:
     """Tag thì NGƯỢC LẠI: tag mới được gộp vào tag cũ, bỏ trùng.
 
     Thứ tự khẳng định ở đây chặt hơn bản Java (`containsExactlyInAnyOrder`) vì
     `LinkedHashSet` bên Java — và `dict.fromkeys` bên này — đều giữ thứ tự xuất hiện.
     """
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment"]))
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment", "writing"]))
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment"]))
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment", "writing"]))
     db.flush()
 
     assert db.execute(text("SELECT tags FROM vocab_entry")).scalar_one() == [
@@ -162,43 +162,45 @@ def test_luu_lai_gop_them_tag_moi(db: Session, owner: NguoiDungTest) -> None:
     ]
 
 
-def test_chi_nhanh_luu_moi_xep_viec_chay_sau(db: Session, owner: NguoiDungTest) -> None:
+def test_only_the_new_save_branch_queues_background_work(db: Session, owner: UserFixture) -> None:
     """Bản Java chỉ phát `VocabEntrySavedEvent` ở nhánh lưu MỚI. Bất biến đó phải giữ.
 
     Phát cả ở nhánh trùng thì mỗi lần người dùng bấm lưu lại một từ cũ là một lượt gọi
     Gemini nữa để sinh mồi nhử — âm thầm đốt hạn mức mà chẳng thêm dữ liệu gì.
     """
     tasks = BackgroundTasks()
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo"), tasks)
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo"), tasks)
     assert len(tasks.tasks) == 1
 
-    lan_hai = BackgroundTasks()
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo"), lan_hai)
-    assert lan_hai.tasks == []
+    second_tasks = BackgroundTasks()
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo"), second_tasks)
+    assert second_tasks.tasks == []
 
     # Và thẻ ôn cũng không bị tạo lần hai (lịch ôn không bị đặt lại từ đầu).
     db.flush()
     assert db.execute(text("SELECT count(*) FROM srs_card")).scalar_one() == 1
 
 
-def test_cung_term_khac_pos_la_hai_muc_rieng(db: Session, owner: NguoiDungTest) -> None:
+def test_same_term_different_pos_are_two_separate_entries(
+    db: Session, owner: UserFixture
+) -> None:
     """"run" (động từ) và "run" (danh từ) là hai từ khác nhau với người học — khoá trùng
     là (user, term, pos) chứ không phải (user, term)."""
-    _luu(db, owner.id, _request("run", "v", "chạy"))
-    _luu(db, owner.id, _request("run", "n", "lượt chạy"))
+    _save(db, owner.id, _request("run", "v", "chạy"))
+    _save(db, owner.id, _request("run", "n", "lượt chạy"))
 
-    assert _so_tu(db) == 2
+    assert _word_count(db) == 2
 
 
 # ── tìm kiếm ──────────────────────────────────────────────────────────────────
 
 
-def test_tim_theo_term_khong_phan_biet_hoa_thuong(
-    db: Session, owner: NguoiDungTest
+def test_search_by_term_is_case_insensitive(
+    db: Session, owner: UserFixture
 ) -> None:
     """Khớp CHUỖI CON và bỏ qua hoa/thường: gõ "RENEW" phải ra "renewable"."""
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo"))
-    _luu(db, owner.id, _request("mitigate", "v", "giảm nhẹ"))
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo"))
+    _save(db, owner.id, _request("mitigate", "v", "giảm nhẹ"))
 
     found = service.search(db, owner.id, "RENEW", None, untagged=False, page=0, size=20).content
 
@@ -206,19 +208,19 @@ def test_tim_theo_term_khong_phan_biet_hoa_thuong(
     assert found[0].term == "renewable"
 
 
-def test_tim_theo_nghia_tieng_viet(db: Session, owner: NguoiDungTest) -> None:
+def test_search_by_vietnamese_meaning(db: Session, owner: UserFixture) -> None:
     """Ô tìm kiếm quét cả `meaning_vi`, không chỉ `term` — người học thường nhớ nghĩa
     trước khi nhớ mặt chữ."""
-    _luu(db, owner.id, _request("mitigate", "v", "giảm nhẹ"))
+    _save(db, owner.id, _request("mitigate", "v", "giảm nhẹ"))
 
-    trang = service.search(db, owner.id, "giảm", None, untagged=False, page=0, size=20)
+    result_page = service.search(db, owner.id, "giảm", None, untagged=False, page=0, size=20)
 
-    assert len(trang.content) == 1
+    assert len(result_page.content) == 1
 
 
-def test_loc_theo_tag(db: Session, owner: NguoiDungTest) -> None:
-    _luu(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment"]))
-    _luu(db, owner.id, _request("mitigate", "v", "giảm nhẹ", ["writing"]))
+def test_filter_by_tag(db: Session, owner: UserFixture) -> None:
+    _save(db, owner.id, _request("renewable", "adj", "tái tạo", ["environment"]))
+    _save(db, owner.id, _request("mitigate", "v", "giảm nhẹ", ["writing"]))
 
     found = service.search(db, owner.id, None, "writing", untagged=False, page=0, size=20).content
 
@@ -226,7 +228,7 @@ def test_loc_theo_tag(db: Session, owner: NguoiDungTest) -> None:
     assert found[0].term == "mitigate"
 
 
-def test_khong_loc_gi_tra_tat_ca_moi_nhat_truoc(db: Session, owner: NguoiDungTest) -> None:
+def test_no_filter_returns_everything_newest_first(db: Session, owner: UserFixture) -> None:
     """Từ vừa lưu phải đứng đầu danh sách — đó là thứ người dùng vừa làm và muốn thấy ngay.
 
     Đây cũng là chỗ tiêu chí phụ `id DESC` kiếm được tiền: `created_at` là `DEFAULT now()`
@@ -234,8 +236,8 @@ def test_khong_loc_gi_tra_tat_ca_moi_nhat_truoc(db: Session, owner: NguoiDungTes
     transaction có mốc thời gian GIỐNG HỆT nhau. Không có tiêu chí phụ thì thứ tự là tuỳ
     hứng và test này đỏ lúc xanh lúc.
     """
-    _luu(db, owner.id, _request("first", "n", "một"))
-    _luu(db, owner.id, _request("second", "n", "hai"))
+    _save(db, owner.id, _request("first", "n", "một"))
+    _save(db, owner.id, _request("second", "n", "hai"))
 
     found = service.search(db, owner.id, None, None, untagged=False, page=0, size=20).content
 
@@ -245,26 +247,26 @@ def test_khong_loc_gi_tra_tat_ca_moi_nhat_truoc(db: Session, owner: NguoiDungTes
 # ── đọc một từ · xoá ──────────────────────────────────────────────────────────
 
 
-def test_find_by_id_tra_ve_tu(db: Session, owner: NguoiDungTest) -> None:
-    entry_id = _luu(db, owner.id, _request("renewable", "adj", "tái tạo")).id
+def test_find_by_id_returns_the_word(db: Session, owner: UserFixture) -> None:
+    entry_id = _save(db, owner.id, _request("renewable", "adj", "tái tạo")).id
 
     assert service.find_by_id(db, owner.id, entry_id).term == "renewable"
 
 
-def test_xoa_tu(db: Session, owner: NguoiDungTest) -> None:
-    entry_id = _luu(db, owner.id, _request("renewable", "adj", "tái tạo")).id
+def test_delete_word(db: Session, owner: UserFixture) -> None:
+    entry_id = _save(db, owner.id, _request("renewable", "adj", "tái tạo")).id
 
     service.delete(db, owner.id, entry_id)
 
-    assert _so_tu(db) == 0
+    assert _word_count(db) == 0
 
 
-def test_xoa_id_khong_ton_tai_nem_not_found(db: Session, owner: NguoiDungTest) -> None:
+def test_delete_nonexistent_id_raises_not_found(db: Session, owner: UserFixture) -> None:
     """NOT_FOUND, không phải một `Exception` trần: `GlobalExceptionHandler` map mã này
     sang 404 và extension phân biệt lỗi vĩnh viễn với lỗi retry được nhờ chính nó."""
-    with pytest.raises(AppError) as loi:
+    with pytest.raises(AppError) as err:
         service.delete(db, owner.id, 999999)
 
-    assert loi.value.code is ErrorCode.NOT_FOUND
-    assert loi.value.status() == 404
-    assert loi.value.retryable is False
+    assert err.value.code is ErrorCode.NOT_FOUND
+    assert err.value.status() == 404
+    assert err.value.retryable is False

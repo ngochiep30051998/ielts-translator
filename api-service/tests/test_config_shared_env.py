@@ -28,7 +28,7 @@ ENV_EXAMPLE = REPO_ROOT / ".env.example"
 COMPOSE_YML = REPO_ROOT / "docker-compose.yml"
 
 #: `KEY=` ở đầu dòng, kể cả khi bị comment (`# KEY=` là mục "tuỳ chọn" trong .env.example).
-_KHAI_BAO = re.compile(r"^\s*#?\s*([A-Z][A-Z0-9_]*)=", re.MULTILINE)
+_DECLARATION = re.compile(r"^\s*#?\s*([A-Z][A-Z0-9_]*)=", re.MULTILINE)
 
 #: `${BIEN:-mặc-định}` trong compose. Chỉ bắt dạng CÓ mặc định — `${BIEN}` trần nghĩa là
 #: "phải đến từ .env", không có gì để đối chiếu.
@@ -36,11 +36,11 @@ _COMPOSE_DEFAULT = re.compile(r"\$\{([A-Z][A-Z0-9_]*):-([^}]*)\}")
 
 #: Chỉ Docker Compose dùng, tiến trình app không bao giờ đọc: cổng publish ra host. Trong
 #: mạng compose api-service luôn nghe 8080, nên đây không phải cấu hình của app.
-CHI_DANH_CHO_COMPOSE = {"APP_PORT"}
+COMPOSE_ONLY_VARS = {"APP_PORT"}
 
 #: Biến `config.py` khai thêm ngoài `.env.example`. Danh sách chốt cứng để thêm biến mới là
 #: phải sửa cả test này — và lúc đó nhớ luôn bảng "Biến môi trường" trong README (ràng buộc #6).
-NGOAI_ENV_EXAMPLE = {
+NOT_IN_ENV_EXAMPLE = {
     # Vercel/Supabase phát một chuỗi kết nối duy nhất thay vì năm mảnh rời.
     "DATABASE_URL",
     # Compose set 0.0.0.0 trong container; ngoài container mặc định 127.0.0.1.
@@ -63,11 +63,11 @@ NGOAI_ENV_EXAMPLE = {
 }
 
 
-def _bien_env_example() -> set[str]:
-    return set(_KHAI_BAO.findall(ENV_EXAMPLE.read_text("utf-8")))
+def _env_example_vars() -> set[str]:
+    return set(_DECLARATION.findall(ENV_EXAMPLE.read_text("utf-8")))
 
 
-def _bi_danh(f: FieldInfo) -> list[str]:
+def _aliases(f: FieldInfo) -> list[str]:
     """Mọi tên biến môi trường mà một field chấp nhận.
 
     Không chỉ `f.alias`: một field có thể nhận NHIỀU tên qua `AliasChoices` (`tz` nhận cả
@@ -75,48 +75,48 @@ def _bi_danh(f: FieldInfo) -> list[str]:
     tức là chốt chặn "config.py và .env.example nói cùng một bộ biến" thủng đúng ở chỗ vừa
     thêm biến mới.
     """
-    va = f.validation_alias
-    if isinstance(va, AliasChoices):
-        return [chon for chon in va.choices if isinstance(chon, str)]
-    if isinstance(va, str):
-        return [va]
+    alias_spec = f.validation_alias
+    if isinstance(alias_spec, AliasChoices):
+        return [choice for choice in alias_spec.choices if isinstance(choice, str)]
+    if isinstance(alias_spec, str):
+        return [alias_spec]
     return [f.alias] if f.alias else []
 
 
 def _alias_settings() -> dict[str, str]:
     return {
-        bi_danh.upper(): ten
-        for ten, f in Settings.model_fields.items()
-        for bi_danh in _bi_danh(f)
+        alias_name.upper(): field_name
+        for field_name, f in Settings.model_fields.items()
+        for alias_name in _aliases(f)
     }
 
 
 @pytest.fixture
-def env_sach(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Xoá mọi biến môi trường mà `Settings` đọc.
 
     `conftest.py` đặt sẵn một loạt biến để trỏ test vào Postgres tạm, và biến môi trường
     thắng cả `_env_file=None`. Không dọn thì test "giá trị mặc định" thực chất đang đo cấu
     hình của chính bộ test — xanh mà không chứng minh gì.
     """
-    for bien in _alias_settings():
-        monkeypatch.delenv(bien, raising=False)
+    for env_var in _alias_settings():
+        monkeypatch.delenv(env_var, raising=False)
     # `.env` ở thư mục gốc cũng phải bị bỏ qua; các test dưới truyền `_env_file=None`.
     assert not any(b in os.environ for b in _alias_settings())
     yield
 
 
-def test_moi_bien_trong_env_example_deu_duoc_config_doc() -> None:
+def test_every_var_in_env_example_is_read_by_config() -> None:
     """Thiếu một biến ở đây = app bỏ qua cấu hình người dùng đã đặt, im lặng."""
-    thieu = sorted(_bien_env_example() - set(_alias_settings()) - CHI_DANH_CHO_COMPOSE)
+    missing = sorted(_env_example_vars() - set(_alias_settings()) - COMPOSE_ONLY_VARS)
 
-    assert thieu == [], (
-        f".env.example khai {thieu} mà config.py không đọc. Người dùng sẽ đặt biến đó và "
+    assert missing == [], (
+        f".env.example khai {missing} mà config.py không đọc. Người dùng sẽ đặt biến đó và "
         "tưởng nó có tác dụng."
     )
 
 
-def test_default_trong_compose_khop_default_trong_config(env_sach: None) -> None:
+def test_defaults_in_compose_match_defaults_in_config(clean_env: None) -> None:
     """Lệch một giá trị = chạy Docker và chạy `uv run ielts-api` cư xử khác nhau.
 
     Người dùng không có cách nào biết, vì cả hai đều khởi động bình thường.
@@ -124,37 +124,40 @@ def test_default_trong_compose_khop_default_trong_config(env_sach: None) -> None
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     alias = _alias_settings()
 
-    lech: list[str] = []
-    for bien, cua_compose in sorted(set(_COMPOSE_DEFAULT.findall(COMPOSE_YML.read_text("utf-8")))):
-        if bien not in alias:
+    mismatches: list[str] = []
+    for env_var, compose_value in sorted(
+        set(_COMPOSE_DEFAULT.findall(COMPOSE_YML.read_text("utf-8")))
+    ):
+        if env_var not in alias:
             continue
-        cua_config = str(getattr(settings, alias[bien]))
-        if cua_config != cua_compose:
-            lech.append(f"{bien}: compose={cua_compose!r} config.py={cua_config!r}")
+        config_value = str(getattr(settings, alias[env_var]))
+        if config_value != compose_value:
+            mismatches.append(f"{env_var}: compose={compose_value!r} config.py={config_value!r}")
 
-    assert lech == [], "\n".join(lech)
+    assert mismatches == [], "\n".join(mismatches)
 
 
-def test_bien_ngoai_env_example_deu_khong_bat_buoc(env_sach: None) -> None:
+def test_vars_outside_env_example_are_all_optional(clean_env: None) -> None:
     """`config.py` được phép khai thêm biến, nhưng chúng PHẢI có mặc định.
 
     Nếu không thì `.env` đang chạy tốt sẽ làm app chết lúc khởi động chỉ vì nâng cấp code.
     """
-    them = set(_alias_settings()) - _bien_env_example()
+    extra_vars = set(_alias_settings()) - _env_example_vars()
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     alias = _alias_settings()
 
-    for bien in sorted(them):
+    for env_var in sorted(extra_vars):
         # Dựng được Settings rỗng nghĩa là biến này không bắt buộc.
-        assert hasattr(settings, alias[bien])
+        assert hasattr(settings, alias[env_var])
 
-    assert them == NGOAI_ENV_EXAMPLE, (
-        f"Biến ngoài dự kiến: {sorted(them ^ NGOAI_ENV_EXAMPLE)}. Thêm biến vào config.py thì "
+    assert extra_vars == NOT_IN_ENV_EXAMPLE, (
+        f"Biến ngoài dự kiến: {sorted(extra_vars ^ NOT_IN_ENV_EXAMPLE)}. "
+        "Thêm biến vào config.py thì "
         "phải thêm cả vào bảng 'Biến môi trường' trong README.md (ràng buộc #6)."
     )
 
 
-def test_database_url_rong_thi_ghep_tu_cac_manh_db(env_sach: None) -> None:
+def test_database_url_empty_is_built_from_db_parts(clean_env: None) -> None:
     """Đường chạy local/Docker: connection string ghép phẳng từ `DB_HOST`/`DB_PORT`/`DB_NAME`."""
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]
@@ -168,7 +171,7 @@ def test_database_url_rong_thi_ghep_tu_cac_manh_db(env_sach: None) -> None:
     assert settings.sqlalchemy_url == "postgresql+psycopg://ielts:matkhau@localhost:6666/ielts"
 
 
-def test_database_url_dat_thi_thang_cac_manh_db(env_sach: None) -> None:
+def test_database_url_set_wins_over_db_parts(clean_env: None) -> None:
     """Chỉ dùng khi deploy Supabase/Vercel — nơi chỉ có một chuỗi kết nối."""
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]

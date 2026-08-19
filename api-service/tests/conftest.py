@@ -73,8 +73,10 @@ def db_engine() -> Iterator[Engine]:
 
     # PYTEST_PG_DIR cho phép tái dùng một data directory giữa các lần chạy — lần chạy đầu
     # tốn ~10 giây để `initdb`, những lần sau gần như tức thì.
-    chi_dinh = os.environ.get("PYTEST_PG_DIR", "").strip()
-    data_dir = Path(chi_dinh) if chi_dinh else Path(tempfile.mkdtemp(prefix="ielts-pgtest-"))
+    specified_dir = os.environ.get("PYTEST_PG_DIR", "").strip()
+    data_dir = (
+        Path(specified_dir) if specified_dir else Path(tempfile.mkdtemp(prefix="ielts-pgtest-"))
+    )
     server = pgserver.get_server(str(data_dir))
     uri = server.get_uri().replace("postgresql://", "postgresql+psycopg://", 1)
 
@@ -100,7 +102,7 @@ def db_engine() -> Iterator[Engine]:
 #: Mọi bảng có dữ liệu, xếp theo thứ tự xoá được. `app_user` NẰM TRONG danh sách và được
 #: dựng lại ngay sau đó — như vậy mỗi test khởi đầu từ đúng một trạng thái, kể cả test đăng
 #: nhập vốn tạo thêm tài khoản.
-_BANG = [
+_TABLES = [
     "quiz_attempt",
     "quiz_item",
     "review_log",
@@ -115,9 +117,9 @@ _BANG = [
 
 
 @pytest.fixture(autouse=True)
-def _don_sach(db_engine: Engine) -> Iterator[None]:
+def _clean_database(db_engine: Engine) -> Iterator[None]:
     with db_engine.begin() as conn:
-        conn.execute(text("TRUNCATE " + ", ".join(_BANG) + " RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE " + ", ".join(_TABLES) + " RESTART IDENTITY CASCADE"))
         # Dựng lại tài khoản gốc + phiên của nó, đúng vai trò `ensureOwnerSession` bên Java.
         owner_id = conn.execute(
             text(
@@ -137,19 +139,19 @@ def _don_sach(db_engine: Engine) -> Iterator[None]:
 
 
 @dataclass
-class NguoiDungTest:
+class UserFixture:
     id: int
     email: str
     token: str
     #: `"bearer"` (extension) hoặc `"cookie"` (web app). Xem `headers`.
-    che_do: str = "bearer"
+    auth_mode: str = "bearer"
 
     @property
     def headers(self) -> dict[str, str]:
         """Cách request này mang danh tính.
 
         Hai đường, và `test_multi_user_isolation.py` chạy TOÀN BỘ bộ test của nó qua cả hai
-        (fixture `hai_nguoi` được parametrize). Lý do: cookie là đường xác thực THỨ HAI cho
+        (fixture `two_users` được parametrize). Lý do: cookie là đường xác thực THỨ HAI cho
         mọi endpoint chạm dữ liệu học, và ràng buộc #13 nói rõ endpoint chưa có mặt trong
         file đó là endpoint chưa được chứng minh an toàn — một đường xác thực mới cũng vậy.
 
@@ -157,7 +159,7 @@ class NguoiDungTest:
         vẫn chỉ là một dict header, và mọi test hiện có dùng lại được không sửa một dòng.
         `X-IELTS-Web` là bắt buộc — xem `deps.cookie_token`.
         """
-        if self.che_do == "cookie":
+        if self.auth_mode == "cookie":
             from app.auth.cookies import session_cookie_name
             from app.config import get_settings
 
@@ -179,17 +181,17 @@ def db(db_engine: Engine) -> Iterator[Session]:
         session.close()
 
 
-def tao_nguoi_dung(db: Session, email: str) -> NguoiDungTest:
+def create_user(db: Session, email: str) -> UserFixture:
     """Tạo tài khoản + phiên, trả về token THÔ để gắn vào header Authorization."""
     uid = int(
         db.execute(
             text(
                 "INSERT INTO app_user (google_sub, email, display_name) "
-                "VALUES (:sub, :email, :ten) "
+                "VALUES (:sub, :email, :display_name) "
                 "ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name "
                 "RETURNING id"
             ),
-            {"sub": f"sub-{email}", "email": email.lower(), "ten": email},
+            {"sub": f"sub-{email}", "email": email.lower(), "display_name": email},
         ).scalar_one()
     )
     token = f"test-token-{uid}-{email}"
@@ -201,27 +203,27 @@ def tao_nguoi_dung(db: Session, email: str) -> NguoiDungTest:
         {"uid": uid, "hash": sha256(token)},
     )
     db.commit()
-    return NguoiDungTest(uid, email.lower(), token)
+    return UserFixture(uid, email.lower(), token)
 
 
 @pytest.fixture
-def owner(db: Session) -> NguoiDungTest:
+def owner(db: Session) -> UserFixture:
     """Tài khoản gốc do V6 tạo — chủ của mọi dữ liệu trong test một-người-dùng."""
     uid = db.execute(
         text("SELECT id FROM app_user WHERE email = :e"), {"e": OWNER_EMAIL}
     ).scalar_one()
-    return NguoiDungTest(int(uid), OWNER_EMAIL, IT_TOKEN)
+    return UserFixture(int(uid), OWNER_EMAIL, IT_TOKEN)
 
 
 @pytest.fixture
-def user_a(owner: NguoiDungTest) -> NguoiDungTest:
+def user_a(owner: UserFixture) -> UserFixture:
     """Người dùng thứ nhất trong test hai-người-dùng — chính là tài khoản gốc."""
     return owner
 
 
 @pytest.fixture
-def user_b(db: Session) -> NguoiDungTest:
-    return tao_nguoi_dung(db, SECOND_EMAIL)
+def user_b(db: Session) -> UserFixture:
+    return create_user(db, SECOND_EMAIL)
 
 
 @pytest.fixture
@@ -255,7 +257,7 @@ def client(db: Session) -> Iterator[Any]:
 
 
 @dataclass
-class GeminiGia:
+class FakeGemini:
     """Thay WireMock: chặn tầng vận chuyển của httpx và trả sẵn payload.
 
     Chặn ở `httpx.BaseTransport` chứ không thay thẳng `GeminiClient`: như vậy toàn bộ đường
@@ -264,36 +266,36 @@ class GeminiGia:
     sai nhất.
     """
 
-    phan_hoi: list[httpx.Response] = field(default_factory=list)
+    responses: list[httpx.Response] = field(default_factory=list)
     requests: list[httpx.Request] = field(default_factory=list)
     #: Phản hồi dùng khi hàng đợi cạn. None = cạn thì báo lỗi test.
-    mac_dinh: httpx.Response | None = None
+    default_response: httpx.Response | None = None
 
-    def tra_json(self, payload: Any, lap: int = 1) -> None:
+    def queue_json(self, payload: Any, times: int = 1) -> None:
         """Xếp hàng phản hồi thành công. `payload` là JSON mà model 'sinh ra'."""
-        for _ in range(lap):
-            self.phan_hoi.append(_boc_candidate(payload))
+        for _ in range(times):
+            self.responses.append(_wrap_candidate(payload))
 
-    def tra_text(self, inner: str) -> None:
+    def queue_text(self, inner: str) -> None:
         """Xếp hàng phản hồi mà phần model sinh ra KHÔNG phải JSON hợp lệ."""
-        self.phan_hoi.append(
+        self.responses.append(
             httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": inner}]}}]})
         )
 
-    def tra_status(self, status: int, body: str = "{}", lap: int = 1) -> None:
+    def queue_status(self, status: int, body: str = "{}", times: int = 1) -> None:
         """Xếp hàng phản hồi lỗi HTTP thô (429 quota, 503 chết, 401 sai key...)."""
-        for _ in range(lap):
-            self.phan_hoi.append(httpx.Response(status, text=body))
+        for _ in range(times):
+            self.responses.append(httpx.Response(status, text=body))
 
-    def tra_raw(self, response: httpx.Response) -> None:
-        self.phan_hoi.append(response)
+    def queue_raw(self, response: httpx.Response) -> None:
+        self.responses.append(response)
 
     @property
-    def so_lan_goi(self) -> int:
+    def call_count(self) -> int:
         return len(self.requests)
 
 
-def _boc_candidate(payload: Any) -> httpx.Response:
+def _wrap_candidate(payload: Any) -> httpx.Response:
     return httpx.Response(
         200,
         json={
@@ -304,31 +306,31 @@ def _boc_candidate(payload: Any) -> httpx.Response:
     )
 
 
-class _TransportGia(httpx.BaseTransport):
-    def __init__(self, gia: GeminiGia) -> None:
-        self._gia = gia
+class _FakeTransport(httpx.BaseTransport):
+    def __init__(self, fake: FakeGemini) -> None:
+        self._fake = fake
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        self._gia.requests.append(request)
-        if self._gia.phan_hoi:
-            return self._gia.phan_hoi.pop(0)
-        if self._gia.mac_dinh is not None:
-            return self._gia.mac_dinh
+        self._fake.requests.append(request)
+        if self._fake.responses:
+            return self._fake.responses.pop(0)
+        if self._fake.default_response is not None:
+            return self._fake.default_response
         raise AssertionError(
-            f"Bị gọi ra ngoài {len(self._gia.requests) - 1} phản hồi đã xếp sẵn "
+            f"Bị gọi ra ngoài {len(self._fake.requests) - 1} phản hồi đã xếp sẵn "
             f"(URL: {request.url}). Gần như luôn là dấu hiệu code gọi Gemini nhiều hơn dự "
             "kiến — ví dụ cache không ăn, hoặc retry chạy khi lẽ ra không được retry."
         )
 
 
 @pytest.fixture
-def gemini(monkeypatch: pytest.MonkeyPatch) -> Iterator[GeminiGia]:
-    gia = GeminiGia()
-    goc = httpx.Client.__init__
+def gemini(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeGemini]:
+    fake = FakeGemini()
+    original_init = httpx.Client.__init__
 
     def _init(self: httpx.Client, *args: Any, **kwargs: Any) -> None:
-        kwargs["transport"] = _TransportGia(gia)
-        goc(self, *args, **kwargs)  # type: ignore[arg-type]
+        kwargs["transport"] = _FakeTransport(fake)
+        original_init(self, *args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(httpx.Client, "__init__", _init)
 
@@ -338,17 +340,17 @@ def gemini(monkeypatch: pytest.MonkeyPatch) -> Iterator[GeminiGia]:
     gemini_mod.reset_gemini_client_cache()
     google_mod.reset_google_client_cache()
     try:
-        yield gia
+        yield fake
     finally:
         gemini_mod.reset_gemini_client_cache()
         google_mod.reset_google_client_cache()
 
 
 @pytest.fixture
-def khong_goi_gemini(gemini: GeminiGia) -> Callable[[], None]:
+def assert_no_gemini_call(gemini: FakeGemini) -> Callable[[], None]:
     """Khẳng định không có lượt gọi ra ngoài nào — dùng cho test cache hit."""
 
-    def kiem_tra() -> None:
-        assert gemini.requests == [], f"Không được gọi Gemini nhưng đã gọi {gemini.so_lan_goi} lần"
+    def check() -> None:
+        assert gemini.requests == [], f"Không được gọi Gemini nhưng đã gọi {gemini.call_count} lần"
 
-    return kiem_tra
+    return check

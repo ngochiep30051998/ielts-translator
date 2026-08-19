@@ -8,69 +8,69 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.stats.streak import tinh_streak
+from app.stats.streak import compute_streak
 
-HOM_NAY = date(2026, 8, 11)
-
-
-def _truoc(so_ngay: int) -> date:
-    return HOM_NAY - timedelta(days=so_ngay)
+TODAY = date(2026, 8, 11)
 
 
-def test_chua_on_ngay_nao() -> None:
-    ket_qua = tinh_streak([], HOM_NAY)
-    assert ket_qua.current == 0
-    assert ket_qua.longest == 0
-    assert ket_qua.last_active is None
+def _days_ago(day_count: int) -> date:
+    return TODAY - timedelta(days=day_count)
 
 
-def test_chi_on_hom_nay() -> None:
-    ket_qua = tinh_streak([HOM_NAY], HOM_NAY)
-    assert ket_qua.current == 1
-    assert ket_qua.longest == 1
-    assert ket_qua.last_active == HOM_NAY
+def test_no_days_reviewed_yet() -> None:
+    result = compute_streak([], TODAY)
+    assert result.current == 0
+    assert result.longest == 0
+    assert result.last_active is None
 
 
-def test_chi_on_hom_qua_van_giu_streak() -> None:
+def test_only_reviewed_today() -> None:
+    result = compute_streak([TODAY], TODAY)
+    assert result.current == 1
+    assert result.longest == 1
+    assert result.last_active == TODAY
+
+
+def test_only_reviewed_yesterday_still_keeps_streak() -> None:
     """9 giờ sáng chưa kịp ôn mà thấy streak về 0 là sai, và sai đúng lúc phản tác dụng
     nhất. Streak chỉ đứt khi CẢ hôm nay lẫn hôm qua đều trống."""
-    ket_qua = tinh_streak([_truoc(1)], HOM_NAY)
-    assert ket_qua.current == 1
-    assert ket_qua.last_active == _truoc(1)
+    result = compute_streak([_days_ago(1)], TODAY)
+    assert result.current == 1
+    assert result.last_active == _days_ago(1)
 
 
-def test_on_lan_cuoi_cach_day_hai_ngay_thi_dut() -> None:
-    ket_qua = tinh_streak([_truoc(2)], HOM_NAY)
-    assert ket_qua.current == 0
-    assert ket_qua.longest == 1
-    assert ket_qua.last_active == _truoc(2)
+def test_last_review_two_days_ago_breaks_streak() -> None:
+    result = compute_streak([_days_ago(2)], TODAY)
+    assert result.current == 0
+    assert result.longest == 1
+    assert result.last_active == _days_ago(2)
 
 
-def test_ba_ngay_lien_tiep_ket_thuc_hom_nay() -> None:
-    ket_qua = tinh_streak([_truoc(2), _truoc(1), HOM_NAY], HOM_NAY)
-    assert ket_qua.current == 3
-    assert ket_qua.longest == 3
+def test_three_consecutive_days_ending_today() -> None:
+    result = compute_streak([_days_ago(2), _days_ago(1), TODAY], TODAY)
+    assert result.current == 3
+    assert result.longest == 3
 
 
-def test_ba_ngay_lien_tiep_ket_thuc_hom_qua() -> None:
-    ket_qua = tinh_streak([_truoc(3), _truoc(2), _truoc(1)], HOM_NAY)
-    assert ket_qua.current == 3
-    assert ket_qua.longest == 3
+def test_three_consecutive_days_ending_yesterday() -> None:
+    result = compute_streak([_days_ago(3), _days_ago(2), _days_ago(1)], TODAY)
+    assert result.current == 3
+    assert result.longest == 3
 
 
-def test_chuoi_dai_nhat_nam_o_qua_khu() -> None:
+def test_longest_streak_is_in_the_past() -> None:
     """current và longest là hai con số khác nhau — trả cùng một giá trị cho cả hai là lỗi
     dễ lọt nhất ở đây."""
-    ngay = [_truoc(n) for n in (20, 19, 18, 17, 16)] + [_truoc(1), HOM_NAY]
-    ket_qua = tinh_streak(sorted(ngay), HOM_NAY)
-    assert ket_qua.current == 2
-    assert ket_qua.longest == 5
-    assert ket_qua.last_active == HOM_NAY
+    review_days = [_days_ago(n) for n in (20, 19, 18, 17, 16)] + [_days_ago(1), TODAY]
+    result = compute_streak(sorted(review_days), TODAY)
+    assert result.current == 2
+    assert result.longest == 5
+    assert result.last_active == TODAY
 
 
-def test_mot_ngay_duy_nhat_cach_day_mot_nam() -> None:
-    xa = HOM_NAY - timedelta(days=365)
-    ket_qua = tinh_streak([xa], HOM_NAY)
-    assert ket_qua.current == 0
-    assert ket_qua.longest == 1
-    assert ket_qua.last_active == xa
+def test_single_day_one_year_ago() -> None:
+    long_ago = TODAY - timedelta(days=365)
+    result = compute_streak([long_ago], TODAY)
+    assert result.current == 0
+    assert result.longest == 1
+    assert result.last_active == long_ago

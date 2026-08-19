@@ -77,10 +77,10 @@ def answer(db: Session, user_id: int, quiz_item_id: int, given: str) -> AnswerRe
             ErrorCode.TEXT_TOO_LONG, f"Bài viết quá dài (tối đa {MAX_ANSWER_LENGTH} ký tự)"
         )
 
-    cap = repository.find_owned_item(db, quiz_item_id, user_id)
-    if cap is None:
+    pair = repository.find_owned_item(db, quiz_item_id, user_id)
+    if pair is None:
         raise AppError.of(ErrorCode.NOT_FOUND, f"Không tìm thấy câu hỏi id={quiz_item_id}")
-    item, entry = cap
+    item, entry = pair
 
     if not given.strip():
         # Bỏ qua câu: chấm 0 và ghi lịch sử như một lượt làm THẬT. Không ghi thì item vẫn lọt
@@ -126,14 +126,14 @@ def _grade_collocation(db: Session, item: QuizItem, given: str) -> AnswerResultD
     options = payload_str_list(item.payload.get("options"))
     correct_index = payload_int(item.payload.get("correct_index"))
     correct = grader.grade_collocation(given, correct_index)
-    cum_dung = options[correct_index] if 0 <= correct_index < len(options) else ""
+    correct_option = options[correct_index] if 0 <= correct_index < len(options) else ""
     return _record(
         db,
         item,
         given,
         correct,
         100 if correct else 0,
-        "Chính xác." if correct else f"Chưa đúng. Đáp án: {cum_dung}",
+        "Chính xác." if correct else f"Chưa đúng. Đáp án: {correct_option}",
         None,
     )
 
